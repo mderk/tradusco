@@ -110,3 +110,31 @@ This will check:
 1. If the required environment variables are set
 2. If the required packages are installed
 3. If the connection to the Gemini API works
+
+## Running Tests
+
+The project includes a comprehensive test suite to ensure functionality works as expected. To run the tests:
+
+```bash
+python -m tests.run_tests
+```
+
+Or you can run the test script directly:
+
+```bash
+./tests/run_tests.py
+```
+
+The test suite includes:
+
+1. **TranslationProject Tests**: Tests for the main TranslationProject class functionality
+2. **Batch Response Parsing Tests**: Tests for JSON parsing of LLM responses
+3. **Prompt Handling Tests**: Tests for loading and handling prompt templates
+
+If you want to run a specific test file, you can use:
+
+```bash
+python -m unittest tests.test_translation_project
+python -m unittest tests.test_batch_response_parsing
+python -m unittest tests.test_prompt_handling
+```

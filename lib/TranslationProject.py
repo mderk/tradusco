@@ -90,26 +90,26 @@ class TranslationProject:
     def _load_default_prompt(self, prompt_filename: str) -> str:
         """Load a default prompt from the prompts directory"""
         prompt_path = Path(__file__).parent / "prompts" / prompt_filename
-        try:
-            with open(prompt_path, "r", encoding="utf-8") as f:
-                return f.read().strip()
-        except FileNotFoundError:
+        if not prompt_path.exists():
             print(f"Warning: Default prompt file {prompt_filename} not found.")
             return ""
+
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
 
     def _load_custom_prompt(self, prompt_file: str | None) -> str:
         """Load a custom prompt from the specified file path"""
         if not prompt_file:
             return ""
 
-        try:
-            with open(prompt_file, "r", encoding="utf-8") as f:
-                return f.read().strip()
-        except FileNotFoundError:
+        if not os.path.exists(prompt_file):
             print(
                 f"Warning: Custom prompt file {prompt_file} not found. Using default prompt."
             )
             return ""
+
+        with open(prompt_file, "r", encoding="utf-8") as f:
+            return f.read().strip()
 
     def _create_batch_prompt(self, phrases: list[str]) -> str:
         """Create a prompt for batch translation using JSON format"""

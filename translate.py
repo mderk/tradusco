@@ -16,8 +16,21 @@ except ImportError:
 
 def main():
     parser = argparse.ArgumentParser(description="AI Translation Utility using LLMs")
-    parser.add_argument("-p", "--project", required=True, help="Project name")
-    parser.add_argument("-l", "--lang", required=True, help="Destination language code")
+
+    # List models option
+    parser.add_argument(
+        "--list-models", action="store_true", help="List available models and exit"
+    )
+
+    # Project and language arguments
+    parser.add_argument("-p", "--project", help="Project name")
+    parser.add_argument("-l", "--lang", help="Destination language code")
+    parser.add_argument(
+        "-m",
+        "--model",
+        default="gemini",
+        help="Model to use for translation (default: gemini)",
+    )
     parser.add_argument(
         "-d",
         "--delay",
@@ -47,6 +60,24 @@ def main():
     args = parser.parse_args()
 
     try:
+        # If --list-models is specified, list models and exit
+        if args.list_models:
+            print("Available models:")
+            for model in TranslationProject.get_available_models():
+                print(f"- {model}")
+            return 0
+
+        # For translation, project and lang are required
+        if not args.project or not args.lang:
+            parser.error("--project and --lang are required for translation")
+
+        # Validate the model
+        available_models = TranslationProject.get_available_models()
+        if args.model not in available_models:
+            parser.error(
+                f"Invalid model: {args.model}. Use --list-models to see available models."
+            )
+
         translator = TranslationProject(
             args.project,
             args.lang,
@@ -56,6 +87,7 @@ def main():
             delay_seconds=args.delay,
             max_retries=args.retries,
             batch_size=args.batch_size,
+            model=args.model,
         )
     except Exception as e:
         print(f"Error: {e}")

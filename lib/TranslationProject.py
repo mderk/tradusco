@@ -2,12 +2,10 @@ import csv
 import json
 import os
 import re
-import time
 from pathlib import Path
-from typing import Any
 
 
-from .llm import get_llm, BaseDriver
+from .llm import get_driver, BaseDriver, get_available_models
 
 
 class TranslationProject:
@@ -44,6 +42,11 @@ class TranslationProject:
         if not self.progress_file.exists():
             with open(self.progress_file, "w", encoding="utf-8") as f:
                 json.dump({}, f, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def get_available_models() -> list[str]:
+        """Get a list of available models"""
+        return get_available_models()
 
     def _load_config(self) -> dict:
         """Load the project configuration from config.json"""
@@ -89,7 +92,7 @@ class TranslationProject:
 
     def _load_default_prompt(self, prompt_filename: str) -> str:
         """Load a default prompt from the prompts directory"""
-        prompt_path = Path(__file__).parent / "prompts" / prompt_filename
+        prompt_path = Path(__file__).parent.parent / "prompts" / prompt_filename
         if not prompt_path.exists():
             print(f"Warning: Default prompt file {prompt_filename} not found.")
             return ""
@@ -207,7 +210,11 @@ class TranslationProject:
         return translations
 
     def translate(
-        self, delay_seconds: float = 1.0, max_retries: int = 3, batch_size: int = 50
+        self,
+        delay_seconds: float = 1.0,
+        max_retries: int = 3,
+        batch_size: int = 50,
+        model: str = "gemini",
     ) -> None:
         """Translate phrases from base language to destination language
 
@@ -215,13 +222,14 @@ class TranslationProject:
             delay_seconds: Delay between API calls to avoid rate limiting
             max_retries: Maximum number of retries for failed API calls
             batch_size: Number of phrases to translate in a single API call
+            model: The LLM model to use for translation
         """
         # Load existing translations and progress
         translations = self._load_translations()
         progress = self._load_progress()
 
-        # Initialize the Gemini driver
-        driver = get_llm("gemini")
+        # Initialize the LLM driver with the specified model
+        driver = get_driver(model)
 
         # Track changes to know if we need to save
         changes_made = False

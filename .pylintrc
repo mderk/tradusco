@@ -1,0 +1,16 @@
+[MASTER]
+init-hook="from pylint.config import find_pylintrc; import os, sys; sys.path.append(os.path.dirname(find_pylintrc()))"
+
+[MAIN]
+disable=missing-function-docstring,missing-module-docstring,missing-class-docstring,line-too-long
+# disable=missing-function-docstring,missing-module-docstring,missing-class-docstring,line-too-long
+# disable=broad-except,too-many-return-statements,redefined-builtin,expression-not-assigned,superfluous-parens
+# disable=inconsistent-return-statements
+# function-naming-style=any
+# method-naming-style=camelCase
+# attr-naming-style=camelCase
+# argument-naming-style=any
+# variable-naming-style=any
+# inlinevar-naming-style=any
+# const-naming-style=any
+# extension-pkg-whitelist=mat

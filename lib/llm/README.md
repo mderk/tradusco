@@ -24,8 +24,7 @@ To add a new LLM driver:
 All drivers must implement the following methods:
 
 -   `__init__(model: str, api_key: Optional[str] = None)`: Initialize the driver with a model name and optional API key
--   `translate_batch(prompt: str, delay_seconds: float = 1.0, max_retries: int = 3) -> str`: Send a batch translation request
--   `translate_single(prompt: str, delay_seconds: float = 1.0) -> str`: Send a single translation request
+-   `translate(prompt: str, delay_seconds: float = 1.0, max_retries: int = 3) -> str`: Send a batch translation request
 
 ## Example Usage
 
@@ -36,6 +35,6 @@ from ai_translator.lib.llm import get_llm
 driver = get_llm("gemini")
 
 # Use the driver to translate text
-result = driver.translate_single("Translate this text from English to French: Hello, world!")
+result = driver.translate("Translate this text from English to French: Hello, world!")
 print(result)
 ```

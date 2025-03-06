@@ -15,8 +15,7 @@ class TranslationProject:
         self,
         project_name: str,
         dst_language: str,
-        batch_prompt_file: str | None = None,
-        single_prompt_file: str | None = None,
+        prompt_file: str | None = None,
     ):
         self.project_name = project_name
         self.dst_language = dst_language
@@ -24,13 +23,11 @@ class TranslationProject:
         self.config_path = self.project_dir / "config.json"
         self.config = self._load_config()
 
-        # Set prompt file paths
-        self.batch_prompt_file = batch_prompt_file
-        self.single_prompt_file = single_prompt_file
+        # Set prompt file path
+        self.prompt_file = prompt_file
 
-        # Load default prompts
-        self.default_batch_prompt = self._load_default_prompt("batch_prompt.txt")
-        self.default_single_prompt = self._load_default_prompt("single_prompt.txt")
+        # Load default prompt
+        self.default_prompt = self._load_default_prompt("prompt.txt")
 
         if self.dst_language not in self.config["languages"]:
             raise ValueError(f"Language {dst_language} not found in project config")
@@ -121,8 +118,7 @@ class TranslationProject:
 
         # Try to load custom prompt first, fall back to default
         prompt_template = (
-            self._load_custom_prompt(self.batch_prompt_file)
-            or self.default_batch_prompt
+            self._load_custom_prompt(self.prompt_file) or self.default_prompt
         )
 
         # Format the prompt template with the required variables
@@ -330,7 +326,7 @@ class TranslationProject:
 
         try:
             # Send the batch to the LLM using the GeminiDriver
-            response = driver.translate_batch(prompt_text, delay_seconds, max_retries)
+            response = driver.translate(prompt_text, delay_seconds, max_retries)
 
             # Parse the response
             batch_translations = self._parse_batch_response(response, phrases)
@@ -346,49 +342,5 @@ class TranslationProject:
                     print(f"Warning: No translation found for '{phrase}'")
         except Exception as e:
             print(f"Error translating batch: {e}")
-            # Try to translate phrases individually as fallback
-            print("Falling back to individual translation...")
-            self._process_individual_fallback(
-                phrases, indices, translations, progress, driver, delay_seconds
-            )
-
-    def _process_individual_fallback(
-        self,
-        phrases: list[str],
-        indices: list[int],
-        translations: list[dict[str, str]],
-        progress: dict[str, str],
-        driver: BaseDriver,
-        delay_seconds: float,
-    ) -> None:
-        """Process phrases individually as a fallback when batch processing fails"""
-        for i, phrase in enumerate(phrases):
-            try:
-                print(f"Individual translation: {phrase}")
-
-                # Try to load custom prompt first, fall back to default
-                prompt_template = (
-                    self._load_custom_prompt(self.single_prompt_file)
-                    or self.default_single_prompt
-                )
-
-                # Format the prompt template with the required variables
-                prompt = prompt_template.format(
-                    base_language=self.base_language,
-                    dst_language=self.dst_language,
-                    phrase=phrase,
-                )
-
-                # Send to LLM using the GeminiDriver
-                response = driver.translate_single(prompt, delay_seconds)
-
-                # Clean up response (remove quotes, etc.)
-                translation = response.strip().strip("\"'").strip()
-
-                # Update translations and progress
-                translations[indices[i]][self.dst_language] = translation
-                progress[phrase] = translation
-
-                print(f"Translated: {phrase} -> {translation}")
-            except Exception as e:
-                print(f"Error translating '{phrase}' individually: {e}")
+            print("Failed to translate batch. Skipping these phrases.")
+            # No fallback to individual translation

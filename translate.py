@@ -40,12 +40,8 @@ def main():
         help="Number of phrases to translate in a single API call (default: 50)",
     )
     parser.add_argument(
-        "--batch-prompt",
-        help="Path to a custom batch translation prompt file",
-    )
-    parser.add_argument(
-        "--single-prompt",
-        help="Path to a custom single phrase translation prompt file",
+        "--prompt",
+        help="Path to a custom translation prompt file",
     )
 
     args = parser.parse_args()
@@ -54,8 +50,7 @@ def main():
         translator = TranslationProject(
             args.project,
             args.lang,
-            batch_prompt_file=args.batch_prompt,
-            single_prompt_file=args.single_prompt,
+            prompt_file=args.prompt,
         )
         translator.translate(
             delay_seconds=args.delay,

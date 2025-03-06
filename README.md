@@ -31,7 +31,7 @@ GEMINI_PROJECT_ID = "your_project_id_here"
 Run the translator with the following command:
 
 ```bash
-python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-prompt BATCH_PROMPT_FILE] [--single-prompt SINGLE_PROMPT_FILE]
+python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--prompt PROMPT_FILE]
 ```
 
 Where:
@@ -41,34 +41,25 @@ Where:
 -   `DELAY` (optional) is the delay between API calls in seconds (default: 1.0)
 -   `RETRIES` (optional) is the maximum number of retries for failed API calls (default: 3)
 -   `BATCH_SIZE` (optional) is the number of phrases to translate in a single API call (default: 50)
--   `BATCH_PROMPT_FILE` (optional) is the path to a custom batch translation prompt file
--   `SINGLE_PROMPT_FILE` (optional) is the path to a custom single phrase translation prompt file
+-   `PROMPT_FILE` (optional) is the path to a custom translation prompt file
 
 Example:
 
 ```bash
-python translate.py -p booty -l ru -d 2.0 -r 5 -b 20 --batch-prompt custom_prompts/my_batch_prompt.txt
+python translate.py -p booty -l ru -d 2.0 -r 5 -b 20 --prompt custom_prompts/my_prompt.txt
 ```
 
 ## Custom Prompts
 
-The translator supports custom prompt templates for both batch translations and individual phrase translations.
-Default prompts are stored in the `prompts` directory, but you can provide your own prompt files using the
-`--batch-prompt` and `--single-prompt` command-line arguments.
+The translator supports custom prompt templates for translations.
+Default prompts are stored in the `prompts` directory, but you can provide your own prompt file using the
+`--prompt` command-line argument.
 
 Prompt templates use Python's string formatting syntax with the following variables:
 
-For batch prompts:
-
 -   `{base_language}` - The source language
 -   `{dst_language}` - The destination language
--   `{phrases_text}` - The numbered list of phrases to translate
-
-For single prompts:
-
--   `{base_language}` - The source language
--   `{dst_language}` - The destination language
--   `{phrase}` - The individual phrase to translate
+-   `{phrases_json}` - The JSON array of phrases to translate
 
 ## Project Configuration
 
@@ -93,7 +84,6 @@ Each project should have a `config.json` file with the following structure:
 5. The translations are saved to both the CSV file and the language-specific progress.json file
 6. Translations are cached to avoid redundant API calls
 7. The utility implements rate limiting and retries to handle API quotas
-8. If batch translation fails, it falls back to individual translation as a recovery mechanism
 
 ## Batch Processing
 
@@ -102,7 +92,8 @@ The utility processes phrases in batches to improve efficiency and reduce API ca
 -   **Reduced API Costs**: Fewer API calls for the same number of translations
 -   **Faster Processing**: Translating multiple phrases at once is more efficient
 -   **Rate Limit Management**: Better handling of API rate limits
--   **Fallback Mechanism**: If batch translation fails, individual translation is used as a fallback
+-   **Consistent Format**: All translations use the same JSON-based format, even for single phrases
+-   **Improved Handling of Multiline Strings**: JSON encoding preserves line breaks and special characters
 
 You can adjust the batch size with the `-b` or `--batch-size` parameter.
 

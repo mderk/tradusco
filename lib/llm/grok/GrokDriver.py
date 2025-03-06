@@ -30,7 +30,7 @@ class GrokDriver(BaseDriver):
         self.llm = ChatXAI(model=model, api_key=SecretStr(self.api_key))
         self.model = model
 
-    def translate_batch(
+    def translate(
         self, prompt: str, delay_seconds: float = 1.0, max_retries: int = 3
     ) -> str:
         """
@@ -72,29 +72,3 @@ class GrokDriver(BaseDriver):
         # This should never be reached due to the raise in the else clause above,
         # but adding it to satisfy the linter
         raise Exception(f"Failed to translate after {max_retries} attempts")
-
-    def translate_single(self, prompt: str, delay_seconds: float = 1.0) -> str:
-        """
-        Send a single translation request to the Grok model.
-
-        Args:
-            prompt: The formatted prompt to send to the model
-            delay_seconds: Delay after the request to avoid rate limiting
-
-        Returns:
-            The model's response content as a string
-
-        Raises:
-            Exception: If the API call fails
-        """
-        try:
-            # Send to LLM
-            response = self.llm.invoke(prompt)
-
-            # Add delay to avoid rate limiting
-            time.sleep(delay_seconds)
-
-            # Ensure we return a string
-            return str(response.content)
-        except Exception as e:
-            raise Exception(f"Failed to translate: {e}")

@@ -20,7 +20,7 @@ class BaseDriver(ABC):
         pass
 
     @abstractmethod
-    def translate_batch(
+    def translate(
         self, prompt: str, delay_seconds: float = 1.0, max_retries: int = 3
     ) -> str:
         """
@@ -36,22 +36,5 @@ class BaseDriver(ABC):
 
         Raises:
             Exception: If all retry attempts fail
-        """
-        pass
-
-    @abstractmethod
-    def translate_single(self, prompt: str, delay_seconds: float = 1.0) -> str:
-        """
-        Send a single translation request to the LLM.
-
-        Args:
-            prompt: The formatted prompt to send to the model
-            delay_seconds: Delay after the request to avoid rate limiting
-
-        Returns:
-            The model's response content as a string
-
-        Raises:
-            Exception: If the API call fails
         """
         pass

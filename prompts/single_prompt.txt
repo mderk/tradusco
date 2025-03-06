@@ -1,1 +1,0 @@
-Translate this phrase from {base_language} to {dst_language}: '{phrase}'. Provide only the translation without any explanations.

@@ -1,9 +1,11 @@
 import csv
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
+
 
 from .llm import get_llm, BaseDriver
 
@@ -113,10 +115,9 @@ class TranslationProject:
             return ""
 
     def _create_batch_prompt(self, phrases: list[str]) -> str:
-        """Create a prompt for batch translation"""
-        phrases_text = "\n".join(
-            [f"{i+1}. {phrase}" for i, phrase in enumerate(phrases)]
-        )
+        """Create a prompt for batch translation using JSON format"""
+        # Encode phrases as JSON to handle multiline strings properly
+        phrases_json = json.dumps(phrases, ensure_ascii=False, indent=2)
 
         # Try to load custom prompt first, fall back to default
         prompt_template = (
@@ -128,33 +129,84 @@ class TranslationProject:
         return prompt_template.format(
             base_language=self.base_language,
             dst_language=self.dst_language,
-            phrases_text=phrases_text,
+            phrases_json=phrases_json,
         )
 
     def _parse_batch_response(
         self, response: str, original_phrases: list[str]
     ) -> dict[str, str]:
-        """Parse the batch translation response into a dictionary"""
+        """Parse the batch translation response from JSON format"""
         translations = {}
-        lines = response.strip().split("\n")
 
-        # Filter out empty lines and ensure each line starts with a number
-        valid_lines = [
-            line.strip() for line in lines if line.strip() and line.strip()[0].isdigit()
-        ]
+        try:
+            # Try to extract JSON from the response
+            # First, look for JSON content between triple backticks
 
-        for i, line in enumerate(valid_lines):
-            if i >= len(original_phrases):
-                break
+            # Try to find JSON content between code blocks
+            json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                # If no code blocks, try to find a JSON array or object directly
+                json_match = re.search(r"(\[[\s\S]*\]|\{[\s\S]*\})", response)
+                if json_match:
+                    json_str = json_match.group(1)
+                else:
+                    # Use the entire response as a last resort
+                    json_str = response
 
-            # Extract the translation part (after the number and dot)
-            parts = line.split(".", 1)
-            if len(parts) < 2:
-                continue
+            # Parse the JSON content
+            translated_items = json.loads(json_str)
 
-            translation = parts[1].strip()
-            original = original_phrases[i]
-            translations[original] = translation
+            # Handle different possible JSON formats
+            if isinstance(translated_items, list):
+                # If it's a list of translations in the same order as original phrases
+                for i, translation in enumerate(translated_items):
+                    if i < len(original_phrases):
+                        if isinstance(translation, str):
+                            translations[original_phrases[i]] = translation
+                        elif (
+                            isinstance(translation, dict)
+                            and "translation" in translation
+                        ):
+                            translations[original_phrases[i]] = translation[
+                                "translation"
+                            ]
+            elif isinstance(translated_items, dict):
+                # If it's a dictionary mapping original phrases to translations
+                for original, translation in translated_items.items():
+                    if original in original_phrases:
+                        translations[original] = translation
+                    # Also try to match by index if the keys are numeric
+                    elif original.isdigit() and (int(original) - 1) < len(
+                        original_phrases
+                    ):
+                        translations[original_phrases[int(original) - 1]] = translation
+
+        except Exception as e:
+            print(f"Error parsing JSON response: {e}")
+            print("Falling back to line-by-line parsing...")
+
+            # Fallback to the original line-by-line parsing method
+            lines = response.strip().split("\n")
+            valid_lines = [
+                line.strip()
+                for line in lines
+                if line.strip() and line.strip()[0].isdigit()
+            ]
+
+            for i, line in enumerate(valid_lines):
+                if i >= len(original_phrases):
+                    break
+
+                # Extract the translation part (after the number and dot)
+                parts = line.split(".", 1)
+                if len(parts) < 2:
+                    continue
+
+                translation = parts[1].strip()
+                original = original_phrases[i]
+                translations[original] = translation
 
         return translations
 

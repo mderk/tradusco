@@ -2,14 +2,6 @@
 
 A Python utility for translating phrases using LLMs via Langchain.
 
-## Project Structure
-
-The utility works with projects that follow this structure:
-
--   `projects/[project_name]/config.json` - Project configuration
--   `projects/[project_name]/translations.csv` - Source and destination translations
--   `projects/[project_name]/[language]/progress.json` - Translation progress for each language
-
 ## Installation
 
 1. Clone this repository
@@ -29,7 +21,86 @@ GROK_API_KEY = "your_api_key_here"
 OPENROUTER_API_KEY = "your_api_key_here"
 ```
 
-## Usage
+## Creating a New Project
+
+You can create a new translation project using the `create_project.py` script. This script sets up the necessary directory structure and configuration files based on a CSV file containing your translations.
+
+### Usage
+
+```bash
+python create_project.py --name PROJECT_NAME --csv CSV_PATH --base-lang BASE_LANGUAGE --key KEY_COLUMN
+```
+
+Or using the short options:
+
+```bash
+python create_project.py -n PROJECT_NAME -c CSV_PATH -b BASE_LANGUAGE -k KEY_COLUMN
+```
+
+### Arguments
+
+-   `--name`, `-n` (required): Name of the project to create
+-   `--csv`, `-c` (required): Path to the CSV file containing translations
+-   `--base-lang`, `-b` (required): Base language code (e.g., "en" for English)
+-   `--key`, `-k` (required): Column name containing translation keys
+
+### Examples
+
+```bash
+# Create a new project with all required parameters
+python create_project.py --name myproject --csv data/translations.csv --base-lang en --key id
+
+# Same using short options
+python create_project.py -n myproject -c data/translations.csv -b en -k id
+```
+
+### What It Does
+
+1. Creates a new project directory under `projects/<project_name>`
+2. Reads and validates the CSV file
+3. Creates a `config.json` file with project settings
+4. Creates subdirectories for each language found in the CSV
+5. Copies the source CSV file to the project directory
+
+### CSV File Format
+
+The CSV file should have:
+
+-   A column for translation keys (specified by the `--key` parameter)
+-   Language code columns for each supported language
+-   Each row contains the translation key and corresponding translations
+
+Example CSV format:
+
+```csv
+id,en,fr,es
+welcome_message,Welcome,Bienvenue,Bienvenido
+goodbye_message,Goodbye,Au revoir,Adiós
+```
+
+### Project Structure
+
+The utility works with projects that follow this structure:
+
+-   `projects/[project_name]/config.json` - Project configuration
+-   `projects/[project_name]/translations.csv` - Source and destination translations
+-   `projects/[project_name]/[language]/progress.json` - Translation progress for each language
+
+### Project Configuration
+
+Each project should have a `config.json` file with the following structure:
+
+```json
+{
+    "name": "project_name",
+    "sourceFile": "translations.csv",
+    "languages": ["en", "ru", "de", "fr", "es", "it", "tr", "zh", "ja"],
+    "baseLanguage": "en",
+    "keyColumn": "en"
+}
+```
+
+## Translating Phrases
 
 Run the translator with the following command:
 
@@ -64,7 +135,7 @@ python translate.py -p myproject -l de --prompt custom_prompts/my_prompt.txt
 python translate.py --list-models
 ```
 
-## Custom Prompts
+### Custom Prompts
 
 The translator supports custom prompt templates for translations.
 Default prompts are stored in the `prompts` directory, but you can provide your own prompt file using the
@@ -76,21 +147,7 @@ Prompt templates use Python's string formatting syntax with the following variab
 -   `{dst_language}` - The destination language
 -   `{phrases_json}` - The JSON array of phrases to translate
 
-## Project Configuration
-
-Each project should have a `config.json` file with the following structure:
-
-```json
-{
-    "name": "project_name",
-    "sourceFile": "translations.csv",
-    "languages": ["en", "ru", "de", "fr", "es", "it", "tr", "zh", "ja"],
-    "baseLanguage": "en",
-    "keyColumn": "en"
-}
-```
-
-## How It Works
+### How It Works
 
 1. The utility reads the project configuration and source translations
 2. For each phrase in the base language, it checks if a translation already exists
@@ -118,7 +175,7 @@ The project uses a driver architecture for interacting with different LLM provid
 -   `GeminiDriver`, `GrokDriver`, `OpenAIDriver`: Concrete implementations for specific providers
 -   `get_driver(model)`: Factory function to create the appropriate driver
 
-## Batch Processing
+### Batch Processing
 
 The utility processes phrases in batches to improve efficiency and reduce API calls. Benefits include:
 

@@ -4,3 +4,4 @@ google-generativeai==0.8.4
 python-dotenv==1.0.1
 langchain-xai==0.2.1
 langchain-openai==0.3.7
+aiofiles==24.1.0

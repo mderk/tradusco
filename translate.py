@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import asyncio
 
 from lib.TranslationProject import TranslationProject
 
@@ -14,7 +15,7 @@ except ImportError:
     )
 
 
-def main():
+async def async_main():
     parser = argparse.ArgumentParser(description="AI Translation Utility using LLMs")
 
     # List models option
@@ -78,12 +79,14 @@ def main():
                 f"Invalid model: {args.model}. Use --list-models to see available models."
             )
 
-        translator = TranslationProject(
+        # Create and initialize the translator asynchronously
+        translator = await TranslationProject.create(
             args.project,
             args.lang,
             prompt_file=args.prompt,
         )
-        translator.translate(
+
+        await translator.translate(
             delay_seconds=args.delay,
             max_retries=args.retries,
             batch_size=args.batch_size,
@@ -94,6 +97,10 @@ def main():
         return 1
 
     return 0
+
+
+def main():
+    return asyncio.run(async_main())
 
 
 if __name__ == "__main__":

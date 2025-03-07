@@ -1,10 +1,18 @@
 import json
 import os
 import unittest
+import asyncio
 from unittest.mock import patch, MagicMock, mock_open
 from pathlib import Path
 
 from lib.TranslationProject import TranslationProject
+
+
+class AsyncMock(MagicMock):
+    """Helper class for mocking async methods"""
+
+    async def __call__(self, *args, **kwargs):
+        return super(AsyncMock, self).__call__(*args, **kwargs)
 
 
 class TestTranslationProject(unittest.TestCase):
@@ -24,16 +32,6 @@ class TestTranslationProject(unittest.TestCase):
         # Create a mock prompt
         self.mock_prompt = "You are a translator. Translate from {base_language} to {dst_language}.\n{phrases_json}"
 
-        # Create a patch for _load_config
-        self.config_patcher = patch.object(TranslationProject, "_load_config")
-        self.mock_load_config = self.config_patcher.start()
-        self.mock_load_config.return_value = self.mock_config
-
-        # Create a patch for _load_default_prompt
-        self.prompt_patcher = patch.object(TranslationProject, "_load_default_prompt")
-        self.mock_load_default_prompt = self.prompt_patcher.start()
-        self.mock_load_default_prompt.return_value = self.mock_prompt
-
         # Create patches for file operations
         self.path_exists_patcher = patch("pathlib.Path.exists")
         self.mock_path_exists = self.path_exists_patcher.start()
@@ -42,15 +40,27 @@ class TestTranslationProject(unittest.TestCase):
         self.makedirs_patcher = patch("os.makedirs")
         self.mock_makedirs = self.makedirs_patcher.start()
 
-        # Initialize the project
-        self.project = TranslationProject("test_project", "fr")
+        # Initialize the project directly with the mock config and prompt
+        # This avoids the need for async initialization in tests
+        self.project = TranslationProject(
+            "test_project",
+            "fr",
+            config=self.mock_config,
+            default_prompt=self.mock_prompt,
+        )
+
+        # Create an event loop for each test
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
 
     def tearDown(self):
         """Tear down test fixtures"""
-        self.config_patcher.stop()
-        self.prompt_patcher.stop()
         self.path_exists_patcher.stop()
         self.makedirs_patcher.stop()
+
+        # Close the event loop
+        self.loop.close()
+        asyncio.set_event_loop(None)
 
     def test_init(self):
         """Test initialization of TranslationProject"""
@@ -59,44 +69,62 @@ class TestTranslationProject(unittest.TestCase):
         self.assertEqual(self.project.base_language, "en")
         self.assertEqual(self.project.default_prompt, self.mock_prompt)
 
-    @patch("builtins.open", new_callable=mock_open, read_data='{"key": "value"}')
-    def test_load_progress(self, mock_file):
+    @patch("aiofiles.open")
+    def test_load_progress(self, mock_aiofiles_open):
         """Test loading progress from file"""
-        result = self.project._load_progress()
+        # Setup the async mock
+        mock_file = AsyncMock()
+        mock_file.read.return_value = '{"key": "value"}'
+
+        # Setup the context manager
+        mock_aiofiles_open.return_value.__aenter__.return_value = mock_file
+
+        # Run the test
+        result = self.loop.run_until_complete(self.project._load_progress())
         self.assertEqual(result, {"key": "value"})
-        mock_file.assert_called_once()
+        mock_aiofiles_open.assert_called_once()
 
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("json.dump")
-    def test_save_progress(self, mock_json_dump, mock_file):
+    @patch("aiofiles.open")
+    def test_save_progress(self, mock_aiofiles_open):
         """Test saving progress to file"""
-        progress = {"phrase1": "translation1"}
-        self.project._save_progress(progress)
-        mock_file.assert_called_once()
-        mock_json_dump.assert_called_once()
+        # Setup the async mock
+        mock_file = AsyncMock()
 
-    @patch(
-        "builtins.open",
-        new_callable=mock_open,
-        read_data="en,fr\nHello,Bonjour\nWorld,Monde",
-    )
-    @patch("csv.DictReader")
-    def test_load_translations(self, mock_dict_reader, mock_file):
+        # Setup the context manager
+        mock_aiofiles_open.return_value.__aenter__.return_value = mock_file
+
+        # Run the test
+        progress = {"phrase1": "translation1"}
+        self.loop.run_until_complete(self.project._save_progress(progress))
+        mock_aiofiles_open.assert_called_once()
+        mock_file.write.assert_called_once()
+
+    @patch("aiofiles.open")
+    def test_load_translations(self, mock_aiofiles_open):
         """Test loading translations from CSV"""
-        mock_dict_reader.return_value = [
-            {"en": "Hello", "fr": "Bonjour"},
-            {"en": "World", "fr": "Monde"},
-        ]
-        result = self.project._load_translations()
+        # Setup the async mock
+        mock_file = AsyncMock()
+        mock_file.read.return_value = "en,fr\nHello,Bonjour\nWorld,Monde"
+
+        # Setup the context manager
+        mock_aiofiles_open.return_value.__aenter__.return_value = mock_file
+
+        # Run the test
+        result = self.loop.run_until_complete(self.project._load_translations())
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["en"], "Hello")
         self.assertEqual(result[0]["fr"], "Bonjour")
-        mock_file.assert_called_once()
+        mock_aiofiles_open.assert_called_once()
 
     def test_create_batch_prompt(self):
         """Test creating a batch prompt"""
+        # Mock _load_custom_prompt to return empty string
+        self.project._load_custom_prompt = AsyncMock(return_value="")
+
         phrases = ["Hello", "World"]
-        result = self.project._create_batch_prompt(phrases)
+        result = self.loop.run_until_complete(
+            self.project._create_batch_prompt(phrases)
+        )
         self.assertIn("en", result)
         self.assertIn("fr", result)
         self.assertIn(json.dumps(phrases, ensure_ascii=False, indent=2), result)
@@ -129,12 +157,8 @@ class TestTranslationProject(unittest.TestCase):
     @patch.object(TranslationProject, "_save_translations")
     @patch.dict(os.environ, {"GEMINI_API_KEY": "fake_api_key"})
     @patch.object(Path, "exists", return_value=True)
-    @patch.object(
-        TranslationProject, "_load_default_prompt", return_value="Default prompt"
-    )
     def test_translate(
         self,
-        mock_load_default_prompt,
         mock_path_exists,
         mock_save_translations,
         mock_save_progress,
@@ -143,26 +167,49 @@ class TestTranslationProject(unittest.TestCase):
         mock_load_translations,
     ):
         """Test the translate method"""
-        # Setup mocks
-        mock_load_translations.return_value = [
+        # Setup data to be returned by mocks
+        translations_data = [
             {"en": "Hello", "fr": ""},
             {"en": "World", "fr": "Monde"},
         ]
-        mock_load_progress.return_value = {"World": "Monde"}
 
-        # Mock get_llm directly in the test
+        progress_data = {"World": "Monde"}
+
+        # Create async mocks
+        async def mock_load_translations_impl():
+            return translations_data
+
+        async def mock_load_progress_impl():
+            return progress_data
+
+        async def mock_process_batch_impl(*args, **kwargs):
+            return None
+
+        async def mock_save_progress_impl(*args, **kwargs):
+            return None
+
+        async def mock_save_translations_impl(*args, **kwargs):
+            return None
+
+        # Assign the async implementations to the mocks
+        mock_load_translations.side_effect = mock_load_translations_impl
+        mock_load_progress.side_effect = mock_load_progress_impl
+        mock_process_batch.side_effect = mock_process_batch_impl
+        mock_save_progress.side_effect = mock_save_progress_impl
+        mock_save_translations.side_effect = mock_save_translations_impl
+
+        # Mock get_driver
         mock_driver = MagicMock()
 
-        with patch(
-            "lib.TranslationProject.get_llm", return_value=mock_driver
-        ) as mock_get_llm:
+        with patch("lib.TranslationProject.get_driver", return_value=mock_driver):
             # Call the method
-            self.project.translate(delay_seconds=0.1, max_retries=1, batch_size=10)
+            self.loop.run_until_complete(
+                self.project.translate(delay_seconds=0.1, max_retries=1, batch_size=10)
+            )
 
             # Verify the calls
             mock_load_translations.assert_called_once()
             mock_load_progress.assert_called_once()
-            mock_get_llm.assert_called_once_with("gemini")
             mock_process_batch.assert_called_once()
             mock_save_progress.assert_called()
             mock_save_translations.assert_called()

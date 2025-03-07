@@ -1,6 +1,14 @@
 import unittest
+import asyncio
 from lib.TranslationProject import TranslationProject
 from unittest.mock import patch, MagicMock
+
+
+class AsyncMock(MagicMock):
+    """Helper class for mocking async methods"""
+
+    async def __call__(self, *args, **kwargs):
+        return super(AsyncMock, self).__call__(*args, **kwargs)
 
 
 class TestBatchResponseParsing(unittest.TestCase):
@@ -8,10 +16,8 @@ class TestBatchResponseParsing(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        # Create patches to avoid actual file operations
-        self.config_patcher = patch.object(TranslationProject, "_load_config")
-        self.mock_load_config = self.config_patcher.start()
-        self.mock_load_config.return_value = {
+        # Create a mock config
+        self.mock_config = {
             "name": "test_project",
             "sourceFile": "translations.csv",
             "languages": ["en", "fr"],
@@ -19,9 +25,7 @@ class TestBatchResponseParsing(unittest.TestCase):
             "keyColumn": "en",
         }
 
-        self.prompt_patcher = patch.object(TranslationProject, "_load_default_prompt")
-        self.mock_load_default_prompt = self.prompt_patcher.start()
-
+        # Create patches for file operations
         self.path_exists_patcher = patch("pathlib.Path.exists")
         self.mock_path_exists = self.path_exists_patcher.start()
         self.mock_path_exists.return_value = True
@@ -29,23 +33,29 @@ class TestBatchResponseParsing(unittest.TestCase):
         self.makedirs_patcher = patch("os.makedirs")
         self.mock_makedirs = self.makedirs_patcher.start()
 
-        # Create a file mock to avoid file operations
-        self.open_patcher = patch("builtins.open", create=True)
-        self.mock_open = self.open_patcher.start()
-
-        # Initialize the project
-        self.project = TranslationProject("test_project", "fr")
+        # Initialize the project directly with the mock config
+        self.project = TranslationProject(
+            "test_project",
+            "fr",
+            config=self.mock_config,
+            default_prompt="Default prompt",
+        )
 
         # Test phrases
         self.phrases = ["Hello", "World", "How are you?"]
 
+        # Create an event loop for each test
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
     def tearDown(self):
         """Tear down test fixtures"""
-        self.config_patcher.stop()
-        self.prompt_patcher.stop()
         self.path_exists_patcher.stop()
         self.makedirs_patcher.stop()
-        self.open_patcher.stop()
+
+        # Close the event loop
+        self.loop.close()
+        asyncio.set_event_loop(None)
 
     def test_json_array_with_code_block(self):
         """Test parsing a JSON array response with code block"""

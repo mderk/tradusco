@@ -7,6 +7,8 @@ from pathlib import Path
 from io import StringIO
 from typing import Optional, Any
 
+from lib.PromptManager import PromptManager
+
 
 from .llm import get_driver, BaseDriver, get_available_models
 
@@ -38,6 +40,9 @@ class TranslationProject:
         self.prompt_file = prompt_file
         self.context = context
         self.context_file = context_file
+
+        # Initialize prompt manager
+        self.prompt_manager = PromptManager(self.project_dir)
 
         # These will be loaded by create method
         self.config = config or {}
@@ -77,7 +82,7 @@ class TranslationProject:
         config = await instance._load_config()
 
         # Load default prompt
-        default_prompt = await instance._load_default_prompt("prompt.txt")
+        default_prompt = await instance.prompt_manager.load_prompt("translation")
 
         # Create a fully initialized instance
         return cls(
@@ -152,32 +157,6 @@ class TranslationProject:
         ) as f:
             await f.write(content)
 
-    async def _load_default_prompt(self, prompt_filename: str) -> str:
-        """Load a default prompt from the prompts directory"""
-        prompt_path = Path(__file__).parent.parent / "prompts" / prompt_filename
-        if not prompt_path.exists():
-            print(f"Warning: Default prompt file {prompt_filename} not found.")
-            return ""
-
-        async with aiofiles.open(prompt_path, "r", encoding="utf-8") as f:
-            content = await f.read()
-            return content.strip()
-
-    async def _load_custom_prompt(self, prompt_file: str | None) -> str:
-        """Load a custom prompt from the specified file path"""
-        if not prompt_file:
-            return ""
-
-        if not os.path.exists(prompt_file):
-            print(
-                f"Warning: Custom prompt file {prompt_file} not found. Using default prompt."
-            )
-            return ""
-
-        async with aiofiles.open(prompt_file, "r", encoding="utf-8") as f:
-            content = await f.read()
-            return content.strip()
-
     async def _load_context(self) -> str:
         """Load translation context from various sources"""
         context_parts = []
@@ -237,8 +216,14 @@ class TranslationProject:
         )
 
         # Try to load custom prompt first, fall back to default
-        custom_prompt = await self._load_custom_prompt(self.prompt_file)
-        prompt_template = custom_prompt or self.default_prompt
+        prompt_template = await self.prompt_manager.load_prompt(
+            "translation",
+            self.prompt_file,
+            validate=True,
+            strict_validation=True,  # Only enforce required variables when actually translating
+        )
+        if not prompt_template:
+            prompt_template = self.default_prompt
 
         # Load global context
         global_context = await self._load_context()
@@ -254,21 +239,14 @@ class TranslationProject:
         )
 
         # Format the prompt template with the required variables
-        return prompt_template.format(
+        return self.prompt_manager.format_prompt(
+            prompt_template,
             base_language=self.base_language,
             dst_language=self.dst_language,
             phrases_json=phrases_json,
             context=context_section,
             phrase_contexts=phrase_contexts_section,
         )
-
-    async def _load_json_fix_prompt(self) -> str:
-        """Load the JSON fix prompt template from file."""
-        prompt_path = os.path.join("prompts", "fix_json.txt")
-
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            prompt = f.read()
-            return prompt
 
     async def _fix_invalid_json(self, invalid_json: str, driver: BaseDriver) -> str:
         """
@@ -282,7 +260,7 @@ class TranslationProject:
             Corrected JSON string or original string if correction failed
         """
         # Load the JSON fix prompt template
-        prompt_template = await self._load_json_fix_prompt()
+        prompt_template = await self.prompt_manager.load_prompt("json_fix")
 
         # Fill in the invalid JSON
         prompt = prompt_template.replace("{invalid_json}", invalid_json)

@@ -16,7 +16,9 @@ except ImportError:
 
 
 async def async_main():
-    parser = argparse.ArgumentParser(description="AI Translation Utility using LLMs")
+    parser = argparse.ArgumentParser(
+        description="Tradusco - Translation Utility using LLMs"
+    )
 
     # List models option
     parser.add_argument(

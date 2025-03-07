@@ -1,6 +1,6 @@
-# Grok Driver for AI Translator
+# Grok Driver for Tradusco
 
-This module provides integration with xAI's Grok language model for the AI Translator project using the official LangChain xAI integration.
+This module provides integration with xAI's Grok language model for the Tradusco project using the official LangChain xAI integration.
 
 ## Setup
 

@@ -1,6 +1,6 @@
-# AI Translator Utility
+# Tradusco
 
-A Python utility for translating phrases using LLMs (Gemini 2 Flash) via Langchain.
+A Python utility for translating phrases using LLMs via Langchain.
 
 ## Project Structure
 
@@ -19,11 +19,15 @@ The utility works with projects that follow this structure:
 pip install -r requirements.txt
 ```
 
-3. Set up your Google API key in a `.env` file:
+3. Set up your api keys in a `.env` file:
 
 ```
 GEMINI_API_KEY = "your_api_key_here"
 GEMINI_PROJECT_ID = "your_project_id_here"
+OPENAI_API_KEY = "your_api_key_here"
+GROK_API_KEY = "your_api_key_here"
+OPENROUTER_API_KEY = "your_api_key_here"
+... etc.
 ```
 
 ## Usage
@@ -80,7 +84,7 @@ Each project should have a `config.json` file with the following structure:
 1. The utility reads the project configuration and source translations
 2. For each phrase in the base language, it checks if a translation already exists
 3. If no translation exists, it collects phrases into batches for efficient translation
-4. It sends batches of phrases to Gemini 2 Flash for translation, reducing API calls
+4. It sends batches of phrases to LLM for translation, reducing API calls
 5. The translations are saved to both the CSV file and the language-specific progress.json file
 6. Translations are cached to avoid redundant API calls
 7. The utility implements rate limiting and retries to handle API quotas

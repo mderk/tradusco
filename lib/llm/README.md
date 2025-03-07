@@ -1,6 +1,6 @@
-# LLM Driver Architecture
+# LLM Drivers
 
-This directory contains the LLM driver architecture for the AI Translator project.
+This directory contains the LLM driver architecture for the Tradusco project.
 
 ## Overview
 

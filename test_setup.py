@@ -112,29 +112,19 @@ def test_gemini_connection():
 
 
 def main():
-    print("Testing AI Translator setup...\n")
+    """Main function to run all tests."""
+    print("Testing Tradusco setup...\n")
 
-    env_check = check_environment()
-    deps_check = check_dependencies()
+    env_status = check_environment()
+    dep_status = check_dependencies()
+    api_status = test_gemini_connection()
 
-    if env_check and deps_check:
-        print("\nTesting connection to Gemini API...")
-        api_check = test_gemini_connection()
-    else:
-        print("\nSkipping API test until environment and dependencies are fixed.")
-        api_check = False
-
-    print("\nSummary:")
-    print(f"Environment check: {'✅ Passed' if env_check else '❌ Failed'}")
-    print(f"Dependencies check: {'✅ Passed' if deps_check else '❌ Failed'}")
-    print(f"API connection check: {'✅ Passed' if api_check else '❌ Failed'}")
-
-    if env_check and deps_check and api_check:
-        print("\n✅ All checks passed! You're ready to use the AI Translator.")
+    if env_status and dep_status and api_status:
+        print("\n✅ All checks passed! You're ready to use Tradusco.")
         return 0
     else:
         print(
-            "\n❌ Some checks failed. Please fix the issues above before using the AI Translator."
+            "\n❌ Some checks failed. Please fix the issues above before using Tradusco."
         )
         return 1
 

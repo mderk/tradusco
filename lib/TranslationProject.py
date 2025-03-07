@@ -344,6 +344,7 @@ class TranslationProject:
         max_retries: int = 3,
         batch_size: int = 50,
         model: str = "gemini",
+        batch_max_bytes: int = 8192,
     ) -> None:
         """Translate phrases from base language to destination language
 
@@ -352,6 +353,7 @@ class TranslationProject:
             max_retries: Maximum number of retries for failed API calls
             batch_size: Number of phrases to translate in a single API call
             model: The LLM model to use for translation
+            batch_max_bytes: Maximum size in bytes for a translation batch
         """
         # Load existing translations and progress
         translations = await self._load_translations()
@@ -366,6 +368,7 @@ class TranslationProject:
         # Collect phrases that need translation
         phrases_to_translate = []
         phrase_indices = []
+        current_batch_bytes = 0
 
         for i, row in enumerate(translations):
             source_phrase = row[self.base_language]
@@ -394,8 +397,15 @@ class TranslationProject:
             phrases_to_translate.append(source_phrase)
             phrase_indices.append(i)
 
-            # Process batch when it reaches the batch size
-            if len(phrases_to_translate) >= batch_size:
+            # Calculate batch size in bytes
+            phrase_bytes = len(source_phrase.encode("utf-8"))
+            current_batch_bytes += phrase_bytes
+
+            # Process batch when it reaches the batch size limit (count or bytes)
+            if (
+                len(phrases_to_translate) >= batch_size
+                or current_batch_bytes >= batch_max_bytes
+            ):
                 await self._process_batch(
                     phrases_to_translate,
                     phrase_indices,
@@ -407,6 +417,7 @@ class TranslationProject:
                 )
                 phrases_to_translate = []
                 phrase_indices = []
+                current_batch_bytes = 0
                 changes_made = True
 
         # Process any remaining phrases

@@ -105,7 +105,7 @@ Each project should have a `config.json` file with the following structure:
 Run the translator with the following command:
 
 ```bash
-python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--prompt PROMPT_FILE] [--list-models]
+python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-max-bytes MAX_BYTES] [--prompt PROMPT_FILE] [--list-models]
 ```
 
 ### Arguments
@@ -116,6 +116,7 @@ python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r R
 -   `-d, --delay`: Delay between API calls in seconds (default: 1.0)
 -   `-r, --retries`: Maximum number of retries for failed API calls (default: 3)
 -   `-b, --batch-size`: Number of phrases to translate in a single API call (default: 50)
+-   `--batch-max-bytes`: Maximum size in bytes for a translation batch (default: 8192)
 -   `--prompt`: Path to a custom translation prompt file
 -   `--list-models`: List available models and exit
 
@@ -127,6 +128,9 @@ python translate.py -p myproject -l ru
 
 # Use a specific model with custom delay and batch size
 python translate.py -p myproject -l fr -m openai -d 2.0 -b 20
+
+# Set both batch size and maximum batch bytes
+python translate.py -p myproject -l de -b 30 --batch-max-bytes 16384
 
 # Use a custom prompt file
 python translate.py -p myproject -l de --prompt custom_prompts/my_prompt.txt

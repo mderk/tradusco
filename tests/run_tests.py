@@ -12,6 +12,7 @@ from tests.test_translation_project import TestTranslationProject
 from tests.test_batch_response_parsing import TestBatchResponseParsing
 from tests.test_prompt_handling import TestPromptHandling
 from tests.test_context_handling import TestContextHandling
+from tests.test_batch_size_limits import TestBatchSizeLimits
 
 
 def run_tests():
@@ -28,6 +29,9 @@ def run_tests():
     test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestPromptHandling))
     test_suite.addTests(
         unittest.TestLoader().loadTestsFromTestCase(TestContextHandling)
+    )
+    test_suite.addTests(
+        unittest.TestLoader().loadTestsFromTestCase(TestBatchSizeLimits)
     )
 
     # Run the test suite

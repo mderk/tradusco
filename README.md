@@ -19,7 +19,7 @@ The utility works with projects that follow this structure:
 pip install -r requirements.txt
 ```
 
-3. Set up your api keys in a `.env` file:
+3. Set up your API keys in a `.env` file:
 
 ```
 GEMINI_API_KEY = "your_api_key_here"
@@ -27,7 +27,6 @@ GEMINI_PROJECT_ID = "your_project_id_here"
 OPENAI_API_KEY = "your_api_key_here"
 GROK_API_KEY = "your_api_key_here"
 OPENROUTER_API_KEY = "your_api_key_here"
-... etc.
 ```
 
 ## Usage
@@ -35,22 +34,34 @@ OPENROUTER_API_KEY = "your_api_key_here"
 Run the translator with the following command:
 
 ```bash
-python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--prompt PROMPT_FILE]
+python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--prompt PROMPT_FILE] [--list-models]
 ```
 
-Where:
+### Arguments
 
--   `PROJECT_NAME` is the name of the project folder in the `projects` directory
--   `LANGUAGE_CODE` is the destination language code (must be defined in the project's config.json)
--   `DELAY` (optional) is the delay between API calls in seconds (default: 1.0)
--   `RETRIES` (optional) is the maximum number of retries for failed API calls (default: 3)
--   `BATCH_SIZE` (optional) is the number of phrases to translate in a single API call (default: 50)
--   `PROMPT_FILE` (optional) is the path to a custom translation prompt file
+-   `-p, --project`: Name of the project folder in the `projects` directory
+-   `-l, --lang`: Destination language code (must be defined in the project's config.json)
+-   `-m, --model`: Model to use for translation (default: "gemini")
+-   `-d, --delay`: Delay between API calls in seconds (default: 1.0)
+-   `-r, --retries`: Maximum number of retries for failed API calls (default: 3)
+-   `-b, --batch-size`: Number of phrases to translate in a single API call (default: 50)
+-   `--prompt`: Path to a custom translation prompt file
+-   `--list-models`: List available models and exit
 
-Example:
+### Examples
 
 ```bash
-python translate.py -p booty -l ru -d 2.0 -r 5 -b 20 --prompt custom_prompts/my_prompt.txt
+# Translate project "myproject" to Russian
+python translate.py -p myproject -l ru
+
+# Use a specific model with custom delay and batch size
+python translate.py -p myproject -l fr -m openai -d 2.0 -b 20
+
+# Use a custom prompt file
+python translate.py -p myproject -l de --prompt custom_prompts/my_prompt.txt
+
+# List available models
+python translate.py --list-models
 ```
 
 ## Custom Prompts
@@ -89,6 +100,24 @@ Each project should have a `config.json` file with the following structure:
 6. Translations are cached to avoid redundant API calls
 7. The utility implements rate limiting and retries to handle API quotas
 
+## Core Classes
+
+### TranslationProject
+
+The main class that handles the translation process. Key methods:
+
+-   `async create(project_name, dst_language, prompt_file=None)`: Factory method to create a new instance
+-   `async translate(delay_seconds=1.0, max_retries=3, batch_size=50, model="gemini")`: Translate missing phrases
+-   `get_available_models()`: Static method to get a list of available models
+
+### LLM Drivers
+
+The project uses a driver architecture for interacting with different LLM providers:
+
+-   `BaseDriver`: Abstract base class that defines the interface for all LLM drivers
+-   `GeminiDriver`, `GrokDriver`, `OpenAIDriver`: Concrete implementations for specific providers
+-   `get_driver(model)`: Factory function to create the appropriate driver
+
 ## Batch Processing
 
 The utility processes phrases in batches to improve efficiency and reduce API calls. Benefits include:
@@ -113,7 +142,7 @@ This will check:
 
 1. If the required environment variables are set
 2. If the required packages are installed
-3. If the connection to the Gemini API works
+3. If the connection to the LLM APIs works
 
 ## Running Tests
 

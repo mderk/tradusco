@@ -116,6 +116,45 @@ class TestTranslationProject(unittest.TestCase):
         self.assertEqual(result[0]["fr"], "Bonjour")
         mock_aiofiles_open.assert_called_once()
 
+    @patch("aiofiles.open")
+    def test_preserve_multiline_text(self, mock_aiofiles_open):
+        """Test that multiline text and formatting are preserved when loading and saving CSV"""
+        # CSV with multiline text in quotes
+        csv_with_multiline = 'en,fr\n"Hello\nWorld","Bonjour\nMonde"\n"Text with, comma","Texte avec, virgule"'
+
+        # Setup the async mock for loading
+        mock_file = AsyncMock()
+        mock_file.read.return_value = csv_with_multiline
+
+        # Setup the context manager for loading
+        mock_aiofiles_open.return_value.__aenter__.return_value = mock_file
+
+        # Run the load test
+        loaded_data = self.loop.run_until_complete(self.project._load_translations())
+
+        # Verify loaded data preserves newlines and commas
+        self.assertEqual(loaded_data[0]["en"], "Hello\nWorld")
+        self.assertEqual(loaded_data[0]["fr"], "Bonjour\nMonde")
+        self.assertEqual(loaded_data[1]["en"], "Text with, comma")
+        self.assertEqual(loaded_data[1]["fr"], "Texte avec, virgule")
+
+        # Reset the mock for saving
+        mock_aiofiles_open.reset_mock()
+        mock_file = AsyncMock()
+        mock_aiofiles_open.return_value.__aenter__.return_value = mock_file
+
+        # Run the save test
+        self.loop.run_until_complete(self.project._save_translations(loaded_data))
+
+        # Get the saved content
+        saved_content = mock_file.write.call_args[0][0]
+
+        # Verify the saved content has proper CSV formatting with quotes for multiline fields
+        self.assertIn('"Hello\nWorld"', saved_content)
+        self.assertIn('"Bonjour\nMonde"', saved_content)
+        self.assertIn('"Text with, comma"', saved_content)
+        self.assertIn('"Texte avec, virgule"', saved_content)
+
     def test_create_batch_prompt(self):
         """Test creating a batch prompt"""
         # Mock _load_custom_prompt to return empty string

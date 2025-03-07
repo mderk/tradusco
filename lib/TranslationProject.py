@@ -110,7 +110,9 @@ class TranslationProject:
             self.source_file, "r", newline="", encoding="utf-8"
         ) as f:
             content = await f.read()
-            reader = csv.DictReader(content.splitlines())
+            # Use StringIO to properly handle CSV with potential multiline fields
+            csv_file = StringIO(content)
+            reader = csv.DictReader(csv_file)
             return list(reader)
 
     async def _save_translations(self, translations: list[dict[str, str]]) -> None:

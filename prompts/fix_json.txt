@@ -1,0 +1,12 @@
+The following is an invalid JSON string that you produced in response to a translation request.
+Please fix the JSON format issues and return a valid JSON object or array.
+Do not add any explanations or comments, just return the fixed JSON.
+
+Invalid JSON:
+```
+{invalid_json}
+```
+
+Please fix and return ONLY the valid JSON. Ensure it's properly formatted according to the JSON specification.
+Your response must be a valid JSON array or object that can be parsed by standard JSON parsers.
+Format your response as JSON inside a code block.

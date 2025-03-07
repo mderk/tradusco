@@ -11,6 +11,15 @@ from typing import Optional, Any
 from .llm import get_driver, BaseDriver, get_available_models
 
 
+class InvalidJSONException(Exception):
+    """Exception raised when invalid JSON is encountered during parsing."""
+
+    def __init__(self, message: str, json_str: str):
+        self.message = message
+        self.json_str = json_str
+        super().__init__(f"{message}: {json_str[:100]}...")
+
+
 class TranslationProject:
     def __init__(
         self,
@@ -253,29 +262,77 @@ class TranslationProject:
             phrase_contexts=phrase_contexts_section,
         )
 
+    async def _load_json_fix_prompt(self) -> str:
+        """Load the JSON fix prompt template from file."""
+        prompt_path = os.path.join("prompts", "fix_json.txt")
+
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            prompt = f.read()
+            return prompt
+
+    async def _fix_invalid_json(self, invalid_json: str, driver: BaseDriver) -> str:
+        """
+        Attempt to fix invalid JSON by sending it back to the LLM.
+
+        Args:
+            invalid_json: The invalid JSON string
+            driver: The LLM driver to use for fixing
+
+        Returns:
+            Corrected JSON string or original string if correction failed
+        """
+        # Load the JSON fix prompt template
+        prompt_template = await self._load_json_fix_prompt()
+
+        # Fill in the invalid JSON
+        prompt = prompt_template.replace("{invalid_json}", invalid_json)
+
+        try:
+            # Send the prompt to the LLM
+            corrected_json = await driver.translate_async(
+                prompt, delay_seconds=1.0, max_retries=2
+            )
+
+            # Extract JSON from the response
+            json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", corrected_json)
+            if json_match:
+                return json_match.group(1)
+
+            # If no code blocks, try to find a JSON array or object directly
+            json_match = re.search(r"(\[[\s\S]*\]|\{[\s\S]*\})", corrected_json)
+            if json_match:
+                return json_match.group(1)
+
+            # If no recognizable JSON pattern, return the full response
+            return corrected_json
+
+        except Exception as e:
+            print(f"Error fixing JSON: {e}")
+            return invalid_json  # Return original if fixing failed
+
     def _parse_batch_response(
-        self, response: str, original_phrases: list[str]
+        self,
+        response: str,
+        original_phrases: list[str],
     ) -> dict[str, str]:
         """Parse the batch translation response from JSON format"""
         translations = {}
 
-        try:
-            # Try to extract JSON from the response
-            # First, look for JSON content between triple backticks
-
-            # Try to find JSON content between code blocks
-            json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response)
+        # Extract potential JSON content
+        # Try to find JSON content between code blocks
+        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # If no code blocks, try to find a JSON array or object directly
+            json_match = re.search(r"(\[[\s\S]*\]|\{[\s\S]*\})", response)
             if json_match:
                 json_str = json_match.group(1)
             else:
-                # If no code blocks, try to find a JSON array or object directly
-                json_match = re.search(r"(\[[\s\S]*\]|\{[\s\S]*\})", response)
-                if json_match:
-                    json_str = json_match.group(1)
-                else:
-                    # Use the entire response as a last resort
-                    json_str = response
+                # Use the entire response as a last resort
+                json_str = response
 
+        try:
             # Parse the JSON content
             translated_items = json.loads(json_str)
 
@@ -312,31 +369,43 @@ class TranslationProject:
                         translations[original_phrases[int(original) - 1]] = translation
 
         except Exception as e:
-            print(f"Error parsing JSON response: {e}")
-            print("Falling back to line-by-line parsing...")
-
-            # Fallback to the original line-by-line parsing method
-            lines = response.strip().split("\n")
-            valid_lines = [
-                line.strip()
-                for line in lines
-                if line.strip() and line.strip()[0].isdigit()
-            ]
-
-            for i, line in enumerate(valid_lines):
-                if i >= len(original_phrases):
-                    break
-
-                # Extract the translation part (after the number and dot)
-                parts = line.split(".", 1)
-                if len(parts) < 2:
-                    continue
-
-                translation = parts[1].strip()
-                original = original_phrases[i]
-                translations[original] = translation
+            # If JSON parsing fails, raise InvalidJSONException
+            raise InvalidJSONException(f"Error parsing JSON response: {e}", json_str)
 
         return translations
+
+    def _update_translations_from_batch(
+        self,
+        batch_translations: dict[str, str],
+        phrases: list[str],
+        indices: list[int],
+        translations: list[dict[str, str]],
+        progress: dict[str, str],
+    ) -> int:
+        """
+        Update translations and progress based on batch results
+
+        Args:
+            batch_translations: Dictionary mapping phrases to translations
+            phrases: List of original phrases being translated
+            indices: Indices of phrases in the translations list
+            translations: Full translations data structure
+            progress: Progress dictionary
+
+        Returns:
+            Number of phrases successfully translated
+        """
+        updates_count = 0
+        for i, phrase in enumerate(phrases):
+            if phrase in batch_translations:
+                translation = batch_translations[phrase]
+                translations[indices[i]][self.dst_language] = translation
+                progress[phrase] = translation
+                print(f"Translated: {phrase} -> {translation}")
+                updates_count += 1
+            else:
+                print(f"Warning: No translation found for '{phrase}'")
+        return updates_count
 
     async def translate(
         self,
@@ -466,18 +535,47 @@ class TranslationProject:
                 prompt_text, delay_seconds, max_retries
             )
 
-            # Parse the response
-            batch_translations = self._parse_batch_response(response, phrases)
+            try:
+                # Parse the response
+                batch_translations = self._parse_batch_response(response, phrases)
 
-            # Update translations and progress
-            for i, phrase in enumerate(phrases):
-                if phrase in batch_translations:
-                    translation = batch_translations[phrase]
-                    translations[indices[i]][self.dst_language] = translation
-                    progress[phrase] = translation
-                    print(f"Translated: {phrase} -> {translation}")
-                else:
-                    print(f"Warning: No translation found for '{phrase}'")
+                # Update translations and progress
+                self._update_translations_from_batch(
+                    batch_translations, phrases, indices, translations, progress
+                )
+
+            except InvalidJSONException as e:
+                print(f"Invalid JSON detected: {e.message}")
+                print("Attempting to fix invalid JSON using LLM...")
+
+                # Try to fix the JSON
+                fixed_json_str = await self._fix_invalid_json(e.json_str, driver)
+
+                # Try parsing again with the fixed JSON
+                try:
+                    # Create a new response with the fixed JSON
+                    fixed_response = response.replace(e.json_str, fixed_json_str)
+
+                    # Parse the fixed response
+                    batch_translations = self._parse_batch_response(
+                        fixed_response, phrases
+                    )
+
+                    # Update translations and progress
+                    update_count = self._update_translations_from_batch(
+                        batch_translations, phrases, indices, translations, progress
+                    )
+
+                    if update_count > 0:
+                        print("Successfully fixed and parsed JSON!")
+                    else:
+                        print(
+                            "Fixed JSON parsing succeeded but no translations were found."
+                        )
+
+                except Exception as e2:
+                    print(f"Failed to process fixed JSON: {e2}")
+                    print("Skipping this batch due to unrecoverable JSON error.")
 
             # Save progress after every LLM query
             await self._save_progress(progress)

@@ -6,3 +6,5 @@ langchain-xai==0.2.1
 langchain-openai==0.3.7
 aiofiles==24.1.0
 pathlib>=1.0.0
+pytest==8.0.2
+pytest-asyncio==0.23.5

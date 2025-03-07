@@ -1,6 +1,6 @@
 import unittest
 import asyncio
-from lib.TranslationProject import TranslationProject
+from lib.TranslationProject import TranslationProject, InvalidJSONException
 from unittest.mock import patch, MagicMock
 
 
@@ -171,19 +171,6 @@ I hope this helps!"""
         }
         self.assertEqual(result, expected)
 
-    def test_fallback_to_line_parsing(self):
-        """Test fallback to line-by-line parsing when JSON parsing fails"""
-        response = """1. Bonjour
-2. Monde
-3. Comment allez-vous?"""
-        result = self.project._parse_batch_response(response, self.phrases)
-        expected = {
-            "Hello": "Bonjour",
-            "World": "Monde",
-            "How are you?": "Comment allez-vous?",
-        }
-        self.assertEqual(result, expected)
-
     def test_multiline_translations(self):
         """Test handling of multiline translations in JSON"""
         phrases = ["Hello", "Paragraph with\nmultiple lines"]
@@ -221,7 +208,7 @@ I hope this helps!"""
         self.assertNotIn("How are you?", result)
 
     def test_malformed_json(self):
-        """Test handling of malformed JSON with fallback to line parsing"""
+        """Test handling of malformed JSON raises InvalidJSONException"""
         response = """```json
 [
   "Bonjour",
@@ -229,9 +216,9 @@ I hope this helps!"""
   "Comment allez-vous?
 ]
 ```"""  # Note the missing closing quote
-        result = self.project._parse_batch_response(response, self.phrases)
-        # Should fall back to line-by-line parsing
-        self.assertEqual(len(result), 0)  # No valid translations found
+        with self.assertRaises(InvalidJSONException) as context:
+            self.project._parse_batch_response(response, self.phrases)
+        self.assertIn("Error parsing JSON response", str(context.exception))
 
 
 if __name__ == "__main__":

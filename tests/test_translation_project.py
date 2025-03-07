@@ -4,8 +4,7 @@ import unittest
 import asyncio
 from unittest.mock import patch, MagicMock, mock_open
 from pathlib import Path
-
-from lib.TranslationProject import TranslationProject
+from lib.TranslationProject import TranslationProject, InvalidJSONException
 
 
 class AsyncMock(MagicMock):
@@ -175,7 +174,12 @@ class TestTranslationProject(unittest.TestCase):
 
     def test_parse_batch_response_json_array(self):
         """Test parsing a batch response with JSON array"""
-        response = '```json\n["Bonjour", "Monde"]\n```'
+        response = """```json
+[
+    "Bonjour",
+    "Monde"
+]
+```"""
         original_phrases = ["Hello", "World"]
         result = self.project._parse_batch_response(response, original_phrases)
         self.assertEqual(result, {"Hello": "Bonjour", "World": "Monde"})
@@ -187,12 +191,13 @@ class TestTranslationProject(unittest.TestCase):
         result = self.project._parse_batch_response(response, original_phrases)
         self.assertEqual(result, {"Hello": "Bonjour", "World": "Monde"})
 
-    def test_parse_batch_response_fallback(self):
-        """Test parsing a batch response with fallback to line-by-line"""
-        response = "1. Bonjour\n2. Monde"
+    def test_parse_batch_response_invalid_json(self):
+        """Test parsing a batch response with invalid JSON raises exception"""
+        response = '{"Hello": "Bonjour", "World": "Monde", invalid json}'
         original_phrases = ["Hello", "World"]
-        result = self.project._parse_batch_response(response, original_phrases)
-        self.assertEqual(result, {"Hello": "Bonjour", "World": "Monde"})
+        with self.assertRaises(InvalidJSONException) as context:
+            self.project._parse_batch_response(response, original_phrases)
+        self.assertIn("Error parsing JSON response", str(context.exception))
 
     @patch.object(TranslationProject, "_load_translations")
     @patch.object(TranslationProject, "_load_progress")

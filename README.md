@@ -105,7 +105,7 @@ Each project should have a `config.json` file with the following structure:
 Run the translator with the following command:
 
 ```bash
-python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-max-bytes MAX_BYTES] [--prompt PROMPT_FILE] [--list-models]
+python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-max-bytes MAX_BYTES] [--prompt PROMPT_FILE] [--context CONTEXT] [--context-file CONTEXT_FILE] [--list-models]
 ```
 
 ### Arguments
@@ -118,6 +118,8 @@ python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r R
 -   `-b, --batch-size`: Number of phrases to translate in a single API call (default: 50)
 -   `--batch-max-bytes`: Maximum size in bytes for a translation batch (default: 8192)
 -   `--prompt`: Path to a custom translation prompt file
+-   `--context`: Translation context as a text string to guide the translation style and tone
+-   `--context-file`: Path to a file containing translation context
 -   `--list-models`: List available models and exit
 
 ### Examples

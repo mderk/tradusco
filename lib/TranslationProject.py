@@ -17,6 +17,8 @@ class TranslationProject:
         project_name: str,
         dst_language: str,
         prompt_file: Optional[str] = None,
+        context: Optional[str] = None,
+        context_file: Optional[str] = None,
         config: Optional[dict[str, Any]] = None,
         default_prompt: str = "",
     ):
@@ -25,6 +27,8 @@ class TranslationProject:
         self.project_dir = Path(f"projects/{project_name}")
         self.config_path = self.project_dir / "config.json"
         self.prompt_file = prompt_file
+        self.context = context
+        self.context_file = context_file
 
         # These will be loaded by create method
         self.config = config or {}
@@ -53,10 +57,12 @@ class TranslationProject:
         project_name: str,
         dst_language: str,
         prompt_file: str | None = None,
+        context: str | None = None,
+        context_file: str | None = None,
     ):
         """Async factory method to create and initialize a TranslationProject"""
         # Create a minimal instance first
-        instance = cls(project_name, dst_language, prompt_file)
+        instance = cls(project_name, dst_language, prompt_file, context, context_file)
 
         # Load config
         config = await instance._load_config()
@@ -69,6 +75,8 @@ class TranslationProject:
             project_name,
             dst_language,
             prompt_file,
+            context,
+            context_file,
             config=config,
             default_prompt=default_prompt,
         )
@@ -161,20 +169,88 @@ class TranslationProject:
             content = await f.read()
             return content.strip()
 
-    async def _create_batch_prompt(self, phrases: list[str]) -> str:
+    async def _load_context(self) -> str:
+        """Load translation context from various sources"""
+        context_parts = []
+
+        # 1. Check for context.md or context.txt in project directory
+        for ext in [".md", ".txt"]:
+            context_path = self.project_dir / f"context{ext}"
+            try:
+                if os.path.exists(context_path):
+                    async with aiofiles.open(context_path, "r", encoding="utf-8") as f:
+                        content = await f.read()
+                        context_parts.append(content.strip())
+            except Exception as e:
+                print(f"Warning: Error reading context file {context_path}: {e}")
+
+        # 2. Check for context from command line file
+        if self.context_file:
+            try:
+                if os.path.exists(self.context_file):
+                    async with aiofiles.open(
+                        self.context_file, "r", encoding="utf-8"
+                    ) as f:
+                        content = await f.read()
+                        context_parts.append(content.strip())
+                else:
+                    print(f"Warning: Context file not found: {self.context_file}")
+            except Exception as e:
+                print(f"Warning: Error reading context file {self.context_file}: {e}")
+
+        # 3. Add direct context string if provided
+        if self.context:
+            context_parts.append(self.context.strip())
+
+        # Combine all context parts
+        return "\n\n".join(filter(None, context_parts))
+
+    async def _create_batch_prompt(
+        self, phrases: list[str], translations: list[dict[str, str]], indices: list[int]
+    ) -> str:
         """Create a prompt for batch translation using JSON format"""
-        # Encode phrases as JSON to handle multiline strings properly
-        phrases_json = json.dumps(phrases, ensure_ascii=False, indent=2)
+        # Create a list of phrases and a separate context mapping
+        phrases_to_translate = []
+        phrase_contexts = {}
+
+        for i, phrase in enumerate(phrases):
+            phrases_to_translate.append(phrase)
+            context = translations[indices[i]].get("context", "")
+            if context:  # Only include phrases that have context
+                phrase_contexts[phrase] = context
+
+        # Encode phrases and contexts as JSON
+        phrases_json = json.dumps(phrases_to_translate, ensure_ascii=False, indent=2)
+        contexts_json = (
+            json.dumps(phrase_contexts, ensure_ascii=False, indent=2)
+            if phrase_contexts
+            else ""
+        )
 
         # Try to load custom prompt first, fall back to default
         custom_prompt = await self._load_custom_prompt(self.prompt_file)
         prompt_template = custom_prompt or self.default_prompt
+
+        # Load global context
+        global_context = await self._load_context()
+        context_section = (
+            f"\nGlobal Translation Context:\n{global_context}\n"
+            if global_context
+            else ""
+        )
+
+        # Add phrase-specific contexts section if any exist
+        phrase_contexts_section = (
+            f"\nPhrase-specific contexts:\n{contexts_json}\n" if contexts_json else ""
+        )
 
         # Format the prompt template with the required variables
         return prompt_template.format(
             base_language=self.base_language,
             dst_language=self.dst_language,
             phrases_json=phrases_json,
+            context=context_section,
+            phrase_contexts=phrase_contexts_section,
         )
 
     def _parse_batch_response(
@@ -210,18 +286,25 @@ class TranslationProject:
                     if i < len(original_phrases):
                         if isinstance(translation, str):
                             translations[original_phrases[i]] = translation
-                        elif (
-                            isinstance(translation, dict)
-                            and "translation" in translation
-                        ):
-                            translations[original_phrases[i]] = translation[
-                                "translation"
-                            ]
+                        elif isinstance(translation, dict):
+                            # Handle both new and old format responses
+                            if "translation" in translation:
+                                translations[original_phrases[i]] = translation[
+                                    "translation"
+                                ]
+                            elif "text" in translation:
+                                translations[original_phrases[i]] = translation["text"]
             elif isinstance(translated_items, dict):
                 # If it's a dictionary mapping original phrases to translations
                 for original, translation in translated_items.items():
+                    # Try to match by the original phrase
                     if original in original_phrases:
                         translations[original] = translation
+                    # Try to match by the phrase in "text" field
+                    elif isinstance(translation, dict) and "text" in translation:
+                        original_text = translation.get("text", "")
+                        if original_text in original_phrases:
+                            translations[original_text] = translation["translation"]
                     # Also try to match by index if the keys are numeric
                     elif original.isdigit() and (int(original) - 1) < len(
                         original_phrases
@@ -363,8 +446,8 @@ class TranslationProject:
 
         print(f"Translating batch of {len(phrases)} phrases...")
 
-        # Create the batch prompt
-        prompt_text = await self._create_batch_prompt(phrases)
+        # Create the batch prompt with translations data for context
+        prompt_text = await self._create_batch_prompt(phrases, translations, indices)
 
         try:
             # Send the batch to the LLM using the async translate method
@@ -395,4 +478,3 @@ class TranslationProject:
         except Exception as e:
             print(f"Error translating batch: {e}")
             print("Failed to translate batch. Skipping these phrases.")
-            # No fallback to individual translation

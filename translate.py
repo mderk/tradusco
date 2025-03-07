@@ -59,6 +59,15 @@ async def async_main():
         "--prompt",
         help="Path to a custom translation prompt file",
     )
+    # Add context arguments
+    parser.add_argument(
+        "--context",
+        help="Translation context as a text string",
+    )
+    parser.add_argument(
+        "--context-file",
+        help="Path to a file containing translation context",
+    )
 
     args = parser.parse_args()
 
@@ -86,6 +95,8 @@ async def async_main():
             args.project,
             args.lang,
             prompt_file=args.prompt,
+            context=args.context,
+            context_file=args.context_file,
         )
 
         await translator.translate(

@@ -146,6 +146,73 @@ Prompt templates use Python's string formatting syntax with the following variab
 -   `{base_language}` - The source language
 -   `{dst_language}` - The destination language
 -   `{phrases_json}` - The JSON array of phrases to translate
+-   `{context}` - Global translation context (if any)
+-   `{phrase_contexts}` - Individual phrase contexts (if any)
+
+### Translation Contexts
+
+The translator supports both global and phrase-specific contexts to improve translation accuracy. You can provide context in several ways:
+
+#### Global Context
+
+1. **Command-line argument**:
+
+    ```bash
+    python translate.py -p myproject -l es --context "This is a videogame translation with casual tone"
+    ```
+
+2. **Context file via command-line**:
+
+    ```bash
+    python translate.py -p myproject -l es --context-file path/to/context.txt
+    ```
+
+3. **Project-level context file**:
+   Create either `context.md` or `context.txt` in your project directory:
+    ```
+    projects/
+      myproject/
+        context.md  # or context.txt
+        config.json
+        translations.csv
+    ```
+
+All global context sources are combined if multiple are provided.
+
+#### Phrase-specific Context
+
+You can add context for individual phrases by including a "context" column in your translations CSV file:
+
+```csv
+en,es,context
+Hello,Hola,"Formal business setting"
+Goodbye,,"Casual conversation between friends"
+Welcome,,"Greeting at hotel entrance"
+```
+
+The context column provides specific instructions or background for translating individual phrases. This is particularly useful when:
+
+-   The same word needs different translations based on context
+-   There are cultural nuances to consider
+-   The phrase has a specific tone or style requirement
+-   Technical terms need specific domain context
+
+#### How Context is Used
+
+1. **Global Context**: Applied to all translations in the batch. Useful for:
+
+    - Setting overall tone (formal/casual)
+    - Defining domain (technical/medical/legal)
+    - Specifying target audience
+    - General cultural considerations
+
+2. **Phrase-specific Context**: Applied only to individual phrases. Useful for:
+    - Word sense disambiguation
+    - Specific tone requirements
+    - Cultural adaptations
+    - Technical term clarification
+
+The LLM receives both types of context in a structured format, ensuring accurate and contextually appropriate translations.
 
 ### How It Works
 

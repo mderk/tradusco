@@ -122,7 +122,14 @@ class TestPromptHandling(unittest.TestCase):
 
         # Create a batch prompt
         phrases = ["Hello", "World"]
-        result = self.loop.run_until_complete(project._create_batch_prompt(phrases))
+        translations = [
+            {"en": "Hello", "fr": "", "context": "greeting"},
+            {"en": "World", "fr": "", "context": "place"},
+        ]
+        indices = [0, 1]
+        result = self.loop.run_until_complete(
+            project._create_batch_prompt(phrases, translations, indices)
+        )
 
         # Verify custom prompt was used
         project._load_custom_prompt.assert_called_once()
@@ -143,7 +150,14 @@ class TestPromptHandling(unittest.TestCase):
 
         # Create a batch prompt
         phrases = ["Hello", "World"]
-        result = self.loop.run_until_complete(project._create_batch_prompt(phrases))
+        translations = [
+            {"en": "Hello", "fr": "", "context": "greeting"},
+            {"en": "World", "fr": "", "context": "place"},
+        ]
+        indices = [0, 1]
+        result = self.loop.run_until_complete(
+            project._create_batch_prompt(phrases, translations, indices)
+        )
 
         # Verify default prompt was used
         project._load_custom_prompt.assert_called_once()

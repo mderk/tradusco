@@ -1,5 +1,7 @@
 You are a professional translator. Translate the following phrases from {base_language} to {dst_language}.
 Maintain the original meaning, tone, and style. If there are any cultural nuances, adapt them appropriately.
+Respect the formatting of the text - preserve newlines, extra spaces and other formatting features whenever possible. *Don't* break multiline strings to pieces!
+Don't loose placeholders.{context}{phrase_contexts}
 
 Phrases to translate (in JSON format):
 {phrases_json}

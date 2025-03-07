@@ -161,8 +161,13 @@ class TestTranslationProject(unittest.TestCase):
         self.project._load_custom_prompt = AsyncMock(return_value="")
 
         phrases = ["Hello", "World"]
+        translations = [
+            {"en": "Hello", "fr": "", "context": "greeting"},
+            {"en": "World", "fr": "", "context": "place"},
+        ]
+        indices = [0, 1]
         result = self.loop.run_until_complete(
-            self.project._create_batch_prompt(phrases)
+            self.project._create_batch_prompt(phrases, translations, indices)
         )
         self.assertIn("en", result)
         self.assertIn("fr", result)

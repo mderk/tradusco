@@ -22,6 +22,16 @@ drivers = {
         base_url=OPENROUTER_BASE_URL,
         api_key=OPENROUTER_API_KEY,
     ),
+    "openrouter-grok-3-beta": lambda: OpenAIDriver(
+        model="x-ai/grok-beta",
+        base_url=OPENROUTER_BASE_URL,
+        api_key=OPENROUTER_API_KEY,
+    ),
+    "openrouter-deepseek-r1-free": lambda: OpenAIDriver(
+        model="deepseek/deepseek-r1:free",
+        base_url=OPENROUTER_BASE_URL,
+        api_key=OPENROUTER_API_KEY,
+    ),
 }
 
 

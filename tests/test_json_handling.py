@@ -1,8 +1,9 @@
 import pytest
 import json
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import patch, MagicMock
 from lib.TranslationProject import TranslationProject, InvalidJSONException
 from lib.llm import BaseDriver
+from tests.utils import AsyncMock
 
 
 class MockDriver(BaseDriver):
@@ -12,20 +13,27 @@ class MockDriver(BaseDriver):
 
 
 @pytest.fixture
-def translation_project():
-    return TranslationProject(
-        project_name="test_project",
-        dst_language="es",
-        config={
-            "languages": ["en", "es"],
-            "baseLanguage": "en",
-            "sourceFile": "test.csv",
-        },
-    )
+def translation_project() -> TranslationProject:
+    # We need to patch all file operations to prevent actual file system access
+    with patch("pathlib.Path.exists", return_value=True), patch(
+        "builtins.open", MagicMock()
+    ):
+        project = TranslationProject(
+            project_name="test_project",
+            dst_language="es",
+            config={
+                "languages": ["en", "es"],
+                "baseLanguage": "en",
+                "sourceFile": "test.csv",
+            },
+        )
+        return project
 
 
 class TestJsonHandling:
-    def test_parse_batch_response_with_code_block(self, translation_project):
+    def test_parse_batch_response_with_code_block(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test parsing JSON response within code blocks"""
         response = """Here's the translation:
 ```json
@@ -38,14 +46,18 @@ class TestJsonHandling:
         result = translation_project._parse_batch_response(response, original_phrases)
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
-    def test_parse_batch_response_with_direct_json(self, translation_project):
+    def test_parse_batch_response_with_direct_json(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test parsing direct JSON response without code blocks"""
         response = '{"Hello": "Hola", "World": "Mundo"}'
         original_phrases = ["Hello", "World"]
         result = translation_project._parse_batch_response(response, original_phrases)
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
-    def test_parse_batch_response_with_list_format(self, translation_project):
+    def test_parse_batch_response_with_list_format(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test parsing JSON response in list format"""
         response = """```json
 ["Hola", "Mundo"]
@@ -54,7 +66,9 @@ class TestJsonHandling:
         result = translation_project._parse_batch_response(response, original_phrases)
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
-    def test_parse_batch_response_with_dict_format(self, translation_project):
+    def test_parse_batch_response_with_dict_format(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test parsing JSON response with dictionary format containing translation field"""
         response = """```json
 [
@@ -66,7 +80,9 @@ class TestJsonHandling:
         result = translation_project._parse_batch_response(response, original_phrases)
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
-    def test_parse_batch_response_with_text_format(self, translation_project):
+    def test_parse_batch_response_with_text_format(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test parsing JSON response with dictionary format containing text field"""
         response = """```json
 [
@@ -78,7 +94,9 @@ class TestJsonHandling:
         result = translation_project._parse_batch_response(response, original_phrases)
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
-    def test_parse_batch_response_with_numeric_keys(self, translation_project):
+    def test_parse_batch_response_with_numeric_keys(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test parsing JSON response with numeric keys"""
         response = """```json
 {
@@ -90,7 +108,9 @@ class TestJsonHandling:
         result = translation_project._parse_batch_response(response, original_phrases)
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
-    def test_parse_batch_response_invalid_json(self, translation_project):
+    def test_parse_batch_response_invalid_json(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test handling of invalid JSON response"""
         response = """```json
 {
@@ -105,7 +125,9 @@ class TestJsonHandling:
         assert "Error parsing JSON response" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_fix_invalid_json_success(self, translation_project):
+    async def test_fix_invalid_json_success(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test successful fixing of invalid JSON"""
         invalid_json = """{
             "Hello": "Hola",
@@ -125,7 +147,9 @@ class TestJsonHandling:
         assert json.loads(result) == {"Hello": "Hola", "World": "Mundo"}
 
     @pytest.mark.asyncio
-    async def test_fix_invalid_json_direct_object(self, translation_project):
+    async def test_fix_invalid_json_direct_object(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test fixing invalid JSON when response is a direct object"""
         invalid_json = """{
             "Hello": "Hola"
@@ -141,7 +165,9 @@ class TestJsonHandling:
         assert json.loads(result) == {"Hello": "Hola", "World": "Mundo"}
 
     @pytest.mark.asyncio
-    async def test_fix_invalid_json_failure(self, translation_project):
+    async def test_fix_invalid_json_failure(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test handling of failed JSON fix attempt"""
         invalid_json = """{
             completely invalid json
@@ -155,7 +181,9 @@ class TestJsonHandling:
         assert result == invalid_json  # Should return original on failure
 
     @pytest.mark.asyncio
-    async def test_fix_invalid_json_with_array(self, translation_project):
+    async def test_fix_invalid_json_with_array(
+        self, translation_project: TranslationProject
+    ) -> None:
         """Test fixing invalid JSON array"""
         invalid_json = """[
             {"text": "Hello", "translation": "Hola"}

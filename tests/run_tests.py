@@ -1,45 +1,25 @@
 #!/usr/bin/env python3
-import unittest
 import sys
+import pytest
 from pathlib import Path
 
 # Add the project root directory to Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Import test modules
-from tests.test_translation_project import TestTranslationProject
-from tests.test_batch_response_parsing import TestBatchResponseParsing
-from tests.test_prompt_handling import TestPromptHandling
-from tests.test_context_handling import TestContextHandling
-from tests.test_batch_size_limits import TestBatchSizeLimits
-
 
 def run_tests():
-    # Create a test suite
-    test_suite = unittest.TestSuite()
+    """Run all tests using pytest"""
+    print("\n=== Running all tests with pytest ===")
 
-    # Add test cases
-    test_suite.addTests(
-        unittest.TestLoader().loadTestsFromTestCase(TestTranslationProject)
-    )
-    test_suite.addTests(
-        unittest.TestLoader().loadTestsFromTestCase(TestBatchResponseParsing)
-    )
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestPromptHandling))
-    test_suite.addTests(
-        unittest.TestLoader().loadTestsFromTestCase(TestContextHandling)
-    )
-    test_suite.addTests(
-        unittest.TestLoader().loadTestsFromTestCase(TestBatchSizeLimits)
-    )
+    # Run pytest on all test_*.py files
+    pytest_args = ["-v", "tests/"]
 
-    # Run the test suite
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(test_suite)
+    # Run pytest and capture its return code
+    pytest_result = pytest.main(pytest_args)
 
-    # Return appropriate exit code
-    return 0 if result.wasSuccessful() else 1
+    # pytest.ExitCode.OK equals 0, meaning all tests passed
+    return 0 if pytest_result == 0 else 1
 
 
 if __name__ == "__main__":

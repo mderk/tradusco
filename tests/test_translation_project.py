@@ -26,7 +26,10 @@ def mock_prompt():
 
 
 @pytest.fixture
-def translation_project(mock_config, mock_prompt, path_exists_patch, makedirs_patch):
+def translation_project(
+    mock_config,
+    mock_prompt,
+):
     """Create a TranslationProject instance for testing"""
     # We need to patch all file operations to prevent actual file system access
     with patch("pathlib.Path.exists", return_value=True), patch(

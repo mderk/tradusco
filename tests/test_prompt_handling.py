@@ -28,9 +28,9 @@ def test_config():
 
 
 @pytest.fixture
-def translation_project(test_config):
+def translation_project(test_config, temp_dir):
     """Create a TranslationProject instance for testing"""
-    project_dir = Path("test_project_dir")
+    project_dir = temp_dir / "test_project_dir"
     return TranslationProject(
         project_name="test_project",
         project_dir=project_dir,
@@ -172,8 +172,8 @@ class TestPromptHandling:
     """Tests for prompt handling in TranslationProject"""
 
     @pytest.mark.asyncio
-    async def test_direct_prompt_property(self):
-        """Test using the direct prompt property in TranslationProject"""
+    async def test_direct_prompt_property(self, temp_dir):
+        """Test that the direct prompt property works correctly"""
         # Create a config
         config = Config(
             name="test_project",
@@ -184,7 +184,7 @@ class TestPromptHandling:
         )
 
         # Create project with direct prompt
-        project_dir = Path("test_project_dir")
+        project_dir = temp_dir / "test_project_dir"
         custom_prompt = (
             "Custom prompt for translation: {base_language} to {dst_language}"
         )

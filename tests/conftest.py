@@ -1,9 +1,11 @@
 import os
 import sys
+import tempfile
 from typing import Any, Generator
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 import pytest
+import shutil
 
 from lib.TranslationProject import TranslationProject
 from lib.utils import Config
@@ -12,6 +14,15 @@ from lib.utils import Config
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+
+@pytest.fixture(scope="session")
+def temp_dir():
+    """Create a temporary directory for tests that will be automatically cleaned up."""
+    temp_path = tempfile.mkdtemp(prefix="ai_translator_test_")
+    yield Path(temp_path)
+    # Clean up the temporary directory after tests
+    shutil.rmtree(temp_path, ignore_errors=True)
 
 
 # Import and expose fixtures from utils.py
@@ -28,13 +39,13 @@ def mock_config() -> Config:
 
 
 @pytest.fixture
-def translation_project(mock_config: Config) -> TranslationProject:
+def translation_project(mock_config: Config, temp_dir: Path) -> TranslationProject:
     """Create a TranslationProject instance for testing."""
     # We need to patch all file operations to prevent actual file system access
     with patch("pathlib.Path.exists", return_value=True), patch(
         "builtins.open", MagicMock()
     ):
-        project_dir = Path("test_project_dir")
+        project_dir = temp_dir / "test_project_dir"
         project = TranslationProject(
             project_name="test_project",
             project_dir=project_dir,

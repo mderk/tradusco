@@ -15,7 +15,7 @@ class MockDriver(BaseDriver):
 
 
 @pytest.fixture
-def translation_project() -> TranslationProject:
+def translation_project(temp_dir) -> TranslationProject:
     # We need to patch all file operations to prevent actual file system access
     with patch("pathlib.Path.exists", return_value=True), patch(
         "builtins.open", MagicMock()
@@ -30,9 +30,10 @@ def translation_project() -> TranslationProject:
 
         project = TranslationProject(
             project_name="test_project",
-            project_dir=Path("test_project_dir"),
+            project_dir=temp_dir / "test_project_dir",
             config=config,
             dst_language="es",
+            prompt="{base_language}, {dst_language}, {phrases_json}",
         )
         return project
 

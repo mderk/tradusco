@@ -31,10 +31,11 @@ def mock_prompt():
 def translation_project(
     mock_config,
     mock_prompt,
+    temp_dir,
 ):
     """Create a TranslationProject instance for testing"""
     # We need to patch all file operations to prevent actual file system access
-    project_dir = Path("test_project_dir")
+    project_dir = temp_dir / "test_project_dir"
     with patch("pathlib.Path.exists", return_value=True), patch(
         "builtins.open", MagicMock()
     ):
@@ -51,10 +52,10 @@ def translation_project(
 class TestTranslationProject:
     """Tests for the TranslationProject class"""
 
-    def test_init(self, translation_project, mock_config):
+    def test_init(self, translation_project, mock_config, temp_dir):
         """Test initialization of the TranslationProject"""
         assert translation_project.project_name == "test_project"
-        assert translation_project.project_dir == Path("test_project_dir")
+        assert translation_project.project_dir == temp_dir / "test_project_dir"
         assert translation_project.dst_language == "fr"
         assert translation_project.base_language == mock_config.baseLanguage
         assert translation_project.prompt is not None

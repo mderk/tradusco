@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from lib.TranslationProject import TranslationProject
+from lib.utils import Config
 
 
 # Add the project root to the Python path
@@ -15,35 +16,31 @@ sys.path.insert(0, str(project_root))
 
 # Import and expose fixtures from utils.py
 @pytest.fixture
-def mock_config() -> dict[str, Any]:
+def mock_config() -> Config:
     """Create a mock configuration for testing."""
-    return {
-        "name": "test_project",
-        "sourceFile": "translations.csv",
-        "languages": ["en", "fr", "es"],
-        "baseLanguage": "en",
-        "keyColumn": "en",
-        "model_name": "dummy-model",
-        "model_provider": "dummy-provider",
-        "temperature": 0.7,
-        "top_p": 0.95,
-        "model_options": {"test": "value"},
-        "batching": {"batch_size": 10, "delay_seconds": 0},
-    }
+    return Config(
+        name="test_project",
+        sourceFile="translations.csv",
+        languages=["en", "fr", "es"],
+        baseLanguage="en",
+        keyColumn="en",
+    )
 
 
 @pytest.fixture
-def translation_project(mock_config: dict[str, Any]) -> TranslationProject:
+def translation_project(mock_config: Config) -> TranslationProject:
     """Create a TranslationProject instance for testing."""
     # We need to patch all file operations to prevent actual file system access
     with patch("pathlib.Path.exists", return_value=True), patch(
         "builtins.open", MagicMock()
     ):
+        project_dir = Path("test_project_dir")
         project = TranslationProject(
-            "test_project",
-            "fr",
+            project_name="test_project",
+            project_dir=project_dir,
             config=mock_config,
-            default_prompt="Test prompt with {base_language}, {dst_language}, and {phrases_json}",
+            dst_language="fr",
+            prompt="Test prompt with {base_language}, {dst_language}, and {phrases_json}",
         )
         return project
 
@@ -71,16 +68,16 @@ def create_gemini_response_mock(content: str) -> MagicMock:
 @pytest.fixture
 def common_translation_project_patches() -> Generator[dict[str, MagicMock], None, None]:
     """Return a dictionary of common patches for TranslationProject."""
-    with patch.object(
-        TranslationProject, "_load_translations"
-    ) as mock_load_translations, patch.object(
-        TranslationProject, "_load_progress"
+    with patch(
+        "lib.TranslationProject.load_translations"
+    ) as mock_load_translations, patch(
+        "lib.TranslationProject.load_progress"
     ) as mock_load_progress, patch.object(
         TranslationProject, "_process_batch"
-    ) as mock_process_batch, patch.object(
-        TranslationProject, "_save_progress"
-    ) as mock_save_progress, patch.object(
-        TranslationProject, "_save_translations"
+    ) as mock_process_batch, patch(
+        "lib.TranslationProject.save_progress"
+    ) as mock_save_progress, patch(
+        "lib.TranslationProject.save_translations"
     ) as mock_save_translations, patch(
         "lib.TranslationProject.get_driver"
     ) as mock_get_driver, patch.dict(

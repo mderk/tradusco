@@ -23,7 +23,7 @@ class PromptManager:
             "json_fix": {"invalid_json"},
         }
 
-    def _validate_prompt(
+    def validate_prompt(
         self, prompt_type: str, template: str, strict: bool = False
     ) -> tuple[bool, str]:
         """Validate a prompt template.
@@ -79,7 +79,7 @@ class PromptManager:
                     prompt = (await f.read()).strip()
                     if prompt:
                         if validate:
-                            is_valid, error = self._validate_prompt(
+                            is_valid, error = self.validate_prompt(
                                 prompt_type, prompt, strict_validation
                             )
                             if error:

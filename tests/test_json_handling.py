@@ -4,6 +4,8 @@ from unittest.mock import patch, MagicMock
 from lib.TranslationProject import TranslationProject, InvalidJSONException
 from lib.llm import BaseDriver
 from tests.utils import AsyncMock
+from pathlib import Path
+from lib.utils import Config
 
 
 class MockDriver(BaseDriver):
@@ -18,14 +20,19 @@ def translation_project() -> TranslationProject:
     with patch("pathlib.Path.exists", return_value=True), patch(
         "builtins.open", MagicMock()
     ):
+        config = Config(
+            name="test_project",
+            languages=["en", "es"],
+            baseLanguage="en",
+            sourceFile="test.csv",
+            keyColumn="en",
+        )
+
         project = TranslationProject(
             project_name="test_project",
+            project_dir=Path("test_project_dir"),
+            config=config,
             dst_language="es",
-            config={
-                "languages": ["en", "es"],
-                "baseLanguage": "en",
-                "sourceFile": "test.csv",
-            },
         )
         return project
 

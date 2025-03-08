@@ -5,9 +5,17 @@ import re
 import aiofiles
 from pathlib import Path
 from io import StringIO
-from typing import Optional, Any
+from typing import Optional, Any, TypedDict
 
 from lib.PromptManager import PromptManager
+from lib.utils import (
+    Config,
+    load_config,
+    load_progress,
+    load_translations,
+    save_progress,
+    save_translations,
+)
 
 
 from .llm import get_driver, BaseDriver, get_available_models
@@ -23,47 +31,78 @@ class InvalidJSONException(Exception):
 
 
 class TranslationProject:
+    """
+    A class for managing translation projects.
+
+    Attributes:
+        project_name (str): The name of the project.
+        project_dir (Path): The directory of the project.
+        config (Config): The configuration of the project.
+        dst_language (str): The destination language of the project.
+        prompt_file (Optional[str]): The path to the prompt file.
+        context (Optional[str]): The context of the project.
+        context_file (Optional[str]): The path to the context file.
+
+        prompt_manager (PromptManager): The prompt manager for the project.
+        base_language (str): The base language of the project.
+        source_file (Path): The path to the source file.
+        progress_dir (Path): The directory of the progress file.
+        progress_file (Path): The path to the progress file.
+    """
+
+    project_name: str
+    project_dir: Path
+    config: Config
+    dst_language: str
+    prompt: Optional[str]
+    prompt_file: Optional[str]
+    context: Optional[str]
+    context_file: Optional[str]
+
+    prompt_manager: PromptManager
+    base_language: str
+    source_file: Path
+    progress_dir: Path
+    progress_file: Path
+
     def __init__(
         self,
         project_name: str,
+        project_dir: Path,
+        config: Config,
         dst_language: str,
+        prompt: Optional[str] = None,
         prompt_file: Optional[str] = None,
         context: Optional[str] = None,
         context_file: Optional[str] = None,
-        config: Optional[dict[str, Any]] = None,
-        default_prompt: str = "",
     ):
         self.project_name = project_name
+        self.project_dir = project_dir
+        self.config = config
         self.dst_language = dst_language
-        self.project_dir = Path(f"projects/{project_name}")
-        self.config_path = self.project_dir / "config.json"
+        self.prompt = prompt
         self.prompt_file = prompt_file
         self.context = context
         self.context_file = context_file
 
         # Initialize prompt manager
-        self.prompt_manager = PromptManager(self.project_dir)
+        self.prompt_manager = PromptManager(project_dir)
 
-        # These will be loaded by create method
-        self.config = config or {}
-        self.default_prompt = default_prompt
-
-        if self.config and self.dst_language not in self.config["languages"]:
+        if dst_language not in config.languages:
             raise ValueError(f"Language {dst_language} not found in project config")
 
-        if self.config:
-            self.base_language = self.config["baseLanguage"]
-            self.source_file = self.project_dir / self.config["sourceFile"]
-            self.progress_dir = self.project_dir / self.dst_language
-            self.progress_file = self.progress_dir / "progress.json"
+        self.base_language = config.baseLanguage
+        self.source_file = project_dir / config.sourceFile
+        self.progress_dir = project_dir / dst_language
+        self.progress_file = self.progress_dir / "progress.json"
 
-            # Create language directory if it doesn't exist
-            os.makedirs(self.progress_dir, exist_ok=True)
+        # Create language directory if it doesn't exist
+        os.makedirs(self.progress_dir, exist_ok=True)
 
-            # Initialize progress file if it doesn't exist
-            if not self.progress_file.exists():
-                with open(self.progress_file, "w", encoding="utf-8") as f:
-                    json.dump({}, f, ensure_ascii=False, indent=2)
+        # Initialize progress file if it doesn't exist
+        if not self.progress_file.exists():
+            with open(self.progress_file, "w", encoding="utf-8") as f:
+                json.dump({}, f, ensure_ascii=False, indent=2)
 
     @classmethod
     async def create(
@@ -74,88 +113,28 @@ class TranslationProject:
         context: str | None = None,
         context_file: str | None = None,
     ):
-        """Async factory method to create and initialize a TranslationProject"""
-        # Create a minimal instance first
-        instance = cls(project_name, dst_language, prompt_file, context, context_file)
+        project_dir = Path(f"projects/{project_name}")
+        config_path = project_dir / "config.json"
 
         # Load config
-        config = await instance._load_config()
-
-        # Load default prompt
-        default_prompt = await instance.prompt_manager.load_prompt("translation")
+        config = await load_config(config_path)
 
         # Create a fully initialized instance
         return cls(
-            project_name,
-            dst_language,
-            prompt_file,
-            context,
-            context_file,
+            project_name=project_name,
+            project_dir=project_dir,
             config=config,
-            default_prompt=default_prompt,
+            dst_language=dst_language,
+            prompt=None,  # No direct prompt is provided via create
+            prompt_file=prompt_file,
+            context=context,
+            context_file=context_file,
         )
 
     @staticmethod
     def get_available_models() -> list[str]:
         """Get a list of available models"""
         return get_available_models()
-
-    async def _load_config(self) -> dict:
-        """Load the project configuration from config.json"""
-        if not self.config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {self.config_path}")
-
-        async with aiofiles.open(self.config_path, "r", encoding="utf-8") as f:
-            content = await f.read()
-            return json.loads(content)
-
-    async def _load_progress(self) -> dict[str, str]:
-        """Load the translation progress from progress.json"""
-        if not self.progress_file.exists():
-            return {}
-
-        async with aiofiles.open(self.progress_file, "r", encoding="utf-8") as f:
-            content = await f.read()
-            return json.loads(content)
-
-    async def _save_progress(self, progress: dict[str, str]) -> None:
-        """Save the translation progress to progress.json"""
-        async with aiofiles.open(self.progress_file, "w", encoding="utf-8") as f:
-            await f.write(json.dumps(progress, ensure_ascii=False, indent=2))
-
-    async def _load_translations(self) -> list[dict[str, str]]:
-        """Load translations from the CSV file"""
-        if not self.source_file.exists():
-            raise FileNotFoundError(f"Source file not found: {self.source_file}")
-
-        async with aiofiles.open(
-            self.source_file, "r", newline="", encoding="utf-8"
-        ) as f:
-            content = await f.read()
-            # Use StringIO to properly handle CSV with potential multiline fields
-            csv_file = StringIO(content)
-            reader = csv.DictReader(csv_file)
-            return list(reader)
-
-    async def _save_translations(self, translations: list[dict[str, str]]) -> None:
-        """Save translations to the CSV file"""
-        if not translations:
-            return
-
-        fieldnames = list(translations[0].keys())
-
-        # Use StringIO to write CSV to a string
-        output = StringIO()
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(translations)
-
-        content = output.getvalue()
-
-        async with aiofiles.open(
-            self.source_file, "w", newline="", encoding="utf-8"
-        ) as f:
-            await f.write(content)
 
     async def _load_context(self) -> str:
         """Load translation context from various sources"""
@@ -215,15 +194,24 @@ class TranslationProject:
             else ""
         )
 
-        # Try to load custom prompt first, fall back to default
-        prompt_template = await self.prompt_manager.load_prompt(
-            "translation",
-            self.prompt_file,
-            validate=True,
-            strict_validation=True,  # Only enforce required variables when actually translating
-        )
+        prompt_template = ""
+
+        if self.prompt:
+            valid, error = self.prompt_manager.validate_prompt(
+                "translation", self.prompt, strict=True
+            )
+            if valid:
+                prompt_template = self.prompt
+            else:
+                print(f"Warning: {error}")
+
         if not prompt_template:
-            prompt_template = self.default_prompt
+            prompt_template = await self.prompt_manager.load_prompt(
+                "translation",
+                self.prompt_file,
+                validate=True,
+                strict_validation=True,  # Only enforce required variables when actually translating
+            )
 
         # Load global context
         global_context = await self._load_context()
@@ -403,8 +391,8 @@ class TranslationProject:
             batch_max_bytes: Maximum size in bytes for a translation batch
         """
         # Load existing translations and progress
-        translations = await self._load_translations()
-        progress = await self._load_progress()
+        translations = await load_translations(self.source_file)
+        progress = await load_progress(self.progress_file)
 
         # Initialize the LLM driver with the specified model
         driver = get_driver(model)
@@ -482,8 +470,8 @@ class TranslationProject:
 
         # Always save progress at the end to ensure the test passes
         # This also handles any changes made to progress that weren't from _process_batch
-        await self._save_progress(progress)
-        await self._save_translations(translations)
+        await save_progress(self.progress_file, progress)
+        await save_translations(self.source_file, translations)
         print(
             f"Final save: {len(progress)} translations saved to {self.progress_file} and {self.source_file}"
         )
@@ -556,8 +544,8 @@ class TranslationProject:
                     print("Skipping this batch due to unrecoverable JSON error.")
 
             # Save progress after every LLM query
-            await self._save_progress(progress)
-            await self._save_translations(translations)
+            await save_progress(self.progress_file, progress)
+            await save_translations(self.source_file, translations)
             print(
                 f"Progress saved: {len(progress)} translations saved to {self.progress_file}"
             )

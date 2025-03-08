@@ -40,15 +40,65 @@ class PromptManager:
             return False, "Empty prompt template"
 
         # Check for required variables only in strict mode
-        if strict and prompt_type in self._required_vars:
+        if prompt_type in self._required_vars:
             required = self._required_vars[prompt_type]
             # Use a regex to find all format variables in the template
             found_vars = set(re.findall(r"\{([^}]+)\}", template))
             missing = required - found_vars
             if missing:
-                return False, f"Missing required variables: {', '.join(missing)}"
+                error = f"Missing required variables: {', '.join(missing)}"
+                return (not strict), error
 
         return True, ""
+
+    async def _load_prompt_from_path(
+        self,
+        prompt_type: str,
+        path: Path | str,
+        use_cache: bool = True,
+        validate: bool = True,
+        strict_validation: bool = False,
+        is_default: bool = False,
+    ) -> str:
+        """Load a prompt from a specific path with validation and caching.
+
+        Args:
+            prompt_type: Type of prompt to load
+            path: Path to the prompt file
+            use_cache: Whether to use cached prompts
+            validate: Whether to validate the prompt
+            strict_validation: Whether to enforce required variables
+            is_default: Whether this is loading a default prompt
+
+        Returns:
+            The loaded prompt template string
+        """
+        try:
+            if os.path.exists(path):
+                async with aiofiles.open(path, "r", encoding="utf-8") as f:
+                    prompt = (await f.read()).strip()
+                    if prompt:
+                        if validate:
+                            is_valid, error = self._validate_prompt(
+                                prompt_type, prompt, strict_validation
+                            )
+                            if error:
+                                source = "Default" if is_default else "Custom"
+                                print(
+                                    f"{'Warning' if is_valid else 'Error'}: {source} prompt validation failed: {error}"
+                                )
+                            if not is_valid and strict_validation:
+                                return ""
+                        if use_cache:
+                            self._cache[prompt_type] = prompt
+                        return prompt
+            else:
+                source = "Default" if is_default else "Custom"
+                print(f"Warning: {source} prompt file {path} not found.")
+        except Exception as e:
+            source = "Default" if is_default else "Custom"
+            print(f"Warning: Error reading {source} prompt file {path}: {e}")
+        return ""
 
     async def load_prompt(
         self,
@@ -76,92 +126,34 @@ class PromptManager:
 
         # Try custom prompt if provided
         if custom_prompt_path:
-            try:
-                if os.path.exists(custom_prompt_path):
-                    async with aiofiles.open(
-                        custom_prompt_path, "r", encoding="utf-8"
-                    ) as f:
-                        prompt = (await f.read()).strip()
-                        if prompt:
-                            if validate:
-                                is_valid, error = self._validate_prompt(
-                                    prompt_type, prompt, strict_validation
-                                )
-                                if not is_valid:
-                                    print(
-                                        f"Warning: Custom prompt validation failed: {error}"
-                                    )
-                                    if strict_validation:
-                                        print("Falling back to default prompt.")
-                                        return await self._load_default_prompt(
-                                            prompt_type,
-                                            use_cache,
-                                            validate,
-                                            strict_validation,
-                                        )
-                            if use_cache:
-                                self._cache[prompt_type] = prompt
-                            return prompt
-                else:
-                    print(
-                        f"Warning: Custom prompt file {custom_prompt_path} not found."
-                    )
-                    return ""  # Return empty string for nonexistent custom prompt
-            except Exception as e:
-                print(
-                    f"Warning: Error reading custom prompt file {custom_prompt_path}: {e}"
-                )
-                return ""  # Return empty string on error
-
-        # Fall back to default prompt only if no custom prompt was specified
-        if custom_prompt_path is None:
-            return await self._load_default_prompt(
-                prompt_type, use_cache, validate, strict_validation
+            prompt = await self._load_prompt_from_path(
+                prompt_type,
+                custom_prompt_path,
+                use_cache,
+                validate,
+                strict_validation,
+                is_default=False,
             )
-        return ""
+            if prompt or custom_prompt_path is not None:
+                return prompt
 
-    async def _load_default_prompt(
-        self, prompt_type: str, use_cache: bool, validate: bool, strict_validation: bool
-    ) -> str:
-        """Load a default prompt from the prompts directory.
-
-        Args:
-            prompt_type: Type of prompt to load
-            use_cache: Whether to use cached prompts
-            validate: Whether to validate the prompt
-            strict_validation: Whether to enforce required variables
-
-        Returns:
-            The loaded prompt template string
-        """
-        # Support prompt templates in subdirectories
+        # Try default prompt paths
         prompt_paths = [
             self.prompts_dir / f"{prompt_type}.txt",
             self.prompts_dir / prompt_type / "prompt.txt",
         ]
 
         for path in prompt_paths:
-            try:
-                if path.exists():
-                    async with aiofiles.open(path, "r", encoding="utf-8") as f:
-                        prompt = (await f.read()).strip()
-                        if prompt:
-                            if validate:
-                                is_valid, error = self._validate_prompt(
-                                    prompt_type, prompt, strict_validation
-                                )
-                                if not is_valid:
-                                    print(
-                                        f"Warning: Default prompt validation failed: {error}"
-                                    )
-                                    if strict_validation:
-                                        continue
-                            if use_cache:
-                                self._cache[prompt_type] = prompt
-                            return prompt
-            except Exception as e:
-                print(f"Warning: Error reading default prompt file {path}: {e}")
-                continue
+            prompt = await self._load_prompt_from_path(
+                prompt_type,
+                path,
+                use_cache,
+                validate,
+                strict_validation,
+                is_default=True,
+            )
+            if prompt:
+                return prompt
 
         print(f"Warning: No valid prompt found for type '{prompt_type}'")
         return ""

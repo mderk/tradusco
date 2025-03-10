@@ -3,6 +3,8 @@ from typing import Optional, Any
 import time
 import asyncio
 
+import tiktoken
+
 
 class BaseDriver(ABC):
     """
@@ -110,3 +112,15 @@ class BaseDriver(ABC):
         # This should never be reached due to the raise in the else clause above,
         # but adding it to satisfy the linter
         raise Exception(f"Failed to translate after {max_retries} attempts")
+
+    @staticmethod
+    def count_tokens(text: str) -> int:
+        try:
+            # Use cl100k_base encoding which is used by GPT-3.5 and GPT-4
+            # This is a good general-purpose tokenizer for most models
+            enc = tiktoken.get_encoding("cl100k_base")
+            return len(enc.encode(text))
+        except Exception as e:
+            print(f"Warning: Tiktoken failed: {e}, using character-based approximation")
+            # Simple character-based approximation (4 chars ~= 1 token)
+            return max(1, len(text) // 4) if text else 0

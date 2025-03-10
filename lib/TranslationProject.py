@@ -130,6 +130,29 @@ class TranslationProject:
         """Get a list of available models"""
         return get_available_models()
 
+    @staticmethod
+    def count_tokens(text: str, model: str = "gemini") -> int:
+        """
+        Count tokens in a text string using the specified model's driver.
+        Falls back to a simple character-based approximation if the driver fails.
+
+        Args:
+            text: The input text to count tokens for
+            model: The model name
+
+        Returns:
+            Number of tokens in the text
+        """
+        try:
+            driver = get_driver(model)
+            return driver.count_tokens(text)
+        except Exception as e:
+            # Fallback to a simple character-based approximation
+            # Most models use ~4 characters per token on average
+            if not text:
+                return 0
+            return max(1, len(text) // 4)
+
     async def _load_context(self) -> str:
         """Load translation context from various sources"""
         context_parts = []
@@ -172,7 +195,7 @@ class TranslationProject:
         max_retries: int = 3,
         batch_size: int = 50,
         model: str = "gemini",
-        batch_max_bytes: int = 8192,
+        batch_max_tokens: int = 2048,
     ) -> None:
         """Translate phrases from base language to destination language
 
@@ -181,7 +204,7 @@ class TranslationProject:
             max_retries: Maximum number of retries for failed API calls
             batch_size: Number of phrases to translate in a single API call
             model: The LLM model to use for translation
-            batch_max_bytes: Maximum size in bytes for a translation batch
+            batch_max_tokens: Maximum number of tokens for a translation batch
         """
         # Load existing translations and progress
         translations = await load_translations(self.source_file)
@@ -196,7 +219,7 @@ class TranslationProject:
         # Collect phrases that need translation
         phrases_to_translate = []
         phrase_indices = []
-        current_batch_bytes = 0
+        current_batch_tokens = 0
 
         for i, row in enumerate(translations):
             source_phrase = row[self.base_language]
@@ -225,14 +248,14 @@ class TranslationProject:
             phrases_to_translate.append(source_phrase)
             phrase_indices.append(i)
 
-            # Calculate batch size in bytes
-            phrase_bytes = len(source_phrase.encode("utf-8"))
-            current_batch_bytes += phrase_bytes
+            # Calculate batch size in tokens
+            phrase_tokens = self.count_tokens(source_phrase, model)
+            current_batch_tokens += phrase_tokens
 
-            # Process batch when it reaches the batch size limit (count or bytes)
+            # Process batch when it reaches the batch size limit (count or tokens)
             if (
                 len(phrases_to_translate) >= batch_size
-                or current_batch_bytes >= batch_max_bytes
+                or current_batch_tokens >= batch_max_tokens
             ):
                 await self.translation_tool.process_batch(
                     phrases_to_translate,
@@ -258,7 +281,7 @@ class TranslationProject:
 
                 phrases_to_translate = []
                 phrase_indices = []
-                current_batch_bytes = 0
+                current_batch_tokens = 0
                 changes_made = True
 
         # Process any remaining phrases

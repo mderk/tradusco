@@ -52,7 +52,9 @@ class TestJsonHandling:
 }
 ```"""
         original_phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, original_phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, original_phrases
+        )
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
     def test_parse_batch_response_with_direct_json(
@@ -61,7 +63,9 @@ class TestJsonHandling:
         """Test parsing direct JSON response without code blocks"""
         response = '{"Hello": "Hola", "World": "Mundo"}'
         original_phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, original_phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, original_phrases
+        )
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
     def test_parse_batch_response_with_list_format(
@@ -72,7 +76,9 @@ class TestJsonHandling:
 ["Hola", "Mundo"]
 ```"""
         original_phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, original_phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, original_phrases
+        )
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
     def test_parse_batch_response_with_dict_format(
@@ -86,7 +92,9 @@ class TestJsonHandling:
 ]
 ```"""
         original_phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, original_phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, original_phrases
+        )
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
     def test_parse_batch_response_with_text_format(
@@ -100,7 +108,9 @@ class TestJsonHandling:
 ]
 ```"""
         original_phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, original_phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, original_phrases
+        )
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
     def test_parse_batch_response_with_numeric_keys(
@@ -114,7 +124,9 @@ class TestJsonHandling:
 }
 ```"""
         original_phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, original_phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, original_phrases
+        )
         assert result == {"Hello": "Hola", "World": "Mundo"}
 
     def test_parse_batch_response_invalid_json(
@@ -130,7 +142,9 @@ class TestJsonHandling:
 ```"""
         original_phrases = ["Hello", "World"]
         with pytest.raises(InvalidJSONException) as exc_info:
-            translation_project._parse_batch_response(response, original_phrases)
+            translation_project.translation_tool.parse_batch_response(
+                response, original_phrases
+            )
         assert "Error parsing JSON response" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -152,7 +166,9 @@ class TestJsonHandling:
         mock_driver = MockDriver()
         mock_driver.translate_async.return_value = f"```json\n{fixed_json}\n```"
 
-        result = await translation_project._fix_invalid_json(invalid_json, mock_driver)
+        result = await translation_project.translation_tool.fix_invalid_json(
+            invalid_json, mock_driver
+        )
         assert json.loads(result) == {"Hello": "Hola", "World": "Mundo"}
 
     @pytest.mark.asyncio
@@ -170,7 +186,9 @@ class TestJsonHandling:
         mock_driver = MockDriver()
         mock_driver.translate_async.return_value = fixed_json
 
-        result = await translation_project._fix_invalid_json(invalid_json, mock_driver)
+        result = await translation_project.translation_tool.fix_invalid_json(
+            invalid_json, mock_driver
+        )
         assert json.loads(result) == {"Hello": "Hola", "World": "Mundo"}
 
     @pytest.mark.asyncio
@@ -186,7 +204,9 @@ class TestJsonHandling:
         mock_driver = MockDriver()
         mock_driver.translate_async.side_effect = Exception("Failed to fix JSON")
 
-        result = await translation_project._fix_invalid_json(invalid_json, mock_driver)
+        result = await translation_project.translation_tool.fix_invalid_json(
+            invalid_json, mock_driver
+        )
         assert result == invalid_json  # Should return original on failure
 
     @pytest.mark.asyncio
@@ -207,6 +227,8 @@ class TestJsonHandling:
         mock_driver = MockDriver()
         mock_driver.translate_async.return_value = f"```json\n{fixed_json}\n```"
 
-        result = await translation_project._fix_invalid_json(invalid_json, mock_driver)
+        result = await translation_project.translation_tool.fix_invalid_json(
+            invalid_json, mock_driver
+        )
         assert isinstance(json.loads(result), list)
         assert len(json.loads(result)) == 2

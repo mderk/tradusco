@@ -17,7 +17,9 @@ class TestBatchResponseParsing:
 }
 ```"""
         phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, phrases
+        )
 
         assert result == {"Hello": "Bonjour", "World": "Monde"}
 
@@ -30,7 +32,9 @@ class TestBatchResponseParsing:
     "World": "Monde"
 }"""
         phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, phrases
+        )
 
         assert result == {"Hello": "Bonjour", "World": "Monde"}
 
@@ -45,7 +49,9 @@ class TestBatchResponseParsing:
 ]
 ```"""
         phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, phrases
+        )
 
         assert result == {"Hello": "Bonjour", "World": "Monde"}
 
@@ -58,7 +64,9 @@ class TestBatchResponseParsing:
     "Monde"
 ]"""
         phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, phrases
+        )
 
         assert result == {"Hello": "Bonjour", "World": "Monde"}
 
@@ -68,7 +76,7 @@ class TestBatchResponseParsing:
         phrases = ["Hello", "World"]
 
         with pytest.raises(InvalidJSONException):
-            translation_project._parse_batch_response(response, phrases)
+            translation_project.translation_tool.parse_batch_response(response, phrases)
 
     def test_json_array_with_translation_objects(
         self, translation_project: TranslationProject
@@ -81,7 +89,9 @@ class TestBatchResponseParsing:
 ]
 ```"""
         phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, phrases
+        )
 
         assert result == {"Hello": "Bonjour", "World": "Monde"}
 
@@ -96,7 +106,9 @@ class TestBatchResponseParsing:
 }
 ```"""
         phrases = ["Hello", "World"]
-        result = translation_project._parse_batch_response(response, phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, phrases
+        )
 
         assert result == {"Hello": "Bonjour", "World": "Monde"}
 
@@ -110,7 +122,9 @@ class TestBatchResponseParsing:
 }
 ```"""
         phrases = ["Hello\nWorld"]
-        result = translation_project._parse_batch_response(response, phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, phrases
+        )
 
         assert result == {"Hello\nWorld": "Bonjour\nMonde"}
 
@@ -127,7 +141,9 @@ class TestBatchResponseParsing:
         phrases = ["Hello", "World"]
 
         # The method should return what it can parse, even if incomplete
-        result = translation_project._parse_batch_response(response, phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, phrases
+        )
 
         # It should contain only the translated phrase
         assert "Hello" in result

@@ -215,6 +215,9 @@ class TestPromptHandling:
         )
         mock_load_prompt.return_value = mock_custom_prompt
 
+        # Set the prompt on the translation project directly
+        translation_project.prompt = mock_custom_prompt
+
         # Create data for the test
         phrases = ["Hello", "World"]
         translations = [
@@ -225,7 +228,15 @@ class TestPromptHandling:
 
         # Create the batch prompt
         result = asyncio.run(
-            translation_project._create_batch_prompt(phrases, translations, indices)
+            translation_project.translation_tool.create_batch_prompt(
+                phrases,
+                translations,
+                indices,
+                translation_project.base_language,
+                translation_project.dst_language,
+                translation_project.prompt,
+                mock_load_context.return_value,
+            )
         )
 
         # Verify the prompt contains expected elements
@@ -258,7 +269,15 @@ class TestPromptHandling:
 
         # Create the batch prompt
         result = asyncio.run(
-            translation_project._create_batch_prompt(phrases, translations, indices)
+            translation_project.translation_tool.create_batch_prompt(
+                phrases,
+                translations,
+                indices,
+                translation_project.base_language,
+                translation_project.dst_language,
+                translation_project.prompt,
+                mock_load_context.return_value,
+            )
         )
 
         # Check if anything is returned when there's no prompt
@@ -280,7 +299,9 @@ class TestPromptHandling:
         # Test fixing invalid JSON
         invalid_json = "{invalid: json}"
         result = asyncio.run(
-            translation_project._fix_invalid_json(invalid_json, mock_driver)
+            translation_project.translation_tool.fix_invalid_json(
+                invalid_json, mock_driver
+            )
         )
 
         # Verify result

@@ -105,8 +105,14 @@ class TestContextHandling:
         indices = [0, 1]
 
         # Generate the prompt
-        prompt = await translation_project._create_batch_prompt(
-            phrases, translations, indices
+        prompt = await translation_project.translation_tool.create_batch_prompt(
+            phrases,
+            translations,
+            indices,
+            translation_project.base_language,
+            translation_project.dst_language,
+            translation_project.prompt,
+            mock_load_context.return_value,
         )
 
         # Check if the phrases are in the prompt

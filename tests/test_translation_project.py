@@ -174,7 +174,15 @@ class TestTranslationProject:
 
         # Generate the prompt
         prompt = asyncio.run(
-            translation_project._create_batch_prompt(phrases, translations, indices)
+            translation_project.translation_tool.create_batch_prompt(
+                phrases,
+                translations,
+                indices,
+                translation_project.base_language,
+                translation_project.dst_language,
+                translation_project.prompt,
+                mock_load_context.return_value,
+            )
         )
 
         # Check prompt contains expected elements
@@ -191,7 +199,9 @@ class TestTranslationProject:
         response = '["Bonjour", "Monde"]'
         original_phrases = ["Hello", "World"]
 
-        result = translation_project._parse_batch_response(response, original_phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, original_phrases
+        )
 
         assert result == {"Hello": "Bonjour", "World": "Monde"}
 
@@ -200,7 +210,9 @@ class TestTranslationProject:
         response = '{"Hello": "Bonjour", "World": "Monde"}'
         original_phrases = ["Hello", "World"]
 
-        result = translation_project._parse_batch_response(response, original_phrases)
+        result = translation_project.translation_tool.parse_batch_response(
+            response, original_phrases
+        )
 
         assert result == {"Hello": "Bonjour", "World": "Monde"}
 
@@ -210,7 +222,9 @@ class TestTranslationProject:
         original_phrases = ["Hello", "World"]
 
         with pytest.raises(InvalidJSONException):
-            translation_project._parse_batch_response(response, original_phrases)
+            translation_project.translation_tool.parse_batch_response(
+                response, original_phrases
+            )
 
     @pytest.mark.asyncio
     async def test_translate(

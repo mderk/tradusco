@@ -189,6 +189,28 @@ class TranslationProject:
         # Combine all context parts
         return "\n\n".join(filter(None, context_parts))
 
+    async def _load_prompt(self) -> str:
+        prompt = ""
+
+        if self.prompt:
+            valid, error = self.prompt_manager.validate_prompt(
+                "translation", self.prompt, strict=True
+            )
+            if valid:
+                prompt = self.prompt
+            else:
+                print(f"Warning: {error}")
+
+        if not prompt:
+            prompt = await self.prompt_manager.load_prompt(
+                "translation",
+                self.prompt_file,
+                validate=True,
+                strict_validation=True,  # Only enforce required variables when actually translating
+            )
+
+        return prompt
+
     async def translate(
         self,
         delay_seconds: float = 1.0,
@@ -212,6 +234,7 @@ class TranslationProject:
 
         # Load context
         context = await self._load_context()
+        prompt = await self._load_prompt()
 
         # Track changes to know if we need to save
         changes_made = False
@@ -265,8 +288,7 @@ class TranslationProject:
                     model,
                     self.base_language,
                     self.dst_language,
-                    self.prompt,
-                    self.prompt_file,
+                    prompt,
                     context,
                     delay_seconds,
                     max_retries,
@@ -294,8 +316,7 @@ class TranslationProject:
                 model,
                 self.base_language,
                 self.dst_language,
-                self.prompt,
-                self.prompt_file,
+                prompt,
                 context,
                 delay_seconds,
                 max_retries,
@@ -316,79 +337,4 @@ class TranslationProject:
         await save_translations(self.source_file, translations)
         print(
             f"Final save: {len(progress)} translations saved to {self.progress_file} and {self.source_file}"
-        )
-
-    # Test adapter methods for backward compatibility
-
-    async def _create_batch_prompt(
-        self, phrases: list[str], translations: list[dict[str, str]], indices: list[int]
-    ) -> str:
-        """Test adapter for backward compatibility"""
-        context = await self._load_context()
-        return await self.translation_tool.create_batch_prompt(
-            phrases,
-            translations,
-            indices,
-            self.base_language,
-            self.dst_language,
-            self.prompt,
-            self.prompt_file,
-            context,
-        )
-
-    async def _fix_invalid_json(self, invalid_json: str, driver: BaseDriver) -> str:
-        """Test adapter for backward compatibility"""
-        return await self.translation_tool.fix_invalid_json(invalid_json, driver)
-
-    def _parse_batch_response(
-        self,
-        response: str,
-        original_phrases: list[str],
-    ) -> dict[str, str]:
-        """Test adapter for backward compatibility"""
-        return self.translation_tool.parse_batch_response(response, original_phrases)
-
-    def _update_translations_from_batch(
-        self,
-        batch_translations: dict[str, str],
-        phrases: list[str],
-        indices: list[int],
-        translations: list[dict[str, str]],
-        progress: dict[str, str],
-    ) -> int:
-        """Test adapter for backward compatibility"""
-        return self.translation_tool.update_translations_from_batch(
-            batch_translations,
-            phrases,
-            indices,
-            translations,
-            progress,
-            self.dst_language,
-        )
-
-    async def _process_batch(
-        self,
-        phrases: list[str],
-        indices: list[int],
-        translations: list[dict[str, str]],
-        progress: dict[str, str],
-        model: str,
-        delay_seconds: float,
-        max_retries: int,
-    ) -> None:
-        """Test adapter for backward compatibility"""
-        context = await self._load_context()
-        await self.translation_tool.process_batch(
-            phrases,
-            indices,
-            translations,
-            progress,
-            model,
-            self.base_language,
-            self.dst_language,
-            self.prompt,
-            self.prompt_file,
-            context,
-            delay_seconds,
-            max_retries,
         )

@@ -46,8 +46,7 @@ class TranslationTool:
         indices: list[int],
         base_language: str,
         dst_language: str,
-        prompt: Optional[str] = None,
-        prompt_file: Optional[str] = None,
+        prompt: str,
         context: Optional[str] = None,
     ) -> str:
         """Create a prompt for batch translation using JSON format"""
@@ -69,25 +68,6 @@ class TranslationTool:
             else ""
         )
 
-        prompt_template = ""
-
-        if prompt:
-            valid, error = self.prompt_manager.validate_prompt(
-                "translation", prompt, strict=True
-            )
-            if valid:
-                prompt_template = prompt
-            else:
-                print(f"Warning: {error}")
-
-        if not prompt_template:
-            prompt_template = await self.prompt_manager.load_prompt(
-                "translation",
-                prompt_file,
-                validate=True,
-                strict_validation=True,  # Only enforce required variables when actually translating
-            )
-
         # Add global context if provided
         context_section = (
             f"\nGlobal Translation Context:\n{context}\n" if context else ""
@@ -100,7 +80,7 @@ class TranslationTool:
 
         # Format the prompt template with the required variables
         return self.prompt_manager.format_prompt(
-            prompt_template,
+            prompt,
             base_language=base_language,
             dst_language=dst_language,
             phrases_json=phrases_json,
@@ -256,8 +236,7 @@ class TranslationTool:
         model: str,
         base_language: str,
         dst_language: str,
-        prompt: Optional[str] = None,
-        prompt_file: Optional[str] = None,
+        prompt: str,
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
@@ -274,7 +253,6 @@ class TranslationTool:
             base_language: Source language code
             dst_language: Destination language code
             prompt: Optional custom prompt text
-            prompt_file: Optional path to prompt file
             context: Optional context text
             delay_seconds: Delay between LLM calls
             max_retries: Maximum retries for failed calls
@@ -295,7 +273,6 @@ class TranslationTool:
             base_language,
             dst_language,
             prompt,
-            prompt_file,
             context,
         )
 

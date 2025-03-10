@@ -9,6 +9,7 @@ from lib.TranslationTool import TranslationTool
 from lib.utils import (
     Config,
     load_config,
+    load_context,
     load_progress,
     load_translations,
     save_progress,
@@ -155,32 +156,7 @@ class TranslationProject:
 
     async def _load_context(self) -> str:
         """Load translation context from various sources"""
-        context_parts = []
-
-        # 1. Check for context.md or context.txt in project directory
-        for ext in [".md", ".txt"]:
-            context_path = self.project_dir / f"context{ext}"
-            try:
-                if os.path.exists(context_path):
-                    async with aiofiles.open(context_path, "r", encoding="utf-8") as f:
-                        content = await f.read()
-                        context_parts.append(content.strip())
-            except Exception as e:
-                print(f"Warning: Error reading context file {context_path}: {e}")
-
-        # 2. Check for context from command line file
-        if self.context_file:
-            try:
-                if os.path.exists(self.context_file):
-                    async with aiofiles.open(
-                        self.context_file, "r", encoding="utf-8"
-                    ) as f:
-                        content = await f.read()
-                        context_parts.append(content.strip())
-                else:
-                    print(f"Warning: Context file not found: {self.context_file}")
-            except Exception as e:
-                print(f"Warning: Error reading context file {self.context_file}: {e}")
+        context_parts = await load_context(self.project_dir, self.context_file)
 
         # 3. Add direct context string if provided
         if self.context:

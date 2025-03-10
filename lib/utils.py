@@ -1,8 +1,9 @@
 import csv
 from io import StringIO
 import json
+import os
 from pathlib import Path
-from typing import TypedDict
+from typing import Optional, TypedDict
 import aiofiles
 from pydantic import BaseModel
 
@@ -74,3 +75,33 @@ async def save_translations(
 
     async with aiofiles.open(output_file, "w", newline="", encoding="utf-8") as f:
         await f.write(content)
+
+
+async def load_context(
+    project_dir: Path, context_file: Optional[str] = ""
+) -> list[str]:
+    context_parts = []
+    # 1. Check for context.md or context.txt in project directory
+    for ext in [".md", ".txt"]:
+        context_path = project_dir / f"context{ext}"
+        try:
+            if os.path.exists(context_path):
+                async with aiofiles.open(context_path, "r", encoding="utf-8") as f:
+                    content = await f.read()
+                    context_parts.append(content.strip())
+        except Exception as e:
+            print(f"Warning: Error reading context file {context_path}: {e}")
+
+    # 2. Check for context from command line file
+    if context_file:
+        try:
+            if os.path.exists(context_file):
+                async with aiofiles.open(context_file, "r", encoding="utf-8") as f:
+                    content = await f.read()
+                    context_parts.append(content.strip())
+            else:
+                print(f"Warning: Context file not found: {context_file}")
+        except Exception as e:
+            print(f"Warning: Error reading context file {context_file}: {e}")
+
+    return context_parts

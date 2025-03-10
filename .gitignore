@@ -1,6 +1,9 @@
 .env
+.venv
 projects/*
 *.pyc
 __pycache__
 .vscode/
 .cursor
+.coverage
+.pytest_cache

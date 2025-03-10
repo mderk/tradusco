@@ -1,7 +1,8 @@
 import pytest
 import json
 from unittest.mock import patch, MagicMock
-from lib.TranslationProject import TranslationProject, InvalidJSONException
+from lib.TranslationProject import TranslationProject
+from lib.TranslationTool import InvalidJSONException
 from lib.llm import BaseDriver
 from tests.utils import AsyncMock
 from pathlib import Path

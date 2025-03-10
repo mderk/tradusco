@@ -3,7 +3,8 @@ import pytest
 import asyncio
 from unittest.mock import patch, MagicMock
 from pathlib import Path
-from lib.TranslationProject import TranslationProject, InvalidJSONException
+from lib.TranslationProject import TranslationProject
+from lib.TranslationTool import InvalidJSONException
 from lib.utils import Config, load_progress, save_progress, load_translations
 from tests.utils import AsyncMock
 

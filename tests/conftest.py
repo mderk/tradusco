@@ -2,12 +2,13 @@ import os
 import sys
 import tempfile
 from typing import Any, Generator
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from pathlib import Path
 import pytest
 import shutil
 
 from lib.TranslationProject import TranslationProject
+from lib.TranslationTool import TranslationTool
 from lib.utils import Config
 
 
@@ -84,7 +85,7 @@ def common_translation_project_patches() -> Generator[dict[str, MagicMock], None
     ) as mock_load_translations, patch(
         "lib.TranslationProject.load_progress"
     ) as mock_load_progress, patch.object(
-        TranslationProject, "_process_batch"
+        TranslationTool, "process_batch", new_callable=AsyncMock
     ) as mock_process_batch, patch(
         "lib.TranslationProject.save_progress"
     ) as mock_save_progress, patch(

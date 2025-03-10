@@ -1,5 +1,6 @@
 import pytest
-from lib.TranslationProject import TranslationProject, InvalidJSONException
+from lib.TranslationProject import TranslationProject
+from lib.TranslationTool import InvalidJSONException
 
 
 class TestBatchResponseParsing:

@@ -15,7 +15,6 @@ pip install -r requirements.txt
 
 ```
 GEMINI_API_KEY = "your_api_key_here"
-GEMINI_PROJECT_ID = "your_project_id_here"
 OPENAI_API_KEY = "your_api_key_here"
 GROK_API_KEY = "your_api_key_here"
 OPENROUTER_API_KEY = "your_api_key_here"
@@ -294,10 +293,15 @@ The test suite includes:
 2. **Batch Response Parsing Tests**: Tests for JSON parsing of LLM responses
 3. **Prompt Handling Tests**: Tests for loading and handling prompt templates
 
-If you want to run a specific test file, you can use:
+If you want to run a specific test file or test, you can use pytest directly:
 
 ```bash
-python -m unittest tests.test_translation_project
-python -m unittest tests.test_batch_response_parsing
-python -m unittest tests.test_prompt_handling
+# Run a specific test file
+pytest tests/test_translation_project.py -v
+
+# Run a specific test class
+pytest tests/test_translation_project.py::TestTranslationProject -v
+
+# Run a specific test method
+pytest tests/test_translation_project.py::TestTranslationProject::test_parse_batch_response_json_array -v
 ```

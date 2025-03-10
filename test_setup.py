@@ -30,16 +30,6 @@ def check_environment():
     else:
         print(f"✅ GEMINI_API_KEY environment variable is set: {gemini_api_key[:5]}...")
 
-    gemini_project_id = os.environ.get("GEMINI_PROJECT_ID")
-    if not gemini_project_id:
-        print("❌ GEMINI_PROJECT_ID environment variable is not set.")
-        print(
-            "   Please check your .env file and make sure it contains GEMINI_PROJECT_ID."
-        )
-        return False
-    else:
-        print(f"✅ GEMINI_PROJECT_ID environment variable is set: {gemini_project_id}")
-
     return True
 
 

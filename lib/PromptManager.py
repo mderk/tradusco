@@ -55,19 +55,13 @@ class PromptManager:
         self,
         prompt_type: str,
         path: Path | str,
-        use_cache: bool = True,
-        validate: bool = True,
-        strict_validation: bool = False,
         is_default: bool = False,
     ) -> str:
-        """Load a prompt from a specific path with validation and caching.
+        """Load a prompt from a specific path with filesystem operations.
 
         Args:
             prompt_type: Type of prompt to load
             path: Path to the prompt file
-            use_cache: Whether to use cached prompts
-            validate: Whether to validate the prompt
-            strict_validation: Whether to enforce required variables
             is_default: Whether this is loading a default prompt
 
         Returns:
@@ -78,26 +72,15 @@ class PromptManager:
                 async with aiofiles.open(path, "r", encoding="utf-8") as f:
                     prompt = (await f.read()).strip()
                     if prompt:
-                        if validate:
-                            is_valid, error = self.validate_prompt(
-                                prompt_type, prompt, strict_validation
-                            )
-                            if error:
-                                source = "Default" if is_default else "Custom"
-                                print(
-                                    f"{'Warning' if is_valid else 'Error'}: {source} prompt validation failed: {error}"
-                                )
-                            if not is_valid and strict_validation:
-                                return ""
-                        if use_cache:
-                            self._cache[prompt_type] = prompt
                         return prompt
             else:
                 source = "Default" if is_default else "Custom"
-                print(f"Warning: {source} prompt file {path} not found.")
+                print(f"Warning: {source} {prompt_type} prompt file {path} not found.")
         except Exception as e:
             source = "Default" if is_default else "Custom"
-            print(f"Warning: Error reading {source} prompt file {path}: {e}")
+            print(
+                f"Warning: Error reading {source} {prompt_type} prompt file {path}: {e}"
+            )
         return ""
 
     async def load_prompt(
@@ -129,11 +112,28 @@ class PromptManager:
             prompt = await self._load_prompt_from_path(
                 prompt_type,
                 custom_prompt_path,
-                use_cache,
-                validate,
-                strict_validation,
                 is_default=False,
             )
+            if prompt:
+                if validate:
+                    is_valid, error = self.validate_prompt(
+                        prompt_type, prompt, strict_validation
+                    )
+                    if error:
+                        source = "Custom"
+                        print(
+                            f"{'Warning' if is_valid else 'Error'}: {source} prompt validation failed: {error}"
+                        )
+
+                    if not is_valid and strict_validation:
+                        prompt = ""
+                    elif use_cache:
+                        # Cache prompt if not in strict mode or if valid
+                        self._cache[prompt_type] = prompt
+                elif use_cache:
+                    # If not validating, only cache if requested
+                    self._cache[prompt_type] = prompt
+
             if prompt or custom_prompt_path is not None:
                 return prompt
 
@@ -147,12 +147,27 @@ class PromptManager:
             prompt = await self._load_prompt_from_path(
                 prompt_type,
                 path,
-                use_cache,
-                validate,
-                strict_validation,
                 is_default=True,
             )
             if prompt:
+                if validate:
+                    is_valid, error = self.validate_prompt(
+                        prompt_type, prompt, strict_validation
+                    )
+                    if error:
+                        source = "Default"
+                        print(
+                            f"{'Warning' if is_valid else 'Error'}: {source} prompt validation failed: {error}"
+                        )
+
+                    if not is_valid and strict_validation:
+                        continue
+                    elif use_cache:
+                        # Cache prompt if not in strict mode or if valid
+                        self._cache[prompt_type] = prompt
+                elif use_cache:
+                    # If not validating, only cache if requested
+                    self._cache[prompt_type] = prompt
                 return prompt
 
         print(f"Warning: No valid prompt found for type '{prompt_type}'")

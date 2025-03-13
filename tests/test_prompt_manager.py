@@ -205,9 +205,7 @@ class TestPromptManager:
     ):
         """Test loading a prompt from a path successfully."""
         file_path = setup_prompt_files["translation.txt"]
-        result = await prompt_manager._load_prompt_from_path(
-            "translation", file_path, use_cache=False
-        )
+        result = await prompt_manager._load_prompt_from_path("translation", file_path)
         assert "translating from {base_language} to {dst_language}" in result.lower()
 
     @pytest.mark.asyncio
@@ -230,9 +228,7 @@ class TestPromptManager:
         """Test loading an empty prompt file."""
         file_path = setup_prompt_files["empty.txt"]
         with patch("builtins.print") as mock_print:
-            result = await prompt_manager._load_prompt_from_path(
-                "empty", file_path, use_cache=False
-            )
+            result = await prompt_manager._load_prompt_from_path("empty", file_path)
             assert result == ""
 
     @pytest.mark.asyncio
@@ -242,14 +238,15 @@ class TestPromptManager:
         """Test loading a prompt that fails validation in strict mode."""
         file_path = setup_prompt_files["translation.txt"]
 
-        # Override validate_prompt to always fail in strict mode
+        # Since _load_prompt_from_path no longer handles validation,
+        # we should test that load_prompt properly handles validation failures
         with patch.object(
             prompt_manager, "validate_prompt", return_value=(False, "Test error")
         ):
-            result = await prompt_manager._load_prompt_from_path(
+            # Test through load_prompt instead
+            result = await prompt_manager.load_prompt(
                 "translation",
-                file_path,
-                use_cache=False,
+                custom_prompt_path=str(file_path),
                 validate=True,
                 strict_validation=True,
             )
@@ -370,9 +367,6 @@ class TestPromptManager:
         async def mock_load_from_path(
             prompt_type,
             path,
-            use_cache=True,
-            validate=True,
-            strict_validation=False,
             is_default=False,
         ):
             # Return content only for the second default path

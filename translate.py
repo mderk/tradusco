@@ -74,6 +74,13 @@ async def async_main():
         "--context-file",
         help="Path to a file containing translation context",
     )
+    # Add translation method argument
+    parser.add_argument(
+        "--method",
+        choices=["standard", "structured", "function", "auto"],
+        default="auto",
+        help="Translation method to use: auto (recommended), standard (prompt-based), structured (JSON output), or function (function calling) (default: auto)",
+    )
 
     args = parser.parse_args()
 
@@ -111,6 +118,7 @@ async def async_main():
             batch_size=args.batch_size,
             model=args.model,
             batch_max_tokens=args.batch_max_tokens,
+            translation_method=args.method,
         )
     except Exception as e:
         print(f"Error: {e}")

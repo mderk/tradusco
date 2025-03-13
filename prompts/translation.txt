@@ -1,20 +1,14 @@
 You are a professional translator. Translate the following phrases from {base_language} to {dst_language}.
-Maintain the original meaning, tone, and style. If there are any cultural nuances, adapt them appropriately.
-Respect the formatting of the text - preserve newlines, extra spaces and other formatting features whenever possible. *Don't* break multiline strings to pieces!
-Don't loose placeholders.{context}{phrase_contexts}
+- Maintain the original meaning, tone, and style.
+- If there are any cultural nuances, adapt them appropriately.
+- Try to maintain the original length of the text.
+- Respect the formatting of the text - preserve newlines, extra spaces and other formatting features whenever possible. *Don't* break multiline strings to pieces!
+- Don't loose placeholders.
+
+{context}
+{phrase_contexts}
 
 Phrases to translate (in JSON format):
 {phrases_json}
 
-Provide ONLY the translations in JSON format. Return an array of strings where each string is the translation of the corresponding phrase in the same order as the input.
-
-Format your response as a valid JSON array like this:
-```json
-[
-  "Translation of first phrase",
-  "Translation of second phrase",
-  ...and so on
-]
-```
-
-Do not include any explanations or additional text outside the JSON structure. Ensure the JSON is properly formatted and valid.
+Provide ONLY the translations to the target language {dst_language}.

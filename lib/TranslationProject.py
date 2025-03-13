@@ -187,6 +187,108 @@ class TranslationProject:
 
         return prompt
 
+    async def _process_translation_batch(
+        self,
+        phrases_to_translate: list[str],
+        phrase_indices: list[int],
+        translations: list[dict[str, str]],
+        progress: dict[str, str],
+        model: str,
+        method: str,
+        prompt: str,
+        context: str,
+        delay_seconds: float,
+        max_retries: int,
+    ) -> int:
+        """
+        Process a batch of phrases for translation using the appropriate method.
+
+        Args:
+            phrases_to_translate: list of phrases to translate
+            phrase_indices: list of indices corresponding to each phrase
+            translations: list of translation dictionaries
+            progress: Progress dictionary tracking completed translations
+            model: The LLM model to use
+            method: The translation method to use
+            prompt: The translation prompt
+            context: The translation context
+            delay_seconds: Delay between API calls
+            max_retries: Maximum number of retries for failed API calls
+
+        Returns:
+            Number of translations processed successfully
+        """
+        translation_count = 0
+        if method == "structured":
+            translation_count = await self.translation_tool.translate_structured(
+                phrases_to_translate,
+                phrase_indices,
+                translations,
+                progress,
+                model,
+                self.base_language,
+                self.dst_language,
+                prompt,
+                context,
+                delay_seconds,
+                max_retries,
+            )
+        elif method == "function":
+            translation_count = await self.translation_tool.translate_function(
+                phrases_to_translate,
+                phrase_indices,
+                translations,
+                progress,
+                model,
+                self.base_language,
+                self.dst_language,
+                prompt,
+                context,
+                delay_seconds,
+                max_retries,
+            )
+        else:  # standard method
+            translation_count = await self.translation_tool.translate_standard(
+                phrases_to_translate,
+                phrase_indices,
+                translations,
+                progress,
+                model,
+                self.base_language,
+                self.dst_language,
+                prompt,
+                context,
+                delay_seconds,
+                max_retries,
+            )
+        return translation_count
+
+    async def _save_translation_progress(
+        self,
+        progress: dict[str, str],
+        translations: list[dict[str, str]],
+        is_final: bool = False,
+    ) -> None:
+        """
+        Save translation progress and translations to files.
+
+        Args:
+            progress: Progress dictionary tracking completed translations
+            translations: list of translation dictionaries
+            is_final: Whether this is the final save (affects log message)
+        """
+        await save_progress(self.progress_file, progress)
+        await save_translations(self.source_file, translations)
+
+        if is_final:
+            print(
+                f"Final save: {len(progress)} translations saved to {self.progress_file} and {self.source_file}"
+            )
+        else:
+            print(
+                f"Progress saved: {len(progress)} translations saved to {self.progress_file}"
+            )
+
     async def translate(
         self,
         delay_seconds: float = 1.0,
@@ -194,6 +296,7 @@ class TranslationProject:
         batch_size: int = 50,
         model: str = "gemini",
         batch_max_tokens: int = 2048,
+        translation_method: str = "standard",
     ) -> None:
         """Translate phrases from base language to destination language
 
@@ -203,7 +306,24 @@ class TranslationProject:
             batch_size: Number of phrases to translate in a single API call
             model: The LLM model to use for translation
             batch_max_tokens: Maximum number of tokens for a translation batch
+            translation_method: Method to use for translation ('auto', 'standard', 'structured', or 'function')
         """
+        # Validate translation method
+        valid_methods = ["auto", "standard", "structured", "function"]
+        if translation_method not in valid_methods:
+            raise ValueError(
+                f"Invalid translation method: {translation_method}. Must be one of: {valid_methods}"
+            )
+
+        # Get the driver instance for the selected model
+        driver = get_driver(model)
+
+        # If 'auto' is selected or the requested method is not supported by the model,
+        # determine the best method for this driver
+        method = driver.get_best_translation_method(translation_method)
+
+        print(f"Using translation method: {method}")
+
         # Load existing translations and progress
         translations = await load_translations(self.source_file)
         progress = await load_progress(self.progress_file)
@@ -256,14 +376,13 @@ class TranslationProject:
                 len(phrases_to_translate) >= batch_size
                 or current_batch_tokens >= batch_max_tokens
             ):
-                await self.translation_tool.process_batch(
+                translation_count = await self._process_translation_batch(
                     phrases_to_translate,
                     phrase_indices,
                     translations,
                     progress,
                     model,
-                    self.base_language,
-                    self.dst_language,
+                    method,
                     prompt,
                     context,
                     delay_seconds,
@@ -271,11 +390,7 @@ class TranslationProject:
                 )
 
                 # Save progress after batch processing
-                await save_progress(self.progress_file, progress)
-                await save_translations(self.source_file, translations)
-                print(
-                    f"Progress saved: {len(progress)} translations saved to {self.progress_file}"
-                )
+                await self._save_translation_progress(progress, translations)
 
                 phrases_to_translate = []
                 phrase_indices = []
@@ -284,14 +399,13 @@ class TranslationProject:
 
         # Process any remaining phrases
         if phrases_to_translate:
-            await self.translation_tool.process_batch(
+            translation_count = await self._process_translation_batch(
                 phrases_to_translate,
                 phrase_indices,
                 translations,
                 progress,
                 model,
-                self.base_language,
-                self.dst_language,
+                method,
                 prompt,
                 context,
                 delay_seconds,
@@ -299,18 +413,9 @@ class TranslationProject:
             )
 
             # Save progress after batch processing
-            await save_progress(self.progress_file, progress)
-            await save_translations(self.source_file, translations)
-            print(
-                f"Progress saved: {len(progress)} translations saved to {self.progress_file}"
-            )
-
+            await self._save_translation_progress(progress, translations)
             changes_made = True
 
         # Always save progress at the end to ensure the test passes
-        # This also handles any changes made to progress that weren't from process_batch
-        await save_progress(self.progress_file, progress)
-        await save_translations(self.source_file, translations)
-        print(
-            f"Final save: {len(progress)} translations saved to {self.progress_file} and {self.source_file}"
-        )
+        # This also handles any changes made to progress that weren't from translate_standard
+        await self._save_translation_progress(progress, translations, is_final=True)

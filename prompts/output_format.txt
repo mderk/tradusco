@@ -1,0 +1,13 @@
+Format your response as a valid JSON object with translations like this:
+```json
+{
+  "translations" : [
+    "Translation of first phrase",
+    "Translation of second phrase",
+    ...and so on
+  ]
+}
+```
+
+Each string in the translations array is the translation of the corresponding phrase in the same order as the input.
+Do not include any explanations or additional text outside the JSON structure. Ensure the JSON is properly formatted and valid.

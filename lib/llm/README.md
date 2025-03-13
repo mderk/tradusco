@@ -32,8 +32,9 @@ To add a new LLM driver:
 All drivers must implement the following methods:
 
 -   `__init__(model: str, api_key: Optional[str] = None)`: Initialize the driver with a model name and optional API key
--   `translate(prompt: str, delay_seconds: float = 1.0, max_retries: int = 3) -> str`: Send a translation request
 -   `translate_async(prompt: str, delay_seconds: float = 1.0, max_retries: int = 3) -> str`: Send an asynchronous translation request
+-   `translate_structured_async(prompt: str, output_schema: dict, delay_seconds: float = 1.0, max_retries: int = 3) -> dict`: Send an asynchronous request for structured output
+-   `translate_function_async(prompt: str, functions: list[dict], function_name: Optional[str] = None, delay_seconds: float = 1.0, max_retries: int = 3) -> dict`: Send an asynchronous request that can call a function
 
 ## Factory Functions
 
@@ -54,11 +55,7 @@ print(f"Available models: {models}")
 # Get a driver for a specific model
 driver = get_driver("gemini")
 
-# Use the driver to translate text
-result = driver.translate("Translate this text from English to French: Hello, world!")
-print(result)
-
-# Or use the async version
+# Use the async version to translate text
 import asyncio
 
 async def translate_async():

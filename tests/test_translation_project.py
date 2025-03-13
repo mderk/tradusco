@@ -6,6 +6,7 @@ import asyncio
 from pathlib import Path
 from unittest.mock import patch
 import csv
+from typing import Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -101,140 +102,88 @@ class TestTranslationProject:
         context = await project._load_context()
         assert context_content in context
 
-    @pytest.mark.asyncio
-    async def test_translate(self, setup_test_project, mock_llm_driver):
-        """Test the translate method with mocked LLM responses."""
-        project_dir, mock_config, source_data = setup_test_project
+    @patch("lib.TranslationTool.TranslationTool.translate_standard")
+    async def test_translate(self, mock_translate_standard_patch, mock_llm_driver):
+        """Test translation process with mock driver"""
+        # Create test directories
+        project_dir = Path("test_project")
+        os.makedirs(project_dir, exist_ok=True)
+        os.makedirs(project_dir / "es", exist_ok=True)
 
-        # Create source file with translation data in CSV format
-        source_file_path = project_dir / mock_config.sourceFile
-
-        # First create a list of dictionaries with the correct format
-        translations = []
-        for key, phrase in source_data.items():
-            # Include the key column and use the base language as the column name
-            translation_row = {
-                mock_config.keyColumn: key,
-                mock_config.baseLanguage: phrase,
-                "es": "",
-            }
-            translations.append(translation_row)
-
-        with open(source_file_path, "w", encoding="utf-8") as f:
-            # Create a CSV writer for dictionaries
-            fieldnames = [mock_config.keyColumn, mock_config.baseLanguage, "es"]
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(translations)
-
-        # Create config file
-        config_path = project_dir / "config.json"
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(mock_config.__dict__, f, ensure_ascii=False, indent=2)
-
-        # Create a prompt file
-        prompt_dir = project_dir / "prompts"
-        os.makedirs(prompt_dir, exist_ok=True)
-        prompt_file = prompt_dir / "translation.txt"
-        with open(prompt_file, "w", encoding="utf-8") as f:
-            f.write(
-                """Translate the following phrases from {base_language} to {dst_language}.
-
-Phrases to translate:
-{phrases_json}
-
-{context}
-{phrase_contexts}
-
-Return the translations in JSON format with the original phrase as the key and the translation as the value.
-Example:
-```json
-{
-  "Hello": "Hola",
-  "Goodbye": "Adiós"
-}
-```"""
-            )
-
-        # Directly create a TranslationProject instance without using create
-        project = TranslationProject(
-            project_name=mock_config.name,
-            project_dir=project_dir,
-            config=mock_config,
-            dst_language="es",
-            prompt_file=str(prompt_file),
+        # Create test config
+        config = Config(
+            name="test_project",
+            sourceFile="source.csv",
+            baseLanguage="en",
+            languages=["en", "es"],
+            keyColumn="key",
         )
 
-        # Setup our mocks more directly
-        async def mock_process_batch(
-            phrases, indices, translations, progress, *args, **kwargs
-        ):
-            """Mock the process_batch method to directly update translations"""
-            # Update the translations and progress directly
+        # Create source file
+        source_file = project_dir / "source.csv"
+        with open(source_file, "w", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["key", "en", "es"])
+            writer.writerow(["greeting", "Hello", ""])
+            writer.writerow(["farewell", "Goodbye", ""])
+            writer.writerow(["welcome", "Welcome", ""])
+            writer.writerow(["thanks", "Thank you", ""])
+
+        # Create a test project
+        project = TranslationProject(
+            project_name="test_project",
+            project_dir=project_dir,
+            config=config,
+            dst_language="es",
+            prompt="Translate from {base_language} to {dst_language}",
+        )
+
+        # Create mock translate_standard function
+        async def mock_translate_standard(
+            phrases: list[str],
+            indices: list[int],
+            translations: list[dict[str, str]],
+            progress: dict[str, str],
+            model: str,
+            base_language: str,
+            dst_language: str,
+            prompt: str,
+            context: Optional[str] = None,
+            delay_seconds: float = 1.0,
+            max_retries: int = 3,
+        ) -> int:
+            # Simulate translation
             for i, phrase in enumerate(phrases):
-                # Get the actual phrase from the translations data
-                source_phrase = translations[indices[i]][mock_config.baseLanguage]
-
-                # Set the expected translations based on the source phrases
-                if source_phrase == "Hello":
-                    translations[indices[i]]["es"] = "Hola"
-                    progress[source_phrase] = "Hola"
-                elif source_phrase == "Goodbye":
-                    translations[indices[i]]["es"] = "Adiós"
-                    progress[source_phrase] = "Adiós"
-                elif source_phrase == "Welcome to our application":
-                    translations[indices[i]]["es"] = "Bienvenido a nuestra aplicación"
-                    progress[source_phrase] = "Bienvenido a nuestra aplicación"
-
-            # Return the number of phrases translated
+                translations[indices[i]][dst_language] = f"{phrase} (translated)"
+                progress[phrase] = f"{phrase} (translated)"
             return len(phrases)
 
-        # Patch the translation tool's process_batch method
+        # Patch the translation tool's translate_standard method and get_driver function
         with patch.object(
-            project.translation_tool, "process_batch", side_effect=mock_process_batch
+            project.translation_tool,
+            "translate_standard",
+            side_effect=mock_translate_standard,
+        ), patch("lib.llm.get_driver", return_value=mock_llm_driver), patch(
+            "lib.TranslationProject.get_driver", return_value=mock_llm_driver
         ):
-            # Run the translate method
-            await project.translate(
-                model="mock-model", delay_seconds=0, max_retries=1, batch_size=10
-            )
+            # Run translation
+            await project.translate()
 
-            # Load the results to verify - now load as CSV
-            translations = []
-            with open(source_file_path, "r", encoding="utf-8") as f:
-                csv_reader = csv.DictReader(f)
-                translations = list(csv_reader)
+            # Verify translations were created
+            with open(source_file, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                translations = list(reader)
+                for row in translations:
+                    if row["en"]:
+                        assert (
+                            "(translated)" in row["es"]
+                        ), f"Translation missing for {row['key']}"
 
-            # Check that translations were applied
-            # Find the row for each key and check its translation
-            greeting_row = next(
-                (t for t in translations if t[mock_config.keyColumn] == "greeting"),
-                None,
-            )
-            farewell_row = next(
-                (t for t in translations if t[mock_config.keyColumn] == "farewell"),
-                None,
-            )
-            welcome_row = next(
-                (t for t in translations if t[mock_config.keyColumn] == "welcome"), None
-            )
-
-            # Add null checks before accessing dictionary items
-            assert greeting_row is not None, "Greeting row not found in translations"
-            assert farewell_row is not None, "Farewell row not found in translations"
-            assert welcome_row is not None, "Welcome row not found in translations"
-
-            assert greeting_row["es"] == "Hola"
-            assert farewell_row["es"] == "Adiós"
-            assert welcome_row["es"] == "Bienvenido a nuestra aplicación"
-
-            # Check progress file
-            progress_file = project.progress_file
-            with open(progress_file, "r", encoding="utf-8") as f:
+            # Verify progress was updated
+            with open(project.progress_file, "r", encoding="utf-8") as f:
                 progress = json.load(f)
-
-            assert progress.get("Hello") == "Hola"
-            assert progress.get("Goodbye") == "Adiós"
-            assert (
-                progress.get("Welcome to our application")
-                == "Bienvenido a nuestra aplicación"
-            )
+                for key in ["Hello", "Goodbye", "Welcome", "Thank you"]:
+                    assert key in progress, f"Progress missing for {key}"
+                    assert (
+                        "(translated)" in progress[key]
+                    ), f"Progress translation missing for {key}"

@@ -8,5 +8,13 @@ Invalid JSON:
 ```
 
 Please fix and return ONLY the valid JSON. Ensure it's properly formatted according to the JSON specification.
-Your response must be a valid JSON array or object that can be parsed by standard JSON parsers.
-Format your response as JSON inside a code block.
+The output schema is
+```json
+{
+  "translations" : [
+    "Translation of first phrase",
+    "Translation of second phrase",
+    ...and so on
+  ]
+}
+```

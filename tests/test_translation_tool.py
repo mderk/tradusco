@@ -69,7 +69,7 @@ class TestTranslationTool:
 
         # Verify the result contains expected content
         assert isinstance(result, str)
-        assert f"from {base_language} to {dst_language}" in result
+        assert f"from {base_language.upper()} to {dst_language.upper()}" in result
         assert "Hello" in result
         assert "Goodbye" in result
         assert "Welcome" in result
@@ -81,67 +81,6 @@ class TestTranslationTool:
         assert '"Hello": "Greeting"' in result or '"Hello":"Greeting"' in result
         assert "Farewell" in result
         assert "Greeting someone arriving" in result
-
-    @pytest.mark.asyncio
-    async def test_parse_batch_response(self, translation_tool):
-        """Test parsing a batch translation response."""
-        # Test with a valid JSON response
-        valid_response = """
-        {
-            "Hello": "Hola",
-            "Goodbye": "Adiós",
-            "Welcome": "Bienvenido"
-        }
-        """
-        original_phrases = ["Hello", "Goodbye", "Welcome"]
-
-        # Parse the response
-        result = translation_tool.parse_batch_response(valid_response, original_phrases)
-
-        # Verify the result
-        assert isinstance(result, dict)
-        assert len(result) == 3
-        assert result["Hello"] == "Hola"
-        assert result["Goodbye"] == "Adiós"
-        assert result["Welcome"] == "Bienvenido"
-
-    @pytest.mark.asyncio
-    async def test_update_translations_from_batch(self, translation_tool):
-        """Test updating translations from a batch."""
-        # Prepare test data
-        batch_translations = {
-            "Hello": "Hola",
-            "Goodbye": "Adiós",
-            "Welcome": "Bienvenido",
-        }
-        phrases = ["Hello", "Goodbye", "Welcome"]
-        indices = [0, 1, 2]
-        translations = [
-            {"key": "phrase1", "en": "Hello"},
-            {"key": "phrase2", "en": "Goodbye"},
-            {"key": "phrase3", "en": "Welcome"},
-        ]
-        progress = {}
-        dst_language = "es"
-
-        # Call the method
-        updated_count = translation_tool.update_translations_from_batch(
-            batch_translations=batch_translations,
-            phrases=phrases,
-            indices=indices,
-            translations=translations,
-            progress=progress,
-            dst_language=dst_language,
-        )
-
-        # Verify the result
-        assert updated_count == 3
-        assert translations[0]["es"] == "Hola"
-        assert translations[1]["es"] == "Adiós"
-        assert translations[2]["es"] == "Bienvenido"
-        assert progress.get("Hello") == "Hola"
-        assert progress.get("Goodbye") == "Adiós"
-        assert progress.get("Welcome") == "Bienvenido"
 
     @pytest.mark.asyncio
     async def test_fix_invalid_json(self, translation_tool, mock_llm_driver):
@@ -165,7 +104,7 @@ class TestTranslationTool:
             assert parsed["Welcome"] == "Bienvenido"
 
     @pytest.mark.asyncio
-    async def test_process_batch(self, translation_tool, mock_llm_driver):
+    async def test_translate_standard(self, translation_tool, mock_llm_driver):
         """Test processing a batch of translations with the mock LLM driver."""
         # Prepare test data
         phrases = ["Hello", "Goodbye", "Welcome"]
@@ -187,18 +126,20 @@ class TestTranslationTool:
 
             # Set up a specific response pattern for this test
             mock_llm_driver.register_response(
-                r"Translate.*from en to es",
+                r"Translate.*from EN to ES",
                 """```json
                 {
-                    "Hello": "Hola",
-                    "Goodbye": "Adiós",
-                    "Welcome": "Bienvenido"
+                    "translations": [
+                        "Hola",
+                        "Adiós",
+                        "Bienvenido"
+                    ]
                 }
                 ```""",
             )
 
             # Call the method
-            result = await translation_tool.process_batch(
+            result = await translation_tool.translate_standard(
                 phrases=phrases,
                 indices=indices,
                 translations=translations,

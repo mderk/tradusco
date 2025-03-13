@@ -64,3 +64,11 @@ def setup_test_project(temp_project_dir, mock_config, mock_source_data):
             os.makedirs(temp_project_dir / lang, exist_ok=True)
 
     return temp_project_dir, mock_config, mock_source_data
+
+
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers",
+        "integration: mark test as an integration test that makes actual API calls",
+    )

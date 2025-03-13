@@ -23,3 +23,10 @@ class OpenAIDriver(BaseDriver):
         self.llm = ChatOpenAI(
             model=model, api_key=SecretStr(self.api_key), base_url=base_url
         )
+
+        # Set capability flags - OpenAI models support both structured output and function calling
+        self.supports_structured_output = True
+        self.supports_function_calling = True
+        self.preferred_method = (
+            "function"  # Function calling generally works best for OpenAI models
+        )

@@ -32,11 +32,7 @@ driver = get_driver("grok")
 from lib.llm.grok import GrokDriver
 driver = GrokDriver(model="grok-2-1212")  # Default model
 
-# Use the driver for translation
-response = driver.translate("Translate this text to French: Hello world")
-print(response)
-
-# Or use the async version
+# Use the async version for translation
 import asyncio
 
 async def translate_async():
@@ -55,8 +51,9 @@ For the most up-to-date list of available models, refer to the [xAI documentatio
 The Grok driver implements the BaseDriver interface with the following methods:
 
 -   `__init__(model="grok-2-1212", api_key=None)`: Initialize the driver with a model name and optional API key
--   `translate(prompt, delay_seconds=1.0, max_retries=3)`: Send a translation request
 -   `translate_async(prompt, delay_seconds=1.0, max_retries=3)`: Send an asynchronous translation request
+-   `translate_structured_async(prompt, output_schema, delay_seconds=1.0, max_retries=3)`: Send an asynchronous request for structured output
+-   `translate_function_async(prompt, functions, function_name=None, delay_seconds=1.0, max_retries=3)`: Send an asynchronous request that can call a function
 
 ## Implementation Details
 

@@ -1,8 +1,11 @@
 import json
 import re
-from typing import Optional
+import os
+from typing import Optional, Union
 from .llm import BaseDriver, get_driver, get_available_models
 from .PromptManager import PromptManager
+
+DEBUG = os.environ.get("TRADUSCO_DEBUG")
 
 
 class InvalidJSONException(Exception):
@@ -81,8 +84,8 @@ class TranslationTool:
         # Format the prompt template with the required variables
         return self.prompt_manager.format_prompt(
             prompt,
-            base_language=base_language,
-            dst_language=dst_language,
+            base_language=base_language.upper(),
+            dst_language=dst_language.upper(),
             phrases_json=phrases_json,
             context=context_section,
             phrase_contexts=phrase_contexts_section,
@@ -112,89 +115,86 @@ class TranslationTool:
             )
 
             # Extract JSON from the response
-            json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", corrected_json)
-            if json_match:
-                return json_match.group(1)
-
-            # If no code blocks, try to find a JSON array or object directly
-            json_match = re.search(r"(\[[\s\S]*\]|\{[\s\S]*\})", corrected_json)
-            if json_match:
-                return json_match.group(1)
-
-            # If no recognizable JSON pattern, return the full response
-            return corrected_json
+            return self.extract_json_from_response(corrected_json)
 
         except Exception as e:
-            print(f"Error fixing JSON: {e}")
+            if DEBUG:
+                print(f"Error fixing JSON: {e}")
             return invalid_json  # Return original if fixing failed
 
-    def parse_batch_response(
+    async def setup_batch_translation(
         self,
-        response: str,
-        original_phrases: list[str],
-    ) -> dict[str, str]:
-        """Parse the batch translation response from JSON format"""
-        translations = {}
+        phrases: list[str],
+        translations: list[dict[str, str]],
+        indices: list[int],
+        model: str,
+        base_language: str,
+        dst_language: str,
+        prompt: str,
+        context: Optional[str] = None,
+    ) -> tuple[Optional[BaseDriver], str]:
+        """
+        Set up common components for batch translation process.
 
-        # Extract potential JSON content
-        # Try to find JSON content between code blocks
+        Args:
+            phrases: List of phrases to translate
+            translations: Full translations list
+            indices: Indices of phrases in the translations list
+            model: LLM model to use
+            base_language: Source language
+            dst_language: Target language
+            prompt: Translation prompt
+            context: Optional context for translation
+
+        Returns:
+            Tuple of (driver, batch_prompt) or (None, "") if driver initialization failed
+        """
+        # Get the LLM driver
+        driver = get_driver(model)
+        if not driver:
+            if DEBUG:
+                print(f"Warning: Could not get driver for model {model}")
+            return None, ""
+
+        # Create the batch prompt
+        batch_prompt = await self.create_batch_prompt(
+            phrases=phrases,
+            translations=translations,
+            indices=indices,
+            base_language=base_language,
+            dst_language=dst_language,
+            prompt=prompt,
+            context=context,
+        )
+
+        return driver, batch_prompt
+
+    def extract_json_from_response(self, response: str) -> str:
+        """
+        Extract JSON content from a response string using multiple approaches.
+
+        Args:
+            response: The string response that may contain JSON
+
+        Returns:
+            The extracted JSON string or the original response if no JSON pattern is found
+        """
+        # Approach 1: Extract potential JSON content from code blocks
         json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response)
         if json_match:
-            json_str = json_match.group(1)
-        else:
-            # If no code blocks, try to find a JSON array or object directly
-            json_match = re.search(r"(\[[\s\S]*\]|\{[\s\S]*\})", response)
-            if json_match:
-                json_str = json_match.group(1)
-            else:
-                # Use the entire response as a last resort
-                json_str = response
+            return json_match.group(1)
 
-        try:
-            # Parse the JSON content
-            translated_items = json.loads(json_str)
+        # Approach 2: If no code blocks, try to find a JSON array or object directly
+        json_match = re.search(r"(\[[\s\S]*\]|\{[\s\S]*\})", response)
+        if json_match:
+            return json_match.group(1)
 
-            # Handle different possible JSON formats
-            if isinstance(translated_items, list):
-                # If it's a list of translations in the same order as original phrases
-                for i, translation in enumerate(translated_items):
-                    if i < len(original_phrases):
-                        if isinstance(translation, str):
-                            translations[original_phrases[i]] = translation
-                        elif isinstance(translation, dict):
-                            # Handle both new and old format responses
-                            if "translation" in translation:
-                                translations[original_phrases[i]] = translation[
-                                    "translation"
-                                ]
-                            elif "text" in translation:
-                                translations[original_phrases[i]] = translation["text"]
-            elif isinstance(translated_items, dict):
-                # If it's a dictionary mapping original phrases to translations
-                for original, translation in translated_items.items():
-                    # Try to match by the original phrase
-                    if original in original_phrases:
-                        translations[original] = translation
-                    # Try to match by the phrase in "text" field
-                    elif isinstance(translation, dict) and "text" in translation:
-                        original_text = translation.get("text", "")
-                        if original_text in original_phrases:
-                            translations[original_text] = translation["translation"]
-                    # Also try to match by index if the keys are numeric
-                    elif original.isdigit() and (int(original) - 1) < len(
-                        original_phrases
-                    ):
-                        translations[original_phrases[int(original) - 1]] = translation
+        # Use the entire response as a last resort
+        return response
 
-        except Exception as e:
-            # If JSON parsing fails, raise InvalidJSONException
-            raise InvalidJSONException(f"Error parsing JSON response: {e}", json_str)
-
-        return translations
-
-    def update_translations_from_batch(
+    def update_translations_from_list(
         self,
-        batch_translations: dict[str, str],
+        translations_list: list[str],
         phrases: list[str],
         indices: list[int],
         translations: list[dict[str, str]],
@@ -202,32 +202,173 @@ class TranslationTool:
         dst_language: str,
     ) -> int:
         """
-        Update translations and progress based on batch results
+        Update translations from a list of translations (in the same order as phrases).
 
         Args:
-            batch_translations: Dictionary mapping phrases to translations
-            phrases: List of original phrases being translated
-            indices: Indices of phrases in the translations list
-            translations: Full translations data structure
-            progress: Progress dictionary
-            dst_language: Destination language code
+            translations_list: List of translations
+            phrases: List of original phrases
+            indices: Indices of phrases in the full translations list
+            translations: Full translations list to update
+            progress: Progress dictionary to update
+            dst_language: Target language
 
         Returns:
-            Number of phrases successfully translated
+            Number of translations updated
         """
-        updates_count = 0
-        for i, phrase in enumerate(phrases):
-            if phrase in batch_translations:
-                translation = batch_translations[phrase]
-                translations[indices[i]][dst_language] = translation
-                progress[phrase] = translation
-                print(f"Translated: {phrase} -> {translation}")
-                updates_count += 1
-            else:
-                print(f"Warning: No translation found for '{phrase}'")
-        return updates_count
+        update_count = 0
 
-    async def process_batch(
+        for i, translation in enumerate(translations_list):
+            if (
+                i < len(phrases) and translation.strip()
+            ):  # Only update if we have a non-empty translation
+                translations[indices[i]][dst_language] = translation
+                progress[phrases[i]] = translation
+                update_count += 1
+                if DEBUG:
+                    print(f"Translated: {phrases[i]} -> {translation}")
+            elif i < len(phrases) and DEBUG:
+                print(f"Warning: Empty translation for '{phrases[i]}'")
+
+        return update_count
+
+    async def setup_translation(
+        self,
+        phrases: list[str],
+        indices: list[int],
+        translations: list[dict[str, str]],
+        model: str,
+        base_language: str,
+        dst_language: str,
+        prompt: str,
+        context: Optional[str] = None,
+        method_name: str = "standard",
+    ) -> tuple[Optional[BaseDriver], str]:
+        """
+        Base method for processing batches of translations.
+        Handles common setup and error handling logic.
+
+        Args:
+            phrases: List of phrases to translate
+            indices: Indices of phrases in the translations list
+            translations: Full translations list
+            model: LLM model to use
+            base_language: Source language
+            dst_language: Target language
+            prompt: Translation prompt
+            context: Optional context for translation
+            method_name: Name of the translation method being used (for logging)
+
+        Returns:
+            Tuple of (driver, batch_prompt) or (None, "") if setup failed
+        """
+        if DEBUG:
+            print(
+                f"Translating batch of {len(phrases)} phrases using {method_name} method..."
+            )
+
+        # Get the LLM driver
+        driver, batch_prompt = await self.setup_batch_translation(
+            phrases=phrases,
+            translations=translations,
+            indices=indices,
+            model=model,
+            base_language=base_language,
+            dst_language=dst_language,
+            prompt=prompt,
+            context=context,
+        )
+        if not driver:
+            return None, ""
+
+        # Load the output format instructions
+        if method_name == "standard":
+            try:
+                output_format = await self.prompt_manager.load_prompt("output_format")
+            except Exception as e:
+                if DEBUG:
+                    print(f"Warning: Could not load output format instructions: {e}")
+                output_format = ""
+
+            # Add output format instructions if available
+            if output_format:
+                batch_prompt += f"\n\n{output_format}"
+
+        return driver, batch_prompt
+
+    def handle_response_format(
+        self,
+        response: Union[str, dict, list],
+        phrases: list[str],
+        indices: list[int],
+        translations: list[dict[str, str]],
+        progress: dict[str, str],
+        dst_language: str,
+    ) -> int:
+        """
+        Handle translation response format and update translations.
+        Expects either a list of translations or a dict with a translations array.
+
+        Args:
+            response: The response from the translation service
+            phrases: List of original phrases
+            indices: Indices of phrases in the translations list
+            translations: Full translations list to update
+            progress: Progress dictionary to update
+            dst_language: Target language
+
+        Returns:
+            Number of translations updated
+        """
+        if isinstance(response, str):
+            # First extract JSON from code blocks if present
+            json_str = self.extract_json_from_response(response)
+            # Then try to parse it as JSON
+            try:
+                parsed_response = json.loads(json_str)
+                return self.handle_response_format(
+                    parsed_response,
+                    phrases,
+                    indices,
+                    translations,
+                    progress,
+                    dst_language,
+                )
+            except json.JSONDecodeError:
+                if DEBUG:
+                    print("Invalid JSON response received")
+                return 0
+
+        # Handle list of translations
+        if isinstance(response, list):
+            return self.update_translations_from_list(
+                translations_list=response,
+                phrases=phrases,
+                indices=indices,
+                translations=translations,
+                progress=progress,
+                dst_language=dst_language,
+            )
+
+        # Handle dict with translations array
+        if (
+            isinstance(response, dict)
+            and "translations" in response
+            and isinstance(response["translations"], list)
+        ):
+            return self.update_translations_from_list(
+                translations_list=response["translations"],
+                phrases=phrases,
+                indices=indices,
+                translations=translations,
+                progress=progress,
+                dst_language=dst_language,
+            )
+
+        if DEBUG:
+            print(f"Unexpected response format: {response}")
+        return 0
+
+    async def translate_standard(
         self,
         phrases: list[str],
         indices: list[int],
@@ -241,105 +382,172 @@ class TranslationTool:
         delay_seconds: float = 1.0,
         max_retries: int = 3,
     ) -> int:
-        """
-        Process a batch of phrases for translation
-
-        Args:
-            phrases: List of phrases to translate
-            indices: Indices of phrases in the translations list
-            translations: Full translations data structure
-            progress: Progress dictionary
-            model: Model to use
-            base_language: Source language code
-            dst_language: Destination language code
-            prompt: Optional custom prompt text
-            context: Optional context text
-            delay_seconds: Delay between LLM calls
-            max_retries: Maximum retries for failed calls
-
-        Returns:
-            Number of phrases successfully translated
-        """
-        if not phrases:
+        """Process a batch of phrases for translation"""
+        # Get common setup
+        driver, batch_prompt = await self.setup_translation(
+            phrases=phrases,
+            indices=indices,
+            translations=translations,
+            model=model,
+            base_language=base_language,
+            dst_language=dst_language,
+            prompt=prompt,
+            context=context,
+            method_name="standard",
+        )
+        if not driver:
             return 0
 
-        print(f"Translating batch of {len(phrases)} phrases...")
-
-        # Create the batch prompt with translations data for context
-        prompt_text = await self.create_batch_prompt(
-            phrases,
-            translations,
-            indices,
-            base_language,
-            dst_language,
-            prompt,
-            context,
-        )
-
-        update_count = 0
+        # Get the translation response
         try:
-            # Initialize the LLM driver with the specified model
-            driver = get_driver(model)
-
-            # Send the batch to the LLM using the async translate method
             response = await driver.translate_async(
-                prompt_text, delay_seconds, max_retries
+                batch_prompt, delay_seconds=delay_seconds, max_retries=max_retries
             )
+        except Exception as e:
+            if DEBUG:
+                print(f"Error processing batch: {e}")
+                print("Skipping this batch...")
+            return 0
 
-            try:
-                # Parse the response
-                batch_translations = self.parse_batch_response(response, phrases)
+        # Parse and handle the response using the same method as structured and function calls
+        try:
+            return self.handle_response_format(
+                response,
+                phrases,
+                indices,
+                translations,
+                progress,
+                dst_language,
+            )
+        except Exception as e:
+            if DEBUG:
+                print(f"Error processing batch: {e}")
+            print("Skipping this batch...")
+            return 0
 
-                # Update translations and progress
-                update_count = self.update_translations_from_batch(
-                    batch_translations,
-                    phrases,
-                    indices,
-                    translations,
-                    progress,
-                    dst_language,
+    async def translate_structured(
+        self,
+        phrases: list[str],
+        indices: list[int],
+        translations: list[dict[str, str]],
+        progress: dict[str, str],
+        model: str,
+        base_language: str,
+        dst_language: str,
+        prompt: str,
+        context: Optional[str] = None,
+        delay_seconds: float = 1.0,
+        max_retries: int = 3,
+    ) -> int:
+        """Process a batch of phrases using structured output"""
+        # Get common setup
+        driver, batch_prompt = await self.setup_translation(
+            phrases=phrases,
+            indices=indices,
+            translations=translations,
+            model=model,
+            base_language=base_language,
+            dst_language=dst_language,
+            prompt=prompt,
+            context=context,
+            method_name="structured",
+        )
+        if not driver:
+            return 0
+
+        # Get the translation response using structured output
+        try:
+            if DEBUG:
+                print(f"DEBUG: Calling translate_structured_async for model {model}")
+            response = await driver.translate_structured_async(
+                batch_prompt,
+                delay_seconds=delay_seconds,
+                max_retries=max_retries,
+            )
+            if DEBUG:
+                print(
+                    f"DEBUG: Response type: {type(response)}, value: {repr(response)[:200]}"
                 )
 
-            except InvalidJSONException as e:
-                print(f"Invalid JSON detected: {e.message}")
-                print("Attempting to fix invalid JSON using LLM...")
+            return self.handle_response_format(
+                response,
+                phrases,
+                indices,
+                translations,
+                progress,
+                dst_language,
+            )
+        except Exception as e:
+            if DEBUG:
+                print(f"Error from structured output call: {e}")
+                print(f"Failed to process batch using structured output: {e}")
+            return 0
 
-                # Try to fix the JSON
-                fixed_json_str = await self.fix_invalid_json(e.json_str, driver)
+    async def translate_function(
+        self,
+        phrases: list[str],
+        indices: list[int],
+        translations: list[dict[str, str]],
+        progress: dict[str, str],
+        model: str,
+        base_language: str,
+        dst_language: str,
+        prompt: str,
+        context: Optional[str] = None,
+        delay_seconds: float = 1.0,
+        max_retries: int = 3,
+    ) -> int:
+        """Process a batch of phrases using function calling"""
+        # Get common setup
+        driver, batch_prompt = await self.setup_translation(
+            phrases=phrases,
+            indices=indices,
+            translations=translations,
+            model=model,
+            base_language=base_language,
+            dst_language=dst_language,
+            prompt=prompt,
+            context=context,
+            method_name="function",
+        )
+        if not driver:
+            return 0
 
-                # Try parsing again with the fixed JSON
+        # Get the translation response using function calling
+        try:
+            response = await driver.translate_function_async(
+                prompt=batch_prompt,
+                delay_seconds=delay_seconds,
+                max_retries=max_retries,
+            )
+
+            # Handle the response
+            if isinstance(response, dict) and "arguments" in response:
                 try:
-                    # Create a new response with the fixed JSON
-                    fixed_response = response.replace(e.json_str, fixed_json_str)
+                    # The arguments might be a JSON string that needs parsing
+                    if isinstance(response["arguments"], str):
+                        args = json.loads(response["arguments"])
+                    else:
+                        args = response["arguments"]
 
-                    # Parse the fixed response
-                    batch_translations = self.parse_batch_response(
-                        fixed_response, phrases
-                    )
-
-                    # Update translations and progress
-                    update_count = self.update_translations_from_batch(
-                        batch_translations,
+                    return self.handle_response_format(
+                        args,
                         phrases,
                         indices,
                         translations,
                         progress,
                         dst_language,
                     )
-
-                    if update_count > 0:
-                        print("Successfully fixed and parsed JSON!")
-                    else:
-                        print(
-                            "Fixed JSON parsing succeeded but no translations were found."
-                        )
-
-                except Exception as e2:
-                    print(f"Failed to process fixed JSON: {e2}")
-                    print("Skipping this batch due to unrecoverable JSON error.")
-
+                except Exception as e:
+                    if DEBUG:
+                        print(f"Unexpected function arguments format: {e}")
+                    return 0
+            else:
+                if DEBUG:
+                    print(f"Unexpected response format: {response}")
+                return 0
         except Exception as e:
-            print(f"Error translating batch: {e}")
-            print("Failed to translate batch. Skipping these phrases.")
-
-        return update_count
+            if DEBUG:
+                print(f"Error from function call: {e}")
+                print("Function call translation failed")
+            return 0

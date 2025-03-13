@@ -104,7 +104,7 @@ Each project should have a `config.json` file with the following structure:
 Run the translator with the following command:
 
 ```bash
-python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-max-tokens MAX_TOKENS] [--prompt PROMPT_FILE] [--context CONTEXT] [--context-file CONTEXT_FILE] [--list-models]
+python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-max-tokens MAX_TOKENS] [--prompt PROMPT_FILE] [--context CONTEXT] [--context-file CONTEXT_FILE] [--method METHOD] [--list-models]
 ```
 
 ### Arguments
@@ -119,6 +119,7 @@ python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r R
 -   `--prompt`: Path to a custom translation prompt file
 -   `--context`: Translation context as a text string to guide the translation style and tone
 -   `--context-file`: Path to a file containing translation context
+-   `--method`: Translation method to use: auto (automatic selection based on model capabilities), standard (prompt-based), structured (JSON output), or function (function calling) (default: "auto")
 -   `--list-models`: List available models and exit
 
 ### Examples
@@ -135,6 +136,15 @@ python translate.py -p myproject -l de -b 30 --batch-max-tokens 16384
 
 # Use a custom prompt file
 python translate.py -p myproject -l de --prompt custom_prompts/my_prompt.txt
+
+# Use structured output method (JSON schema)
+python translate.py -p myproject -l es --method structured
+
+# Use function calling method
+python translate.py -p myproject -l it --method function
+
+# Use automatic method selection (recommended)
+python translate.py -p myproject -l fr --method auto
 
 # List available models
 python translate.py --list-models
@@ -303,5 +313,5 @@ pytest tests/test_translation_project.py -v
 pytest tests/test_translation_project.py::TestTranslationProject -v
 
 # Run a specific test method
-pytest tests/test_translation_project.py::TestTranslationProject::test_parse_batch_response_json_array -v
+pytest tests/test_translation_project.py::TestTranslationProject::test_translate -v
 ```

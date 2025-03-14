@@ -298,25 +298,29 @@ This will check:
 
 ## Running Tests
 
-The project includes a comprehensive test suite to ensure functionality works as expected. To run the tests:
+The project includes a comprehensive test suite to ensure functionality works as expected. To run the tests using pytest:
 
 ```bash
-python -m tests.run_tests
+# Run all tests (excluding integration tests)
+pytest
+
+# Run tests with verbose output
+pytest -v
+
+# Include integration tests (will make real API calls)
+pytest --run-integration
 ```
 
-Or you can run the test script directly:
-
-```bash
-./tests/run_tests.py
-```
+Integration tests are excluded from normal test runs by default to avoid unnecessary API usage and costs. This is configured in the `pytest.ini` file using markers.
 
 The test suite includes:
 
 1. **TranslationProject Tests**: Tests for the main TranslationProject class functionality
-2. **Batch Response Parsing Tests**: Tests for JSON parsing of LLM responses
-3. **Prompt Handling Tests**: Tests for loading and handling prompt templates
+2. **Translation Tool Tests**: Tests for the translation tool and API interaction
+3. **File Operation Tests**: Tests for CSV and JSON file handling
+4. **Prompt Handling Tests**: Tests for loading and handling prompt templates
 
-If you want to run a specific test file or test, you can use pytest directly:
+If you want to run a specific test file or test, you can use pytest with more specific targeting:
 
 ```bash
 # Run a specific test file
@@ -327,4 +331,45 @@ pytest tests/test_translation_project.py::TestTranslationProject -v
 
 # Run a specific test method
 pytest tests/test_translation_project.py::TestTranslationProject::test_translate -v
+
+# Run tests matching a specific keyword
+pytest -k "translate" -v
 ```
+
+### Integration Tests
+
+The project also includes integration tests that make real API calls to test the translator against actual LLM services. These tests are **excluded from normal test runs** to avoid unnecessary API usage and costs.
+
+#### Running Integration Tests
+
+```bash
+# Use the provided script (recommended)
+./tests/run_integration_tests.sh
+
+# Run all integration tests directly with pytest
+pytest -k "integration" -v
+
+# Run specific integration tests file
+pytest -k "integration" tests/test_integration_translation_methods.py -v
+
+# Run a specific integration test
+pytest -k "integration" tests/test_integration_translation_methods.py::TestIntegrationTranslationMethods::test_standard_method -v
+```
+
+#### What Integration Tests Verify
+
+The integration tests verify that all three translation methods work with real LLM APIs:
+
+1. **Standard Method**: Uses basic prompt formatting and parses the JSON response
+2. **Structured Method**: Uses the structured output API for more reliable JSON responses
+3. **Function Method**: Uses function calling to guide the response format
+
+The tests also include a comparison test that runs all three methods on the same inputs and displays a side-by-side comparison of the results.
+
+#### Requirements for Integration Tests
+
+To run integration tests, you need:
+
+1. An active Gemini API key in your `.env` file
+2. An active OpenRouter API key in your `.env` file (for specific models)
+3. Internet connectivity to make API calls

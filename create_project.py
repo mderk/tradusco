@@ -18,6 +18,14 @@ async def create_project():
     parser.add_argument(
         "--key", "-k", required=True, help="Column name containing translation keys"
     )
+    parser.add_argument(
+        "--ignore-columns",
+        "-i",
+        help="Column names to ignore",
+        default="context",
+        type=lambda x: x.split(","),
+        required=False,
+    )
 
     # Parse arguments
     args = parser.parse_args()
@@ -26,6 +34,7 @@ async def create_project():
     csv_path = args.csv
     base_lang = args.base_lang
     key_column = args.key
+    ignore_columns = args.ignore_columns
 
     # Define project directories
     projects_dir = Path(os.getcwd()) / "projects"
@@ -68,7 +77,9 @@ async def create_project():
             languages = [
                 col
                 for col in records[0].keys()
-                if col != key_column or (key_column == base_lang and col == base_lang)
+                if col != key_column
+                and (col not in ignore_columns if ignore_columns else True)
+                or (key_column == base_lang and col == base_lang)
             ]
 
             # Validate base language exists in CSV

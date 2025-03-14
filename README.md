@@ -1,6 +1,6 @@
 # Tradusco
 
-A Python utility for translating phrases using LLMs via Langchain.
+A Python utility for translating texts using LLMs.
 
 ## Installation
 
@@ -27,35 +27,42 @@ You can create a new translation project using the `create_project.py` script. T
 ### Usage
 
 ```bash
-python create_project.py --name PROJECT_NAME --csv CSV_PATH --base-lang BASE_LANGUAGE --key KEY_COLUMN
+python create_project.py --path PROJECT_PATH --csv CSV_PATH --base-lang BASE_LANGUAGE --key KEY_COLUMN
 ```
 
 Or using the short options:
 
 ```bash
-python create_project.py -n PROJECT_NAME -c CSV_PATH -b BASE_LANGUAGE -k KEY_COLUMN
+python create_project.py -p PROJECT_PATH -c CSV_PATH -b BASE_LANGUAGE -k KEY_COLUMN
 ```
 
 ### Arguments
 
--   `--name`, `-n` (required): Name of the project to create
+-   `--path`, `-p` (required): Path where the project will be created (the directory name will be used as the project name)
 -   `--csv`, `-c` (required): Path to the CSV file containing translations
 -   `--base-lang`, `-b` (required): Base language code (e.g., "en" for English)
 -   `--key`, `-k` (required): Column name containing translation keys
+-   `--ignore-columns`, `-i` (optional): Comma-separated list of column names to ignore (default: "context")
 
 ### Examples
 
 ```bash
 # Create a new project with all required parameters
-python create_project.py --name myproject --csv data/translations.csv --base-lang en --key id
+python create_project.py --path projects/myproject --csv data/translations.csv --base-lang en --key id
 
 # Same using short options
-python create_project.py -n myproject -c data/translations.csv -b en -k id
+python create_project.py -p projects/myproject -c data/translations.csv -b en -k id
+
+# Create project in a custom location
+python create_project.py -p /path/to/custom/project -c data/translations.csv -b en -k id
+
+# Ignore specific columns
+python create_project.py -p projects/myproject -c data/translations.csv -b en -k id -i context,notes,comments
 ```
 
 ### What It Does
 
-1. Creates a new project directory under `projects/<project_name>`
+1. Creates the project directory at the specified path
 2. Reads and validates the CSV file
 3. Creates a `config.json` file with project settings
 4. Creates subdirectories for each language found in the CSV
@@ -104,12 +111,12 @@ Each project should have a `config.json` file with the following structure:
 Run the translator with the following command:
 
 ```bash
-python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-max-tokens MAX_TOKENS] [--prompt PROMPT_FILE] [--context CONTEXT] [--context-file CONTEXT_FILE] [--method METHOD] [--list-models]
+python translate.py -p PROJECT_PATH -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-max-tokens MAX_TOKENS] [--prompt PROMPT_FILE] [--context CONTEXT] [--context-file CONTEXT_FILE] [--method METHOD] [--list-models]
 ```
 
 ### Arguments
 
--   `-p, --project`: Name of the project folder in the `projects` directory
+-   `-p, --project`: Path to the project directory (either absolute or relative path)
 -   `-l, --lang`: Destination language code (must be defined in the project's config.json)
 -   `-m, --model`: Model to use for translation (default: "gemini")
 -   `-d, --delay`: Delay between API calls in seconds (default: 1.0)
@@ -125,26 +132,32 @@ python translate.py -p PROJECT_NAME -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r R
 ### Examples
 
 ```bash
-# Translate project "myproject" to Russian
-python translate.py -p myproject -l ru
+# Translate project in the "projects/myproject" directory to Russian
+python translate.py -p projects/myproject -l ru
+
+# Using an absolute path
+python translate.py -p /path/to/my/project -l fr -m openai
+
+# Using a relative path
+python translate.py -p ./custom_projects/myproject -l de -b 30
 
 # Use a specific model with custom delay and batch size
-python translate.py -p myproject -l fr -m openai -d 2.0 -b 20
+python translate.py -p projects/myproject -l fr -m openai -d 2.0 -b 20
 
 # Set both batch size and maximum batch tokens
-python translate.py -p myproject -l de -b 30 --batch-max-tokens 16384
+python translate.py -p projects/myproject -l de -b 30 --batch-max-tokens 16384
 
 # Use a custom prompt file
-python translate.py -p myproject -l de --prompt custom_prompts/my_prompt.txt
+python translate.py -p projects/myproject -l de --prompt custom_prompts/my_prompt.txt
 
 # Use structured output method (JSON schema)
-python translate.py -p myproject -l es --method structured
+python translate.py -p projects/myproject -l es --method structured
 
 # Use function calling method
-python translate.py -p myproject -l it --method function
+python translate.py -p projects/myproject -l it --method function
 
 # Use automatic method selection (recommended)
-python translate.py -p myproject -l fr --method auto
+python translate.py -p projects/myproject -l fr --method auto
 
 # List available models
 python translate.py --list-models

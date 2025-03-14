@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import asyncio
+from pathlib import Path
 
 from lib.TranslationProject import TranslationProject
 
@@ -26,7 +27,7 @@ async def async_main():
     )
 
     # Project and language arguments
-    parser.add_argument("-p", "--project", help="Project name")
+    parser.add_argument("-p", "--project", help="Path to the project directory")
     parser.add_argument("-l", "--lang", help="Destination language code")
     parser.add_argument(
         "-m",
@@ -103,13 +104,28 @@ async def async_main():
                 f"Invalid model: {args.model}. Use --list-models to see available models."
             )
 
+        # Create a Path object from the project path
+        project_path = Path(args.project).resolve()
+
+        # Get the project name from the directory name
+        project_name = project_path.name
+
+        # Check if the project directory exists
+        if not project_path.exists() or not project_path.is_dir():
+            parser.error(f"Project directory does not exist: {project_path}")
+
+        # Check if config.json exists in the project directory
+        if not (project_path / "config.json").exists():
+            parser.error(f"config.json not found in project directory: {project_path}")
+
         # Create and initialize the translator asynchronously
         translator = await TranslationProject.create(
-            args.project,
-            args.lang,
+            project_name=project_name,
+            dst_language=args.lang,
             prompt_file=args.prompt,
             context=args.context,
             context_file=args.context_file,
+            project_path=project_path,
         )
 
         await translator.translate(

@@ -33,27 +33,19 @@ class TestTranslationProject:
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(mock_config.__dict__, f, ensure_ascii=False, indent=2)
 
-        # Patch the create method to use our test directory
-        with patch("lib.TranslationProject.Path") as mock_path:
-            # Make Path return our test directory when called with the project path
-            mock_path.return_value = project_dir
-            # But for all other calls, use the real Path
-            mock_path.side_effect = lambda p: (
-                project_dir if p == f"projects/{mock_config.name}" else Path(p)
-            )
+        # Create a translation project using the project_path parameter
+        project = await TranslationProject.create(
+            project_name=mock_config.name, dst_language="es", project_path=project_dir
+        )
 
-            # Create a translation project
-            project = await TranslationProject.create(
-                project_name=mock_config.name, dst_language="es"
-            )
+        # Verify project attributes
+        assert project.project_name == mock_config.name
+        assert project.dst_language == "es"
+        assert project.base_language == mock_config.baseLanguage
+        assert project.project_path == project_dir
 
-            # Verify project attributes
-            assert project.project_name == mock_config.name
-            assert project.dst_language == "es"
-            assert project.base_language == mock_config.baseLanguage
-
-            # Verify project directories
-            assert os.path.exists(project.progress_dir)
+        # Verify project directories
+        assert os.path.exists(project.progress_dir)
 
     @pytest.mark.asyncio
     async def test_get_available_models(self):
@@ -92,7 +84,7 @@ class TestTranslationProject:
         # Directly create a TranslationProject instance without using create
         project = TranslationProject(
             project_name=mock_config.name,
-            project_dir=project_dir,
+            project_path=project_dir,
             config=mock_config,
             dst_language="es",
             context_file=str(context_file),
@@ -132,7 +124,7 @@ class TestTranslationProject:
         # Create a test project
         project = TranslationProject(
             project_name="test_project",
-            project_dir=project_dir,
+            project_path=project_dir,
             config=config,
             dst_language="es",
             prompt="Translate from {base_language} to {dst_language}",

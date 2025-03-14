@@ -12,7 +12,12 @@ from pathlib import Path
 async def create_project():
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Create a new translation project")
-    parser.add_argument("--name", "-n", required=True, help="Project name")
+    parser.add_argument(
+        "--path",
+        "-p",
+        required=True,
+        help="Project path (directory where project will be created)",
+    )
     parser.add_argument("--csv", "-c", required=True, help="Path to CSV file")
     parser.add_argument("--base-lang", "-b", required=True, help="Base language code")
     parser.add_argument(
@@ -30,23 +35,15 @@ async def create_project():
     # Parse arguments
     args = parser.parse_args()
 
-    project_name = args.name
+    project_path = args.path
     csv_path = args.csv
     base_lang = args.base_lang
     key_column = args.key
     ignore_columns = args.ignore_columns
 
-    # Define project directories
-    projects_dir = Path(os.getcwd()) / "projects"
-    project_dir = projects_dir / project_name
-
-    # Ensure projects directory exists
-    os.makedirs(projects_dir, exist_ok=True)
-
-    # Check if project already exists
-    if project_dir.exists():
-        print(f'Project "{project_name}" already exists', file=sys.stderr)
-        sys.exit(1)
+    # Define project directory
+    project_dir = Path(project_path).resolve()
+    project_name = project_dir.name
 
     try:
         # Resolve the CSV path relative to current working directory
@@ -91,8 +88,11 @@ async def create_project():
                 print(f'Available languages: {", ".join(languages)}', file=sys.stderr)
                 sys.exit(1)
 
-            # Create project directory
-            os.makedirs(project_dir)
+            # Create project directory if it doesn't exist
+            os.makedirs(project_dir, exist_ok=True)
+
+            project_exists = os.path.exists(project_dir / "config.json")
+            action_word = "updated" if project_exists else "created"
 
             # Create config file
             config = {
@@ -110,12 +110,14 @@ async def create_project():
 
             # Create language directories
             for lang in languages:
-                os.makedirs(project_dir / lang)
+                os.makedirs(project_dir / lang, exist_ok=True)
 
             # Copy CSV file to project directory
             shutil.copy2(resolved_csv_path, project_dir / os.path.basename(csv_path))
 
-            print(f'Project "{project_name}" created successfully')
+            print(
+                f'Project "{project_name}" {action_word} successfully at {project_dir}'
+            )
             print(f'Languages detected: {", ".join(languages)}')
             print(f"Base language: {base_lang}")
             print(f'Using "{key_column}" as translation key column')
@@ -124,7 +126,7 @@ async def create_project():
         print(f"CSV file not found: {resolved_csv_path}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"Error creating project: {str(e)}", file=sys.stderr)
+        print(f"Error creating/updating project: {str(e)}", file=sys.stderr)
         sys.exit(1)
 
 

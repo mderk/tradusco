@@ -2,7 +2,7 @@ import json
 import os
 import aiofiles
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from lib.PromptManager import PromptManager
 from lib.TranslationTool import TranslationTool
@@ -26,7 +26,7 @@ class TranslationProject:
 
     Attributes:
         project_name (str): The name of the project.
-        project_dir (Path): The directory of the project.
+        project_path (Path): The directory of the project.
         config (Config): The configuration of the project.
         dst_language (str): The destination language of the project.
         prompt_file (Optional[str]): The path to the prompt file.
@@ -42,7 +42,7 @@ class TranslationProject:
     """
 
     project_name: str
-    project_dir: Path
+    project_path: Path
     config: Config
     dst_language: str
     prompt: Optional[str]
@@ -60,7 +60,7 @@ class TranslationProject:
     def __init__(
         self,
         project_name: str,
-        project_dir: Path,
+        project_path: Path,
         config: Config,
         dst_language: str,
         prompt: Optional[str] = None,
@@ -69,7 +69,7 @@ class TranslationProject:
         context_file: Optional[str] = None,
     ):
         self.project_name = project_name
-        self.project_dir = project_dir
+        self.project_path = project_path
         self.config = config
         self.dst_language = dst_language
         self.prompt = prompt
@@ -78,7 +78,7 @@ class TranslationProject:
         self.context_file = context_file
 
         # Initialize prompt manager
-        self.prompt_manager = PromptManager(project_dir)
+        self.prompt_manager = PromptManager(project_path)
 
         # Initialize translation tool
         self.translation_tool = TranslationTool(self.prompt_manager)
@@ -87,8 +87,8 @@ class TranslationProject:
             raise ValueError(f"Language {dst_language} not found in project config")
 
         self.base_language = config.baseLanguage
-        self.source_file = project_dir / config.sourceFile
-        self.progress_dir = project_dir / dst_language
+        self.source_file = project_path / config.sourceFile
+        self.progress_dir = project_path / dst_language
         self.progress_file = self.progress_dir / "progress.json"
 
         # Create language directory if it doesn't exist
@@ -107,9 +107,21 @@ class TranslationProject:
         prompt_file: str | None = None,
         context: str | None = None,
         context_file: str | None = None,
+        project_path: Union[str, Path] | None = None,
     ):
-        project_dir = Path(f"projects/{project_name}")
-        config_path = project_dir / "config.json"
+        # If project_path is provided, use it directly
+        if project_path is not None:
+            project_path = (
+                Path(project_path) if isinstance(project_path, str) else project_path
+            )
+            # Get project name from the directory if not explicitly provided
+            if not project_name:
+                project_name = project_path.name
+        else:
+            # Backward compatibility: construct path from project name
+            project_path = Path(f"projects/{project_name}")
+
+        config_path = project_path / "config.json"
 
         # Load config
         config = await load_config(config_path)
@@ -117,7 +129,7 @@ class TranslationProject:
         # Create a fully initialized instance
         return cls(
             project_name=project_name,
-            project_dir=project_dir,
+            project_path=project_path,
             config=config,
             dst_language=dst_language,
             prompt=None,  # No direct prompt is provided via create
@@ -156,7 +168,7 @@ class TranslationProject:
 
     async def _load_context(self) -> str:
         """Load translation context from various sources"""
-        context_parts = await load_context(self.project_dir, self.context_file)
+        context_parts = await load_context(self.project_path, self.context_file)
 
         # 3. Add direct context string if provided
         if self.context:

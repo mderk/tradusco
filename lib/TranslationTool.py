@@ -8,15 +8,6 @@ from .PromptManager import PromptManager
 DEBUG = os.environ.get("TRADUSCO_DEBUG")
 
 
-class InvalidJSONException(Exception):
-    """Exception raised when invalid JSON is encountered during parsing."""
-
-    def __init__(self, message: str, json_str: str):
-        self.message = message
-        self.json_str = json_str
-        super().__init__(f"{message}: {json_str[:100]}...")
-
-
 class TranslationTool:
     """
     A class for handling the translation functionality.
@@ -24,8 +15,7 @@ class TranslationTool:
     This class is responsible for:
     1. Creating translation prompts
     2. Parsing translation responses
-    3. Fixing invalid JSON responses
-    4. Processing batches of translations
+    3. Processing translations
     """
 
     def __init__(self, prompt_manager: PromptManager):
@@ -37,12 +27,7 @@ class TranslationTool:
         """
         self.prompt_manager = prompt_manager
 
-    @staticmethod
-    def get_available_models() -> list[str]:
-        """Get a list of available translation models"""
-        return get_available_models()
-
-    async def create_batch_prompt(
+    async def create_prompt(
         self,
         phrases: list[str],
         translations: list[dict[str, str]],
@@ -52,7 +37,7 @@ class TranslationTool:
         prompt: str,
         context: Optional[str] = None,
     ) -> str:
-        """Create a prompt for batch translation using JSON format"""
+        """Create a prompt for translation using JSON format"""
         # Create a list of phrases and a separate context mapping
         phrases_to_translate = []
         phrase_contexts = {}
@@ -90,84 +75,6 @@ class TranslationTool:
             context=context_section,
             phrase_contexts=phrase_contexts_section,
         )
-
-    async def fix_invalid_json(self, invalid_json: str, driver: BaseDriver) -> str:
-        """
-        Attempt to fix invalid JSON by sending it back to the LLM.
-
-        Args:
-            invalid_json: The invalid JSON string
-            driver: The LLM driver to use for fixing
-
-        Returns:
-            Corrected JSON string or original string if correction failed
-        """
-        # Load the JSON fix prompt template
-        prompt_template = await self.prompt_manager.load_prompt("json_fix")
-
-        # Fill in the invalid JSON
-        prompt = prompt_template.replace("{invalid_json}", invalid_json)
-
-        try:
-            # Send the prompt to the LLM
-            corrected_json = await driver.translate_async(
-                prompt, delay_seconds=1.0, max_retries=2
-            )
-
-            # Extract JSON from the response
-            return self.extract_json_from_response(corrected_json)
-
-        except Exception as e:
-            if DEBUG:
-                print(f"Error fixing JSON: {e}")
-            return invalid_json  # Return original if fixing failed
-
-    async def setup_batch_translation(
-        self,
-        phrases: list[str],
-        translations: list[dict[str, str]],
-        indices: list[int],
-        model: str,
-        base_language: str,
-        dst_language: str,
-        prompt: str,
-        context: Optional[str] = None,
-    ) -> tuple[Optional[BaseDriver], str]:
-        """
-        Set up common components for batch translation process.
-
-        Args:
-            phrases: List of phrases to translate
-            translations: Full translations list
-            indices: Indices of phrases in the translations list
-            model: LLM model to use
-            base_language: Source language
-            dst_language: Target language
-            prompt: Translation prompt
-            context: Optional context for translation
-
-        Returns:
-            Tuple of (driver, batch_prompt) or (None, "") if driver initialization failed
-        """
-        # Get the LLM driver
-        driver = get_driver(model)
-        if not driver:
-            if DEBUG:
-                print(f"Warning: Could not get driver for model {model}")
-            return None, ""
-
-        # Create the batch prompt
-        batch_prompt = await self.create_batch_prompt(
-            phrases=phrases,
-            translations=translations,
-            indices=indices,
-            base_language=base_language,
-            dst_language=dst_language,
-            prompt=prompt,
-            context=context,
-        )
-
-        return driver, batch_prompt
 
     def extract_json_from_response(self, response: str) -> str:
         """
@@ -231,7 +138,7 @@ class TranslationTool:
 
         return update_count
 
-    async def setup_translation(
+    async def setup(
         self,
         phrases: list[str],
         indices: list[int],
@@ -267,18 +174,22 @@ class TranslationTool:
             )
 
         # Get the LLM driver
-        driver, batch_prompt = await self.setup_batch_translation(
+        driver = get_driver(model)
+        if not driver:
+            if DEBUG:
+                print(f"Warning: Could not get driver for model {model}")
+            return None, ""
+
+        # Create the batch prompt
+        batch_prompt = await self.create_prompt(
             phrases=phrases,
             translations=translations,
             indices=indices,
-            model=model,
             base_language=base_language,
             dst_language=dst_language,
             prompt=prompt,
             context=context,
         )
-        if not driver:
-            return None, ""
 
         # Load the output format instructions
         if method_name == "standard":
@@ -384,7 +295,7 @@ class TranslationTool:
     ) -> int:
         """Process a batch of phrases for translation"""
         # Get common setup
-        driver, batch_prompt = await self.setup_translation(
+        driver, batch_prompt = await self.setup(
             phrases=phrases,
             indices=indices,
             translations=translations,
@@ -441,7 +352,7 @@ class TranslationTool:
     ) -> int:
         """Process a batch of phrases using structured output"""
         # Get common setup
-        driver, batch_prompt = await self.setup_translation(
+        driver, batch_prompt = await self.setup(
             phrases=phrases,
             indices=indices,
             translations=translations,
@@ -499,7 +410,7 @@ class TranslationTool:
     ) -> int:
         """Process a batch of phrases using function calling"""
         # Get common setup
-        driver, batch_prompt = await self.setup_translation(
+        driver, batch_prompt = await self.setup(
             phrases=phrases,
             indices=indices,
             translations=translations,

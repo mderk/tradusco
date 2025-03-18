@@ -5,12 +5,70 @@ import json
 import asyncio
 from pathlib import Path
 from typing import Dict, List, Optional
+from unittest.mock import MagicMock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.TranslationTool import TranslationTool
 from lib.PromptManager import PromptManager
+from lib.storage.base import StorageAdapter
 from lib.llm import get_driver, get_available_models
+
+
+# Mock storage adapter for integration testing
+class IntegrationTestStorageAdapter(StorageAdapter):
+    def __init__(self):
+        self.context_file = None
+        self.prompt_file = None
+        self.prompts = {}
+        self.project_dir = Path(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+
+    def set_context_file(self, context_file):
+        self.context_file = context_file
+
+    def set_prompt_file(self, prompt_file):
+        self.prompt_file = prompt_file
+
+    async def load_config(self, project_id):
+        return MagicMock()
+
+    async def load_progress(self, project_id, language):
+        return {}
+
+    async def save_progress(self, project_id, language, progress):
+        pass
+
+    async def load_translations(self, project_id):
+        return []
+
+    async def save_translations(self, project_id, translations):
+        pass
+
+    async def load_context(self, project_id):
+        return []
+
+    async def load_prompt(self, project_id, prompt_type):
+        # For integration tests, we still want to load real prompts from the file system
+        prompts_dir = self.project_dir / "prompts"
+        prompt_paths = [
+            prompts_dir / f"{prompt_type}.txt",
+            prompts_dir / prompt_type / "prompt.txt",
+        ]
+
+        for path in prompt_paths:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    if content:
+                        return content
+
+        # Return custom prompt if set
+        if prompt_type in self.prompts:
+            return self.prompts[prompt_type]
+
+        return ""
 
 
 # Mark these tests as integration tests so they can be skipped by default
@@ -22,10 +80,14 @@ class TestIntegrationTranslationMethods:
     """Integration tests for different translation methods using appropriate models for each method."""
 
     @pytest.fixture
-    def prompt_manager(self):
+    def mock_storage(self):
+        """Create a mock storage adapter for testing."""
+        return IntegrationTestStorageAdapter()
+
+    @pytest.fixture
+    def prompt_manager(self, mock_storage):
         """Create a real PromptManager instance for testing."""
-        project_dir = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return PromptManager(project_dir)
+        return PromptManager(mock_storage, "test_project")
 
     @pytest.fixture
     def translation_tool(self, prompt_manager):
@@ -35,252 +97,196 @@ class TestIntegrationTranslationMethods:
     @pytest.fixture
     def test_data(self):
         """Create test data for translation tests."""
-        phrases = ["Hello", "Thank you", "How are you?"]
-        translations = [
-            {"key": "greeting", "en": "Hello", "context": "Casual greeting"},
-            {"key": "thanks", "en": "Thank you", "context": "Expression of gratitude"},
-            {
-                "key": "inquiry",
-                "en": "How are you?",
-                "context": "Asking about wellbeing",
-            },
-        ]
-        indices = [0, 1, 2]
-        progress: Dict[str, str] = {}
-
         return {
-            "phrases": phrases,
-            "translations": translations,
-            "indices": indices,
-            "progress": progress,
+            "phrases": [
+                "Hello world",
+                "Goodbye",
+                "Thank you",
+                "How are you?",
+                "What is your name?",
+            ],
+            "indices": [0, 1, 2, 3, 4],
+            "translations": [
+                {"en": "Hello world", "es": ""},
+                {"en": "Goodbye", "es": ""},
+                {"en": "Thank you", "es": ""},
+                {"en": "How are you?", "es": ""},
+                {"en": "What is your name?", "es": ""},
+            ],
+            "progress": {},
+            "base_language": "en",
+            "dst_language": "es",
         }
 
     @pytest.fixture
     def translation_params(self):
-        """Common parameters for translation tests."""
+        """Define parameters for translation tests."""
         return {
-            "model": "gemini",
-            "base_language": "en",
-            "dst_language": "es",
-            "context": "These are casual conversational phrases.",
+            # Select an appropriate model for each method based on capability
+            "standard_model": "gemini",  # or "gpt-3.5-turbo"
+            "structured_model": "gemini",  # or "gpt-3.5-turbo" or "claude-3-opus-20240229"
+            "function_model": "openrouter-gemini-2.0-flash-lite-preview-02-05",  # Use OpenRouter for function calling
             "delay_seconds": 1.0,
             "max_retries": 2,
+            "verbose": True,  # Set to true to see more detailed output
         }
 
     @pytest.mark.asyncio
-    async def test_load_prompt(self, translation_tool, prompt_manager):
-        """Test loading the translation prompt from the prompt manager."""
+    async def test_load_prompt(self, translation_tool, prompt_manager, mock_storage):
+        """Test that we can load a valid prompt for translation."""
+        # Set a specific test prompt
+        test_prompt = "You are translating from {base_language} to {dst_language}:\n{phrases_json}"
+        mock_storage.prompts["translation"] = test_prompt
+
+        # Load the prompt using the prompt manager
         prompt = await prompt_manager.load_prompt("translation")
-        assert isinstance(prompt, str)
-        assert len(prompt) > 0
-        assert "{base_language}" in prompt
-        assert "{dst_language}" in prompt
-        assert "{phrases_json}" in prompt
+        assert "base_language" in prompt
+        assert "dst_language" in prompt
+        assert "phrases_json" in prompt
 
     @pytest.mark.asyncio
     async def test_standard_method(
         self, translation_tool, test_data, translation_params
     ):
-        """Test translation using the standard method."""
-        # Prepare the translation prompt
-        prompt = await translation_tool.prompt_manager.load_prompt("translation")
+        """Test standard translation method using the standard model."""
+        # Skip test if the model is not available
+        model = translation_params["standard_model"]
+        if model not in get_available_models():
+            pytest.skip(f"Model {model} not available")
 
-        # Process a batch using the standard method
-        result = await translation_tool.translate_standard(
-            phrases=test_data["phrases"],
-            indices=test_data["indices"],
-            translations=test_data["translations"],
-            progress=test_data["progress"],
-            prompt=prompt,
-            **translation_params,
+        # Clone test data to avoid modifying the fixture
+        translations = [dict(item) for item in test_data["translations"]]
+        progress = dict(test_data["progress"])
+
+        # Run the translation
+        translation_count = await translation_tool.translate_standard(
+            test_data["phrases"],
+            test_data["indices"],
+            translations,
+            progress,
+            model,
+            test_data["base_language"],
+            test_data["dst_language"],
+            "Translate from {base_language} to {dst_language}: {phrases_json}",
+            None,
+            translation_params["delay_seconds"],
+            translation_params["max_retries"],
         )
 
-        # Validate the results
-        assert result > 0  # Some phrases should be translated
-        assert test_data["translations"][0]["es"] is not None
-        assert test_data["translations"][1]["es"] is not None
-        assert test_data["translations"][2]["es"] is not None
+        # Check that we got translations
+        assert translation_count > 0, "No translations were produced"
 
-        # Print the translations for debugging
-        print("\nStandard Method Translations:")
+        # Print translations if verbose
+        if translation_params["verbose"]:
+            print("\nTranslations from standard method:")
+            for i, translation in enumerate(translations):
+                print(f"{test_data['phrases'][i]} -> {translation['es']}")
+
+        # Verify translations
         for i, phrase in enumerate(test_data["phrases"]):
-            print(f"  {phrase} -> {test_data['translations'][i]['es']}")
+            assert translations[i]["es"], f"No translation for '{phrase}'"
+            assert progress[phrase], f"Translation not added to progress for '{phrase}'"
 
     @pytest.mark.asyncio
     async def test_structured_method(
         self, translation_tool, test_data, translation_params
     ):
-        """Test translation using the structured output method."""
+        """Test structured output translation method using the structured model."""
+        # Skip test if the model is not available
+        model = translation_params["structured_model"]
+        if model not in get_available_models():
+            pytest.skip(f"Model {model} not available")
 
-        prompt = await translation_tool.prompt_manager.load_prompt("translation")
+        # Check if the selected model supports structured output
+        driver = get_driver(model)
+        if not hasattr(driver, "translate_structured_async"):
+            pytest.skip(f"Model {model} does not support structured output")
 
-        structured_params = translation_params.copy()
-        structured_params["model"] = "gemini"
+        # Clone test data to avoid modifying the fixture
+        translations = [dict(item) for item in test_data["translations"]]
+        progress = dict(test_data["progress"])
 
-        try:
-            # Process a batch using the structured method
-            result = await translation_tool.translate_structured(
-                phrases=test_data["phrases"],
-                indices=test_data["indices"],
-                translations=test_data["translations"],
-                progress=test_data["progress"],
-                prompt=prompt,
-                **structured_params,
-            )
+        # Run the translation
+        translation_count = await translation_tool.translate_structured(
+            test_data["phrases"],
+            test_data["indices"],
+            translations,
+            progress,
+            model,
+            test_data["base_language"],
+            test_data["dst_language"],
+            "Translate from {base_language} to {dst_language}: {phrases_json}",
+            None,
+            translation_params["delay_seconds"],
+            translation_params["max_retries"],
+        )
 
-            # If we get here without an exception, validate the results
-            assert result > 0, "No translations were obtained from structured output"
-            assert (
-                test_data["translations"][0]["es"] is not None
-            ), "First translation result is missing"
-            assert (
-                test_data["translations"][1]["es"] is not None
-            ), "Second translation result is missing"
-            assert (
-                test_data["translations"][2]["es"] is not None
-            ), "Third translation result is missing"
+        # Check that we got translations
+        assert translation_count > 0, "No translations were produced"
 
-            # Print the translations for debugging
-            print("\nStructured Method Translations:")
-            for i, phrase in enumerate(test_data["phrases"]):
-                print(f"  {phrase} -> {test_data['translations'][i]['es']}")
+        # Print translations if verbose
+        if translation_params["verbose"]:
+            print("\nTranslations from structured method:")
+            for i, translation in enumerate(translations):
+                print(f"{test_data['phrases'][i]} -> {translation['es']}")
 
-        except Exception as e:
-            pytest.fail(f"Error in structured output test: {e}")
+        # Verify translations
+        for i, phrase in enumerate(test_data["phrases"]):
+            assert translations[i]["es"], f"No translation for '{phrase}'"
+            assert progress[phrase], f"Translation not added to progress for '{phrase}'"
 
     @pytest.mark.asyncio
     async def test_function_method(
         self, translation_tool, test_data, translation_params
     ):
-        """Test translation using the function calling metho."""
+        """Test function call translation method using the function model."""
+        # Skip test if the model is not available
+        model = translation_params["function_model"]
+        if model not in get_available_models():
+            pytest.skip(f"Model {model} not available")
 
-        prompt = await translation_tool.prompt_manager.load_prompt("translation")
+        # Check if the selected model supports function calling
+        driver = get_driver(model)
 
-        function_params = translation_params.copy()
-        function_params["model"] = "openrouter-gemini-2.0-flash-lite-preview-02-05"
+        # Skip this test if the model doesn't support function calling
+        if (
+            not hasattr(driver, "translate_function_async")
+            or not driver.supports_function_calling
+        ):
+            pytest.skip(f"Model {model} does not support function calling")
 
-        result = await translation_tool.translate_function(
-            phrases=test_data["phrases"],
-            indices=test_data["indices"],
-            translations=test_data["translations"],
-            progress=test_data["progress"],
-            prompt=prompt,
-            **function_params,
+        # Clone test data to avoid modifying the fixture
+        translations = [dict(item) for item in test_data["translations"]]
+        progress = dict(test_data["progress"])
+
+        # Run the translation
+        translation_count = await translation_tool.translate_function(
+            test_data["phrases"],
+            test_data["indices"],
+            translations,
+            progress,
+            model,
+            test_data["base_language"],
+            test_data["dst_language"],
+            "Translate from {base_language} to {dst_language}: {phrases_json}",
+            None,
+            translation_params["delay_seconds"],
+            translation_params["max_retries"],
         )
 
-        # Validate the results
-        assert result > 0  # Some phrases should be translated
-        assert test_data["translations"][0]["es"] is not None
-        assert test_data["translations"][1]["es"] is not None
-        assert test_data["translations"][2]["es"] is not None
+        # Check that we got translations
+        assert translation_count > 0, "No translations were produced"
 
-        # Print the translations for debugging
-        print("\nFunction Method Translations:")
+        # Print translations if verbose
+        if translation_params["verbose"]:
+            print("\nTranslations from function method:")
+            for i, translation in enumerate(translations):
+                print(f"{test_data['phrases'][i]} -> {translation['es']}")
+
+        # Verify translations
         for i, phrase in enumerate(test_data["phrases"]):
-            print(f"  {phrase} -> {test_data['translations'][i]['es']}")
-
-    @pytest.mark.asyncio
-    async def test_compare_methods(self, translation_tool, prompt_manager):
-        """Test and compare all three translation methods side by side using appropriate models for each method."""
-
-        # Common test parameters
-        base_language = "en"
-        dst_language = "fr"  # Using French for variety
-        test_phrases = ["Good morning", "I love programming", "See you tomorrow"]
-        context = (
-            "These are common phrases used in conversation."  # Added global context
-        )
-
-        # Prepare fresh data for each test to avoid cross-contamination
-        def create_test_data():
-            translations = [
-                {
-                    "key": f"phrase{i}",
-                    "en": phrase,
-                    "fr": "",
-                    "context": "Common conversational phrase",
-                }  # Added context
-                for i, phrase in enumerate(test_phrases)
-            ]
-            indices = list(range(len(test_phrases)))
-            progress = {}
-            return translations, indices, progress
-
-        # Load the prompt
-        prompt = await prompt_manager.load_prompt("translation")
-
-        # Run all three methods in parallel
-        standard_data = create_test_data()
-        structured_data = create_test_data()
-        function_data = create_test_data()
-
-        # Prepare the tasks to run concurrently
-        tasks = [
-            translation_tool.translate_standard(
-                phrases=test_phrases,
-                indices=standard_data[1],
-                translations=standard_data[0],
-                progress=standard_data[2],
-                model="gemini",
-                base_language=base_language,
-                dst_language=dst_language,
-                prompt=prompt,
-                context=context,  # Added context parameter
-                delay_seconds=1.0,
-                max_retries=2,
-            ),
-            translation_tool.translate_structured(
-                phrases=test_phrases,
-                indices=structured_data[1],
-                translations=structured_data[0],
-                progress=structured_data[2],
-                model="gemini",
-                base_language=base_language,
-                dst_language=dst_language,
-                prompt=prompt,
-                context=context,  # Added context parameter
-                delay_seconds=1.0,
-                max_retries=2,
-            ),
-            translation_tool.translate_function(
-                phrases=test_phrases,
-                indices=function_data[1],
-                translations=function_data[0],
-                progress=function_data[2],
-                model="openrouter-gemini-2.0-flash-lite-preview-02-05",
-                base_language=base_language,
-                dst_language=dst_language,
-                prompt=prompt,
-                context=context,  # Added context parameter
-                delay_seconds=1.0,
-                max_retries=2,
-            ),
-        ]
-
-        # Run the standard and function methods concurrently
-        try:
-            results = await asyncio.gather(*tasks)
-            # Print comparison of results (all three methods)
-
-            print(
-                "\nTranslation Method Comparison (English to French with appropriate models):"
-            )
-            print(
-                f"{'Original':<20} | {'Standard':<25} | {'Structured':<25} | {'Function':<25}"
-            )
-            print("-" * 100)
-
-            for i, phrase in enumerate(test_phrases):
-                standard_translation = standard_data[0][i].get(dst_language, "N/A")
-                structured_translation = structured_data[0][i].get(dst_language, "N/A")
-                function_translation = function_data[0][i].get(dst_language, "N/A")
-
-                print(
-                    f"{phrase:<20} | {standard_translation:<25} | {structured_translation:<25} | {function_translation:<25}"
-                )
-
-        except Exception as e:
-            pytest.fail(f"Unexpected error in comparison test: {e}")
+            assert translations[i]["es"], f"No translation for '{phrase}'"
+            assert progress[phrase], f"Translation not added to progress for '{phrase}'"
 
 
 if __name__ == "__main__":

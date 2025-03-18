@@ -1,23 +1,15 @@
 import json
 import os
-import aiofiles
 from pathlib import Path
 from typing import Optional, Union
 
 from lib.PromptManager import PromptManager
 from lib.TranslationTool import TranslationTool
-from lib.utils import (
-    Config,
-    load_config,
-    load_context,
-    load_progress,
-    load_translations,
-    save_progress,
-    save_translations,
-)
+from lib.utils import Config
+from lib.storage.base import StorageAdapter
+from lib.storage.filesystem import FileSystemStorageAdapter
 
-
-from .llm import get_driver, BaseDriver, get_available_models
+from .llm import get_driver, get_available_models
 
 
 class TranslationProject:
@@ -25,79 +17,53 @@ class TranslationProject:
     A class for managing translation projects.
 
     Attributes:
-        project_name (str): The name of the project.
-        project_path (Path): The directory of the project.
+        project_id (str): The unique identifier of the project.
         config (Config): The configuration of the project.
         dst_language (str): The destination language of the project.
-        prompt_file (Optional[str]): The path to the prompt file.
-        context (Optional[str]): The context of the project.
-        context_file (Optional[str]): The path to the context file.
+        prompt (Optional[str]): Direct prompt string if provided.
+        context (Optional[str]): Direct context string if provided.
 
+        storage (StorageAdapter): The storage adapter for data persistence.
         prompt_manager (PromptManager): The prompt manager for the project.
         translation_tool (TranslationTool): The translation tool for the project.
         base_language (str): The base language of the project.
-        source_file (Path): The path to the source file.
-        progress_dir (Path): The directory of the progress file.
-        progress_file (Path): The path to the progress file.
     """
 
-    project_name: str
-    project_path: Path
+    project_id: str
     config: Config
     dst_language: str
     prompt: Optional[str]
-    prompt_file: Optional[str]
     context: Optional[str]
-    context_file: Optional[str]
 
+    storage: StorageAdapter
     prompt_manager: PromptManager
     translation_tool: TranslationTool
     base_language: str
-    source_file: Path
-    progress_dir: Path
-    progress_file: Path
 
     def __init__(
         self,
-        project_name: str,
-        project_path: Path,
+        project_id: str,
         config: Config,
         dst_language: str,
+        storage: StorageAdapter,
         prompt: Optional[str] = None,
-        prompt_file: Optional[str] = None,
         context: Optional[str] = None,
-        context_file: Optional[str] = None,
     ):
-        self.project_name = project_name
-        self.project_path = project_path
+        self.project_id = project_id
         self.config = config
         self.dst_language = dst_language
+        self.storage = storage
         self.prompt = prompt
-        self.prompt_file = prompt_file
         self.context = context
-        self.context_file = context_file
 
-        # Initialize prompt manager
-        self.prompt_manager = PromptManager(project_path)
-
-        # Initialize translation tool
+        # Initialize prompt manager with storage adapter
+        self.prompt_manager = PromptManager(storage, project_id)
         self.translation_tool = TranslationTool(self.prompt_manager)
 
         if dst_language not in config.languages:
             raise ValueError(f"Language {dst_language} not found in project config")
 
         self.base_language = config.baseLanguage
-        self.source_file = project_path / config.sourceFile
-        self.progress_dir = project_path / dst_language
-        self.progress_file = self.progress_dir / "progress.json"
-
-        # Create language directory if it doesn't exist
-        os.makedirs(self.progress_dir, exist_ok=True)
-
-        # Initialize progress file if it doesn't exist
-        if not self.progress_file.exists():
-            with open(self.progress_file, "w", encoding="utf-8") as f:
-                json.dump({}, f, ensure_ascii=False, indent=2)
 
     @classmethod
     async def create(
@@ -108,6 +74,7 @@ class TranslationProject:
         context: str | None = None,
         context_file: str | None = None,
         project_path: Union[str, Path] | None = None,
+        storage: Optional[StorageAdapter] = None,
     ):
         # If project_path is provided, use it directly
         if project_path is not None:
@@ -121,21 +88,27 @@ class TranslationProject:
             # Backward compatibility: construct path from project name
             project_path = Path(f"projects/{project_name}")
 
-        config_path = project_path / "config.json"
+        # Create storage adapter if not provided
+        if storage is None:
+            storage = FileSystemStorageAdapter(project_path.parent)
 
-        # Load config
-        config = await load_config(config_path)
+        # Set prompt_file and context_file in the storage adapter
+        if prompt_file:
+            storage.set_prompt_file(prompt_file)
+        if context_file:
+            storage.set_context_file(context_file)
+
+        # Load config using storage adapter
+        config = await storage.load_config(project_name)
 
         # Create a fully initialized instance
         return cls(
-            project_name=project_name,
-            project_path=project_path,
+            project_id=project_name,
             config=config,
             dst_language=dst_language,
+            storage=storage,
             prompt=None,  # No direct prompt is provided via create
-            prompt_file=prompt_file,
             context=context,
-            context_file=context_file,
         )
 
     @staticmethod
@@ -168,9 +141,9 @@ class TranslationProject:
 
     async def _load_context(self) -> str:
         """Load translation context from various sources"""
-        context_parts = await load_context(self.project_path, self.context_file)
+        context_parts = await self.storage.load_context(self.project_id)
 
-        # 3. Add direct context string if provided
+        # Add direct context string if provided
         if self.context:
             context_parts.append(self.context.strip())
 
@@ -192,7 +165,6 @@ class TranslationProject:
         if not prompt:
             prompt = await self.prompt_manager.load_prompt(
                 "translation",
-                self.prompt_file,
                 validate=True,
                 strict_validation=True,  # Only enforce required variables when actually translating
             )
@@ -282,24 +254,20 @@ class TranslationProject:
         is_final: bool = False,
     ) -> None:
         """
-        Save translation progress and translations to files.
+        Save translation progress and translations to storage.
 
         Args:
             progress: Progress dictionary tracking completed translations
             translations: list of translation dictionaries
             is_final: Whether this is the final save (affects log message)
         """
-        await save_progress(self.progress_file, progress)
-        await save_translations(self.source_file, translations)
+        await self.storage.save_progress(self.project_id, self.dst_language, progress)
+        await self.storage.save_translations(self.project_id, translations)
 
         if is_final:
-            print(
-                f"Final save: {len(progress)} translations saved to {self.progress_file} and {self.source_file}"
-            )
+            print(f"Final save: {len(progress)} translations saved")
         else:
-            print(
-                f"Progress saved: {len(progress)} translations saved to {self.progress_file}"
-            )
+            print(f"Progress saved: {len(progress)} translations saved")
 
     async def translate(
         self,
@@ -337,8 +305,8 @@ class TranslationProject:
         print(f"Using translation method: {method}")
 
         # Load existing translations and progress
-        translations = await load_translations(self.source_file)
-        progress = await load_progress(self.progress_file)
+        translations = await self.storage.load_translations(self.project_id)
+        progress = await self.storage.load_progress(self.project_id, self.dst_language)
 
         # Load context
         context = await self._load_context()

@@ -4,19 +4,96 @@ import pytest
 import json
 import asyncio
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock, AsyncMock
 import csv
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.TranslationProject import TranslationProject
-from lib.utils import Config, load_config
+from lib.utils import Config
+from lib.storage.base import StorageAdapter
 from tests.mock_llm_driver import MockLLMDriver
 
 
+# Mock storage adapter for testing
+class MockStorageAdapter(StorageAdapter):
+    def __init__(self):
+        self.config = Config(
+            name="test_project",
+            sourceFile="source.csv",
+            baseLanguage="en",
+            languages=["en", "es", "fr"],
+            keyColumn="key",
+        )
+        self.translations = []
+        self.context_strings = []
+        self.prompts = {}
+        self.context_file = None
+        self.prompt_file = None
+
+    def set_context_file(self, context_file):
+        self.context_file = context_file
+
+    def set_prompt_file(self, prompt_file):
+        self.prompt_file = prompt_file
+
+    async def load_config(self, project_id: str) -> Config:
+        return self.config
+
+    async def load_progress(self, project_id: str, language: str) -> Dict[str, str]:
+        return {}
+
+    async def save_progress(
+        self, project_id: str, language: str, progress: Dict[str, str]
+    ) -> None:
+        pass
+
+    async def load_translations(self, project_id: str) -> List[Dict[str, Any]]:
+        return self.translations
+
+    async def save_translations(
+        self, project_id: str, translations: List[Dict[str, Any]]
+    ) -> None:
+        self.translations = translations
+
+    async def load_context(self, project_id: str) -> List[str]:
+        return self.context_strings
+
+    async def load_prompt(self, project_id: str, prompt_type: str) -> str:
+        if prompt_type in self.prompts:
+            return self.prompts[prompt_type]
+        return ""
+
+
+@pytest.mark.asyncio
 class TestTranslationProject:
-    """Test suite for TranslationProject class."""
+    @pytest.fixture
+    def mock_storage(self):
+        """Create a mock storage adapter for testing."""
+        storage = MockStorageAdapter()
+
+        # Add some default translations
+        storage.translations = [
+            {"en": "Hello", "fr": "Bonjour", "es": ""},
+            {"en": "Goodbye", "fr": "Au revoir", "es": ""},
+            {"en": "Thank you", "fr": "Merci", "es": ""},
+        ]
+
+        # Add some default context as strings
+        storage.context_strings = [
+            "Context 1: This is for greetings and introductions.",
+            "Context 2: This is for farewells and exits.",
+        ]
+
+        # Add default prompts
+        storage.prompts = {
+            "translation": "Translate from {base_language} to {dst_language}: {phrases_json}",
+            "output_format": "Valid JSON format",
+            "json_fix": "Fix this JSON: {broken_json}",
+        }
+
+        return storage
 
     @pytest.fixture
     def mock_llm_driver(self):
@@ -24,113 +101,105 @@ class TestTranslationProject:
         return MockLLMDriver()
 
     @pytest.mark.asyncio
-    async def test_create_project(self, setup_test_project):
-        """Test TranslationProject.create method."""
-        project_dir, mock_config, _ = setup_test_project
+    async def test_create_project(self, mock_storage):
+        """Test project creation."""
+        config = await mock_storage.load_config("test_project")
 
-        # Create a real config file for the test
-        config_path = project_dir / "config.json"
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(mock_config.__dict__, f, ensure_ascii=False, indent=2)
-
-        # Create a translation project using the project_path parameter
-        project = await TranslationProject.create(
-            project_name=mock_config.name, dst_language="es", project_path=project_dir
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_language="es",
+            storage=mock_storage,
         )
 
-        # Verify project attributes
-        assert project.project_name == mock_config.name
+        assert project.project_id == "test_project"
+        assert project.base_language == "en"
         assert project.dst_language == "es"
-        assert project.base_language == mock_config.baseLanguage
-        assert project.project_path == project_dir
+        assert project.storage is mock_storage
+        assert project.config == config
 
-        # Verify project directories
-        assert os.path.exists(project.progress_dir)
+        # Test prompt manager creation
+        assert project.prompt_manager is not None
+        assert project.prompt_manager.storage is mock_storage
+        assert project.prompt_manager.project_id == "test_project"
 
-    @pytest.mark.asyncio
-    async def test_get_available_models(self):
-        """Test that get_available_models returns a list of models."""
-        models = TranslationProject.get_available_models()
-        assert isinstance(models, list)
-        assert len(models) > 0
+        # Test translation tool creation
+        assert project.translation_tool is not None
 
     @pytest.mark.asyncio
-    async def test_count_tokens(self, mock_llm_driver):
-        """Test token counting functionality with mock LLM driver."""
-        text = "This is a test sentence for token counting."
-
-        # Patch the get_driver function to return our mock
-        with patch("lib.llm.get_driver", return_value=mock_llm_driver):
-            token_count = TranslationProject.count_tokens(text)
-            assert isinstance(token_count, int)
-            assert token_count > 0
-
-    @pytest.mark.asyncio
-    async def test_load_context(self, setup_test_project):
-        """Test loading context from a file."""
-        project_dir, mock_config, _ = setup_test_project
-
-        # Create a context file
-        context_content = "This is test context for translation."
-        context_file = project_dir / "context.md"
-        with open(context_file, "w", encoding="utf-8") as f:
-            f.write(context_content)
-
-        # Create a config file
-        config_path = project_dir / "config.json"
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(mock_config.__dict__, f, ensure_ascii=False, indent=2)
-
-        # Directly create a TranslationProject instance without using create
+    async def test_get_available_models(self, mock_storage):
+        """Test getting available models."""
+        # Create a test project
+        config = await mock_storage.load_config("test_project")
         project = TranslationProject(
-            project_name=mock_config.name,
-            project_path=project_dir,
-            config=mock_config,
+            project_id="test_project",
+            config=config,
             dst_language="es",
-            context_file=str(context_file),
+            storage=mock_storage,
+        )
+
+        # Mock the get_available_models function
+        with patch(
+            "lib.TranslationProject.get_available_models",
+            return_value=["gemini", "gpt-3.5-turbo"],
+        ):
+            models = project.get_available_models()
+            assert len(models) > 0
+            assert isinstance(models, list)
+            # Check for common models
+            assert "gemini" in models
+
+    @pytest.mark.asyncio
+    async def test_count_tokens(self, mock_storage):
+        """Test token counting method."""
+        # Create a test project
+        config = await mock_storage.load_config("test_project")
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_language="es",
+            storage=mock_storage,
+        )
+
+        # Count tokens in a string
+        token_count = project.count_tokens("This is a test")
+        assert token_count > 0
+        assert isinstance(token_count, int)
+
+    @pytest.mark.asyncio
+    async def test_load_context(self, mock_storage):
+        """Test loading context."""
+        # Create a test project
+        config = await mock_storage.load_config("test_project")
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_language="es",
+            storage=mock_storage,
         )
 
         # Load context
         context = await project._load_context()
-        assert context_content in context
+
+        # Verify context was loaded correctly
+        assert len(context) > 0
+        assert "Context 1" in context
+        assert "Context 2" in context
 
     @patch("lib.TranslationTool.TranslationTool.translate_standard")
-    async def test_translate(self, mock_translate_standard_patch, mock_llm_driver):
+    @patch("lib.llm.get_driver")
+    @patch("lib.TranslationProject.get_driver")
+    async def test_translate(
+        self,
+        project_get_driver_mock,
+        llm_get_driver_mock,
+        mock_translate_standard_patch,
+        mock_llm_driver,
+        mock_storage,
+    ):
         """Test translation process with mock driver"""
-        # Create test directories
-        project_dir = Path("test_project")
-        os.makedirs(project_dir, exist_ok=True)
-        os.makedirs(project_dir / "es", exist_ok=True)
 
-        # Create test config
-        config = Config(
-            name="test_project",
-            sourceFile="source.csv",
-            baseLanguage="en",
-            languages=["en", "es"],
-            keyColumn="key",
-        )
-
-        # Create source file
-        source_file = project_dir / "source.csv"
-        with open(source_file, "w", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["key", "en", "es"])
-            writer.writerow(["greeting", "Hello", ""])
-            writer.writerow(["farewell", "Goodbye", ""])
-            writer.writerow(["welcome", "Welcome", ""])
-            writer.writerow(["thanks", "Thank you", ""])
-
-        # Create a test project
-        project = TranslationProject(
-            project_name="test_project",
-            project_path=project_dir,
-            config=config,
-            dst_language="es",
-            prompt="Translate from {base_language} to {dst_language}",
-        )
-
-        # Create mock translate_standard function
+        # Configure the mock translate_standard method
         async def mock_translate_standard(
             phrases: list[str],
             indices: list[int],
@@ -150,32 +219,34 @@ class TestTranslationProject:
                 progress[phrase] = f"{phrase} (translated)"
             return len(phrases)
 
-        # Patch the translation tool's translate_standard method and get_driver function
-        with patch.object(
-            project.translation_tool,
-            "translate_standard",
-            side_effect=mock_translate_standard,
-        ), patch("lib.llm.get_driver", return_value=mock_llm_driver), patch(
-            "lib.TranslationProject.get_driver", return_value=mock_llm_driver
-        ):
-            # Run translation
-            await project.translate()
+        # Set up the mocks
+        mock_translate_standard_patch.side_effect = mock_translate_standard
+        llm_get_driver_mock.return_value = mock_llm_driver
+        project_get_driver_mock.return_value = mock_llm_driver
 
-            # Verify translations were created
-            with open(source_file, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                translations = list(reader)
-                for row in translations:
-                    if row["en"]:
-                        assert (
-                            "(translated)" in row["es"]
-                        ), f"Translation missing for {row['key']}"
+        # Create a config
+        config = await mock_storage.load_config("test_project")
 
-            # Verify progress was updated
-            with open(project.progress_file, "r", encoding="utf-8") as f:
-                progress = json.load(f)
-                for key in ["Hello", "Goodbye", "Welcome", "Thank you"]:
-                    assert key in progress, f"Progress missing for {key}"
-                    assert (
-                        "(translated)" in progress[key]
-                    ), f"Progress translation missing for {key}"
+        # Create a test project
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_language="es",
+            storage=mock_storage,
+            prompt="Translate from {base_language} to {dst_language}",
+        )
+
+        # Run translation with mock driver
+        await project.translate(model="test_model")
+
+        # Verify the driver was called
+        assert llm_get_driver_mock.called or project_get_driver_mock.called
+
+        # Verify translate_standard was called
+        assert mock_translate_standard_patch.called
+
+        # Verify translations were updated
+        translations = await mock_storage.load_translations("test_project")
+        assert len(translations) > 0
+        assert "es" in translations[0]
+        assert "(translated)" in translations[0]["es"]

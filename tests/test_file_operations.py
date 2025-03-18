@@ -9,14 +9,9 @@ from io import StringIO
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.utils import (
-    load_translations,
-    save_translations,
-    load_config,
-    load_progress,
-    save_progress,
-    Config,
-)
+from lib.storage.base import StorageAdapter
+from lib.storage.filesystem import FileSystemStorageAdapter
+from lib.utils import Config
 
 
 class TestFileOperations:
@@ -45,8 +40,31 @@ class TestFileOperations:
             writer.writeheader()
             writer.writerows(test_data)
 
+        # Create a storage adapter and project directory
+        project_dir = tmp_path / "test_project"
+        os.makedirs(project_dir, exist_ok=True)
+        storage = FileSystemStorageAdapter(tmp_path)
+
+        # Create a config file
+        config_data = {
+            "name": "test_project",
+            "sourceFile": "translations.csv",
+            "baseLanguage": "en",
+            "languages": ["en", "es", "fr"],
+            "keyColumn": "key",
+        }
+        config_file = project_dir / "config.json"
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+
+        # Copy the CSV file to the project directory
+        project_csv = project_dir / "translations.csv"
+        with open(csv_file, "r", encoding="utf-8") as src:
+            with open(project_csv, "w", encoding="utf-8") as dst:
+                dst.write(src.read())
+
         # Test loading translations
-        loaded_translations = await load_translations(csv_file)
+        loaded_translations = await storage.load_translations("test_project")
 
         # Verify loaded data
         assert len(loaded_translations) == 3
@@ -57,15 +75,11 @@ class TestFileOperations:
         # Modify the translations
         loaded_translations[1]["es"] = "Hasta luego"
 
-        # Save the modified translations to a new file
-        output_file = tmp_path / "modified_translations.csv"
-        await save_translations(output_file, loaded_translations)
-
-        # Verify the file exists
-        assert output_file.exists()
+        # Save the modified translations
+        await storage.save_translations("test_project", loaded_translations)
 
         # Load the saved translations and verify changes
-        saved_translations = await load_translations(output_file)
+        saved_translations = await storage.load_translations("test_project")
         assert len(saved_translations) == 3
         assert saved_translations[1]["key"] == "farewell"
         assert saved_translations[1]["en"] == "Goodbye"
@@ -74,8 +88,12 @@ class TestFileOperations:
     @pytest.mark.asyncio
     async def test_load_translations_with_missing_columns(self, tmp_path):
         """Test loading translations with missing columns."""
+        # Create project directory and setup
+        project_dir = tmp_path / "test_project"
+        os.makedirs(project_dir, exist_ok=True)
+
         # Create a test CSV file with incomplete data
-        csv_file = tmp_path / "incomplete.csv"
+        csv_file = project_dir / "translations.csv"
 
         # Create test data with missing columns in some rows
         with open(csv_file, "w", newline="", encoding="utf-8") as f:
@@ -84,8 +102,23 @@ class TestFileOperations:
             f.write("farewell,Goodbye,,\n")  # Missing es and fr
             f.write("welcome,Welcome,Bienvenido,\n")  # Missing fr
 
+        # Create a config file
+        config_data = {
+            "name": "test_project",
+            "sourceFile": "translations.csv",
+            "baseLanguage": "en",
+            "languages": ["en", "es", "fr"],
+            "keyColumn": "key",
+        }
+        config_file = project_dir / "config.json"
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+
+        # Create storage adapter
+        storage = FileSystemStorageAdapter(tmp_path)
+
         # Test loading translations
-        loaded_translations = await load_translations(csv_file)
+        loaded_translations = await storage.load_translations("test_project")
 
         # Verify loaded data handles missing values
         assert len(loaded_translations) == 3
@@ -97,18 +130,38 @@ class TestFileOperations:
     @pytest.mark.asyncio
     async def test_load_translations_file_not_found(self, tmp_path):
         """Test loading translations from a nonexistent file."""
-        # Define a path that doesn't exist
-        nonexistent_file = tmp_path / "nonexistent.csv"
+        # Create a project directory but no translations file
+        project_dir = tmp_path / "nonexistent_project"
+        os.makedirs(project_dir, exist_ok=True)
+
+        # Create storage adapter
+        storage = FileSystemStorageAdapter(tmp_path)
 
         # Verify that FileNotFoundError is raised
         with pytest.raises(FileNotFoundError):
-            await load_translations(nonexistent_file)
+            await storage.load_translations("nonexistent_project")
 
     @pytest.mark.asyncio
     async def test_translations_with_special_characters(self, tmp_path):
         """Test handling special characters in translations."""
-        # Create a test CSV file with special characters
-        csv_file = tmp_path / "special_chars.csv"
+        # Create project directory
+        project_dir = tmp_path / "test_project"
+        os.makedirs(project_dir, exist_ok=True)
+
+        # Create a config file
+        config_data = {
+            "name": "test_project",
+            "sourceFile": "translations.csv",
+            "baseLanguage": "en",
+            "languages": ["en", "es", "fr"],
+            "keyColumn": "key",
+        }
+        config_file = project_dir / "config.json"
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+
+        # Create storage adapter
+        storage = FileSystemStorageAdapter(tmp_path)
 
         # Create test data with special characters
         test_data = [
@@ -133,10 +186,10 @@ class TestFileOperations:
         ]
 
         # Save the translations
-        await save_translations(csv_file, test_data)
+        await storage.save_translations("test_project", test_data)
 
         # Load the translations
-        loaded_translations = await load_translations(csv_file)
+        loaded_translations = await storage.load_translations("test_project")
 
         # Verify special characters are preserved
         assert loaded_translations[0]["en"] == "Special characters: áéíóú"
@@ -192,27 +245,30 @@ class TestFileOperations:
         with open(es_progress_file, "w", encoding="utf-8") as f:
             json.dump(progress_data, f, ensure_ascii=False, indent=2)
 
+        # Create storage adapter
+        storage = FileSystemStorageAdapter(tmp_path)
+
         # Load the config
-        config = await load_config(config_file)
+        config = await storage.load_config("test_project")
         assert isinstance(config, Config)
         assert config.name == "test_project"
 
         # Load translations
-        translations = await load_translations(translations_file)
+        translations = await storage.load_translations("test_project")
         assert len(translations) == 2
         assert translations[0]["en"] == "Hello"
         assert translations[0]["es"] == ""
 
         # Load progress
-        progress = await load_progress(es_progress_file)
+        progress = await storage.load_progress("test_project", "es")
         assert progress["Hello"] == "Hola"
 
         # Update translations from progress
         translations[0]["es"] = progress["Hello"]
 
         # Save updated translations
-        await save_translations(translations_file, translations)
+        await storage.save_translations("test_project", translations)
 
         # Reload translations and verify updates
-        updated_translations = await load_translations(translations_file)
+        updated_translations = await storage.load_translations("test_project")
         assert updated_translations[0]["es"] == "Hola"

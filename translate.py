@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 from lib.TranslationProject import TranslationProject
+from lib.storage.filesystem import FileSystemStorageAdapter
 
 # Load environment variables from .env file
 try:
@@ -82,6 +83,13 @@ async def async_main():
         default="auto",
         help="Translation method to use: auto (recommended), standard (prompt-based), structured (JSON output), or function (function calling) (default: auto)",
     )
+    # Add storage adapter argument
+    parser.add_argument(
+        "--storage",
+        choices=["filesystem"],
+        default="filesystem",
+        help="Storage adapter to use (default: filesystem)",
+    )
 
     args = parser.parse_args()
 
@@ -118,14 +126,24 @@ async def async_main():
         if not (project_path / "config.json").exists():
             parser.error(f"config.json not found in project directory: {project_path}")
 
+        # Create storage adapter
+        if args.storage == "filesystem":
+            storage = FileSystemStorageAdapter(project_path.parent)
+            # Set prompt and context files in the storage adapter
+            if args.prompt:
+                storage.set_prompt_file(args.prompt)
+            if args.context_file:
+                storage.set_context_file(args.context_file)
+        else:
+            parser.error(f"Invalid storage adapter: {args.storage}")
+
         # Create and initialize the translator asynchronously
         translator = await TranslationProject.create(
             project_name=project_name,
             dst_language=args.lang,
-            prompt_file=args.prompt,
             context=args.context,
-            context_file=args.context_file,
             project_path=project_path,
+            storage=storage,
         )
 
         await translator.translate(

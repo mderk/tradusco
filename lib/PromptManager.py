@@ -5,22 +5,25 @@ from typing import Any, Optional
 
 import aiofiles
 
+from lib.storage.base import StorageAdapter
+
 
 class PromptManager:
     """Manages loading and handling of prompt templates."""
 
-    def __init__(self, project_dir: Path):
+    def __init__(self, storage: StorageAdapter, project_id: str):
         """Initialize the PromptManager.
 
         Args:
-            project_dir: The project directory path
+            storage: The storage adapter to use for loading prompts
+            project_id: The project identifier
         """
-        self.project_dir = project_dir
+        self.storage = storage
+        self.project_id = project_id
         self.prompts_dir = Path(__file__).parent.parent / "prompts"
         self._cache: dict[str, str] = {}
         self._required_vars: dict[str, set[str]] = {
             "translation": {"base_language", "dst_language", "phrases_json"},
-            "json_fix": {"invalid_json"},
         }
 
     def validate_prompt(
@@ -86,16 +89,14 @@ class PromptManager:
     async def load_prompt(
         self,
         prompt_type: str,
-        custom_prompt_path: Optional[str] = None,
         use_cache: bool = True,
         validate: bool = True,
         strict_validation: bool = False,
     ) -> str:
-        """Load a prompt template, with optional custom override.
+        """Load a prompt template from the storage adapter.
 
         Args:
             prompt_type: Type of prompt to load (e.g. 'translation', 'json_fix')
-            custom_prompt_path: Optional path to a custom prompt file
             use_cache: Whether to use cached prompts
             validate: Whether to validate the prompt template
             strict_validation: Whether to enforce required variables
@@ -107,26 +108,22 @@ class PromptManager:
         if use_cache and prompt_type in self._cache:
             return self._cache[prompt_type]
 
-        # Try custom prompt if provided
-        if custom_prompt_path:
-            prompt = await self._load_prompt_from_path(
-                prompt_type,
-                custom_prompt_path,
-                is_default=False,
-            )
+        # Load prompt from storage adapter
+        try:
+            prompt = await self.storage.load_prompt(self.project_id, prompt_type)
+
             if prompt:
                 if validate:
                     is_valid, error = self.validate_prompt(
                         prompt_type, prompt, strict_validation
                     )
                     if error:
-                        source = "Custom"
                         print(
-                            f"{'Warning' if is_valid else 'Error'}: {source} prompt validation failed: {error}"
+                            f"{'Warning' if is_valid else 'Error'}: Prompt validation failed: {error}"
                         )
 
                     if not is_valid and strict_validation:
-                        prompt = ""
+                        return ""
                     elif use_cache:
                         # Cache prompt if not in strict mode or if valid
                         self._cache[prompt_type] = prompt
@@ -134,10 +131,11 @@ class PromptManager:
                     # If not validating, only cache if requested
                     self._cache[prompt_type] = prompt
 
-            if prompt or custom_prompt_path is not None:
                 return prompt
+        except Exception as e:
+            print(f"Warning: Error loading prompt '{prompt_type}': {e}")
 
-        # Try default prompt paths
+        # Fallback to default prompts in the package if nothing found in storage
         prompt_paths = [
             self.prompts_dir / f"{prompt_type}.txt",
             self.prompts_dir / prompt_type / "prompt.txt",

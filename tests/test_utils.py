@@ -8,15 +8,9 @@ from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.utils import (
-    Config,
-    load_config,
-    load_progress,
-    save_progress,
-    load_translations,
-    save_translations,
-    load_context,
-)
+from lib.utils import Config
+from lib.storage.base import StorageAdapter
+from lib.storage.filesystem import FileSystemStorageAdapter
 
 
 class TestUtilsFunctions:
@@ -34,12 +28,19 @@ class TestUtilsFunctions:
             "keyColumn": "key",
         }
 
-        config_file = tmp_path / "config.json"
+        # Create project directory
+        project_dir = tmp_path / "test_project"
+        os.makedirs(project_dir, exist_ok=True)
+
+        config_file = project_dir / "config.json"
         with open(config_file, "w", encoding="utf-8") as f:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
 
+        # Create a storage adapter
+        storage = FileSystemStorageAdapter(tmp_path)
+
         # Load the config
-        config = await load_config(config_file)
+        config = await storage.load_config("test_project")
 
         # Verify the config
         assert isinstance(config, Config)
@@ -52,19 +53,26 @@ class TestUtilsFunctions:
     @pytest.mark.asyncio
     async def test_load_and_save_progress(self, tmp_path):
         """Test loading and saving progress."""
+        # Create project directory and language subdirectory
+        project_dir = tmp_path / "test_project"
+        lang_dir = project_dir / "es"
+        os.makedirs(lang_dir, exist_ok=True)
+
         # Create test progress data
         progress_data = {"phrase1": "Hola", "phrase2": "Adiós", "phrase3": "Bienvenido"}
 
-        progress_file = tmp_path / "progress.json"
+        # Create a storage adapter
+        storage = FileSystemStorageAdapter(tmp_path)
 
         # Save the progress
-        await save_progress(progress_file, progress_data)
+        await storage.save_progress("test_project", "es", progress_data)
 
         # Verify the file exists
+        progress_file = lang_dir / "progress.json"
         assert progress_file.exists()
 
         # Load the progress
-        loaded_progress = await load_progress(progress_file)
+        loaded_progress = await storage.load_progress("test_project", "es")
 
         # Verify the loaded progress
         assert loaded_progress == progress_data
@@ -72,11 +80,16 @@ class TestUtilsFunctions:
     @pytest.mark.asyncio
     async def test_load_progress_nonexistent_file(self, tmp_path):
         """Test loading progress from a nonexistent file."""
-        # Define a path that doesn't exist
-        progress_file = tmp_path / "nonexistent.json"
+        # Create a project directory without progress file
+        project_dir = tmp_path / "test_project"
+        lang_dir = project_dir / "fr"
+        os.makedirs(lang_dir, exist_ok=True)
+
+        # Create a storage adapter
+        storage = FileSystemStorageAdapter(tmp_path)
 
         # Load the progress (should return empty dict)
-        loaded_progress = await load_progress(progress_file)
+        loaded_progress = await storage.load_progress("test_project", "fr")
 
         # Verify the result
         assert loaded_progress == {}
@@ -84,22 +97,38 @@ class TestUtilsFunctions:
     @pytest.mark.asyncio
     async def test_load_context(self, tmp_path):
         """Test loading context from a file."""
+        # Create project directory
+        project_dir = tmp_path / "test_project"
+        os.makedirs(project_dir, exist_ok=True)
+
         # Create a test context file
         context_content = "This is test context for translation."
-        context_file = tmp_path / "context.md"
+        context_file = project_dir / "context.md"
         with open(context_file, "w", encoding="utf-8") as f:
             f.write(context_content)
 
-        # Load the context from the project directory
-        context_parts = await load_context(tmp_path)
+        # Create a storage adapter
+        storage = FileSystemStorageAdapter(tmp_path)
+
+        # Test without specific context file (uses default in project dir)
+        context_parts = await storage.load_context("test_project")
 
         # Verify the loaded context
         assert len(context_parts) == 1
         assert context_parts[0] == context_content
 
-        # Load the context from a specific file
-        context_parts = await load_context(tmp_path, str(context_file))
+        # Create a specific context file outside project dir
+        specific_context = "This is specific context for project."
+        specific_file = tmp_path / "specific_context.md"
+        with open(specific_file, "w", encoding="utf-8") as f:
+            f.write(specific_context)
 
-        # Verify the loaded context
-        assert len(context_parts) >= 1  # May have both project dir and specific file
-        assert context_content in context_parts
+        # Set the specific context file
+        storage.set_context_file(str(specific_file))
+
+        # Load context with specified file
+        context_parts = await storage.load_context("test_project")
+
+        # Verify the loaded context includes the specific file
+        assert len(context_parts) >= 1
+        assert specific_context in context_parts

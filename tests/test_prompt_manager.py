@@ -6,12 +6,56 @@ import asyncio
 from unittest.mock import patch, mock_open, MagicMock
 
 from lib.PromptManager import PromptManager
+from lib.storage.base import StorageAdapter
+
+
+# Mock storage adapter for testing
+class MockStorageAdapter(StorageAdapter):
+    def __init__(self):
+        self.context_file = None
+        self.prompt_file = None
+        self.prompts = {}
+
+    def set_context_file(self, context_file):
+        self.context_file = context_file
+
+    def set_prompt_file(self, prompt_file):
+        self.prompt_file = prompt_file
+
+    async def load_config(self, project_id):
+        return MagicMock()
+
+    async def load_progress(self, project_id, language):
+        return {}
+
+    async def save_progress(self, project_id, language, progress):
+        pass
+
+    async def load_translations(self, project_id):
+        return []
+
+    async def save_translations(self, project_id, translations):
+        pass
+
+    async def load_context(self, project_id):
+        return []
+
+    async def load_prompt(self, project_id, prompt_type):
+        if prompt_type in self.prompts:
+            return self.prompts[prompt_type]
+        return ""
 
 
 @pytest.fixture
-def prompt_manager(temp_project_dir):
+def mock_storage():
+    """Create a mock storage adapter for testing."""
+    return MockStorageAdapter()
+
+
+@pytest.fixture
+def prompt_manager(temp_project_dir, mock_storage):
     """Create a PromptManager instance for testing."""
-    return PromptManager(temp_project_dir)
+    return PromptManager(mock_storage, "test_project")
 
 
 @pytest.fixture
@@ -54,13 +98,13 @@ def setup_prompt_files(temp_project_dir):
 class TestPromptManager:
     """Tests for the PromptManager class."""
 
-    def test_init(self, prompt_manager, temp_project_dir):
+    def test_init(self, prompt_manager, mock_storage):
         """Test PromptManager initialization."""
-        assert prompt_manager.project_dir == temp_project_dir
+        assert prompt_manager.storage == mock_storage
+        assert prompt_manager.project_id == "test_project"
         assert isinstance(prompt_manager.prompts_dir, Path)
         assert prompt_manager._cache == {}
         assert "translation" in prompt_manager._required_vars
-        assert "json_fix" in prompt_manager._required_vars
 
     def test_validate_prompt_empty(self, prompt_manager):
         """Test validation of empty prompt."""
@@ -232,48 +276,6 @@ class TestPromptManager:
             assert result == ""
 
     @pytest.mark.asyncio
-    async def test_load_prompt_from_path_with_validation_failure(
-        self, prompt_manager, setup_prompt_files
-    ):
-        """Test loading a prompt that fails validation in strict mode."""
-        file_path = setup_prompt_files["translation.txt"]
-
-        # Since _load_prompt_from_path no longer handles validation,
-        # we should test that load_prompt properly handles validation failures
-        with patch.object(
-            prompt_manager, "validate_prompt", return_value=(False, "Test error")
-        ):
-            # Test through load_prompt instead
-            result = await prompt_manager.load_prompt(
-                "translation",
-                custom_prompt_path=str(file_path),
-                validate=True,
-                strict_validation=True,
-            )
-            assert result == ""  # Should return empty string on validation failure
-
-    @pytest.mark.asyncio
-    async def test_load_prompt_from_path_with_exception(
-        self, prompt_manager, temp_project_dir
-    ):
-        """Test exception handling when loading a prompt."""
-        test_path = temp_project_dir / "test.txt"
-
-        # Create the file first so os.path.exists() returns True
-        with open(test_path, "w") as f:
-            f.write("Test content")
-
-        # Mock aiofiles.open to raise an exception
-        with patch("aiofiles.open", side_effect=Exception("Test exception")):
-            with patch("builtins.print") as mock_print:
-                result = await prompt_manager._load_prompt_from_path(
-                    "test", test_path, is_default=True
-                )
-                assert result == ""
-                mock_print.assert_called_once()
-                assert "Error reading" in mock_print.call_args[0][0]
-
-    @pytest.mark.asyncio
     async def test_load_prompt_with_cache(self, prompt_manager):
         """Test loading a prompt with caching."""
         # Set up cache
@@ -287,70 +289,58 @@ class TestPromptManager:
         assert result == cached_prompt
 
     @pytest.mark.asyncio
-    async def test_load_prompt_custom_path(self, prompt_manager, setup_prompt_files):
-        """Test loading a prompt from a custom path."""
-        custom_path = setup_prompt_files["custom.txt"]
+    async def test_load_prompt_from_storage(self, prompt_manager, mock_storage):
+        """Test loading a prompt from storage."""
+        # Set up storage mock to return a prompt
+        mock_storage.prompts["translation"] = "Translated from storage"
 
-        result = await prompt_manager.load_prompt(
-            "custom", custom_prompt_path=str(custom_path), use_cache=False
-        )
+        # Load prompt
+        result = await prompt_manager.load_prompt("translation", use_cache=False)
 
-        assert "This is a {custom} prompt" in result
+        # Verify the result comes from storage
+        assert result == "Translated from storage"
 
     @pytest.mark.asyncio
-    async def test_load_prompt_custom_path_with_caching(
-        self, prompt_manager, setup_prompt_files
+    async def test_load_prompt_storage_validation_failure(
+        self, prompt_manager, mock_storage
     ):
-        """Test loading a prompt from a custom path with caching enabled."""
-        custom_path = setup_prompt_files["custom.txt"]
+        """Test loading a prompt from storage that fails validation."""
+        # Set up storage mock to return an invalid prompt
+        mock_storage.prompts["translation"] = "Invalid prompt without variables"
 
-        # First load should cache the prompt
-        await prompt_manager.load_prompt(
-            "custom", custom_prompt_path=str(custom_path), use_cache=True
-        )
-
-        # Verify it was cached
-        assert "custom" in prompt_manager._cache
-        assert "This is a {custom} prompt" in prompt_manager._cache["custom"]
+        # Mock validation to fail
+        with patch.object(
+            prompt_manager, "validate_prompt", return_value=(False, "Test error")
+        ):
+            # Should return empty string when validation fails in strict mode
+            result = await prompt_manager.load_prompt(
+                "translation", strict_validation=True
+            )
+            assert result == ""
 
     @pytest.mark.asyncio
-    async def test_load_prompt_fallback_to_default(self, prompt_manager):
-        """Test falling back to default prompt when custom is invalid."""
-        # Test the case where no custom path is provided, so it falls back to default
+    async def test_load_prompt_fallback_to_default(self, prompt_manager, mock_storage):
+        """Test falling back to default prompt when storage returns empty."""
+        # Ensure storage returns empty
+        mock_storage.prompts = {}
+
+        # Mock _load_prompt_from_path to return a default prompt
         with patch.object(prompt_manager, "_load_prompt_from_path") as mock_load:
-            # Configure the mock to return content for the default path
             mock_load.return_value = "Default prompt content"
 
-            # Call the method without a custom path
+            # Load prompt - should fall back to default
             result = await prompt_manager.load_prompt("translation")
 
-            # Verify result - should get the default content
+            # Verify result is from the default
             assert result == "Default prompt content"
             mock_load.assert_called()
 
     @pytest.mark.asyncio
-    async def test_load_prompt_custom_path_returns_empty(self, prompt_manager):
-        """Test that when a custom path is provided but returns empty, it still returns empty."""
-        # This test verifies the behavior of the line:
-        # if prompt or custom_prompt_path is not None:
-        #     return prompt
-
-        with patch.object(prompt_manager, "_load_prompt_from_path") as mock_load:
-            # Configure the mock to return empty for the custom path
-            mock_load.return_value = ""
-
-            # Call the method with a custom path
-            result = await prompt_manager.load_prompt(
-                "translation", custom_prompt_path="custom/path.txt"
-            )
-
-            # Verify result - should return empty string because custom_prompt_path is not None
-            assert result == ""
-            mock_load.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_load_prompt_no_valid_prompts(self, prompt_manager):
+    async def test_load_prompt_no_valid_prompts(self, prompt_manager, mock_storage):
         """Test behavior when no valid prompts are found."""
+        # Ensure storage returns empty
+        mock_storage.prompts = {}
+
         # Mock _load_prompt_from_path to always return empty
         with patch.object(prompt_manager, "_load_prompt_from_path", return_value=""):
             with patch("builtins.print") as mock_print:

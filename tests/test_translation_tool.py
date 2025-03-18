@@ -4,28 +4,75 @@ import pytest
 import json
 import asyncio
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.TranslationTool import TranslationTool, InvalidJSONException
+from lib.TranslationTool import TranslationTool
 from lib.PromptManager import PromptManager
+from lib.storage.base import StorageAdapter
 from tests.mock_llm_driver import MockLLMDriver
+
+
+# Mock storage adapter for testing
+class MockStorageAdapter(StorageAdapter):
+    def __init__(self):
+        self.context_file = None
+        self.prompt_file = None
+        self.prompts = {}
+
+    def set_context_file(self, context_file):
+        self.context_file = context_file
+
+    def set_prompt_file(self, prompt_file):
+        self.prompt_file = prompt_file
+
+    async def load_config(self, project_id):
+        return MagicMock()
+
+    async def load_progress(self, project_id, language):
+        return {}
+
+    async def save_progress(self, project_id, language, progress):
+        pass
+
+    async def load_translations(self, project_id):
+        return []
+
+    async def save_translations(self, project_id, translations):
+        pass
+
+    async def load_context(self, project_id):
+        return []
+
+    async def load_prompt(self, project_id, prompt_type):
+        if prompt_type in self.prompts:
+            return self.prompts[prompt_type]
+        return ""
 
 
 class TestTranslationTool:
     """Test suite for TranslationTool class."""
 
     @pytest.fixture
-    def prompt_manager(self):
-        """Create a real PromptManager instance for testing."""
-        # Use the actual project root directory
-        project_dir = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return PromptManager(project_dir)
+    def mock_storage(self):
+        """Create a mock storage adapter for testing."""
+        storage = MockStorageAdapter()
+        storage.prompts = {
+            "translation": "Translate from {base_language} to {dst_language}: {phrases_json}",
+            "json_fix": "Fix this invalid JSON: {invalid_json}",
+            "output_format": "Return a JSON array of translations.",
+        }
+        return storage
+
+    @pytest.fixture
+    def prompt_manager(self, mock_storage):
+        """Create a PromptManager instance for testing."""
+        return PromptManager(mock_storage, "test_project")
 
     @pytest.fixture
     def translation_tool(self, prompt_manager):
-        """Create a TranslationTool instance with a real PromptManager."""
+        """Create a TranslationTool instance with a PromptManager."""
         return TranslationTool(prompt_manager)
 
     @pytest.fixture
@@ -33,14 +80,8 @@ class TestTranslationTool:
         """Create a mock LLM driver for testing."""
         return MockLLMDriver()
 
-    def test_get_available_models(self, translation_tool):
-        """Test that get_available_models returns a list of models."""
-        models = translation_tool.get_available_models()
-        assert isinstance(models, list)
-        assert len(models) > 0
-
     @pytest.mark.asyncio
-    async def test_create_batch_prompt(self, translation_tool, prompt_manager):
+    async def test_create_prompt(self, translation_tool, prompt_manager):
         """Test creating a batch prompt."""
         # Prepare test data
         phrases = ["Hello", "Goodbye", "Welcome"]
@@ -57,7 +98,7 @@ class TestTranslationTool:
         context = "These are common greetings."
 
         # Call the method with real components
-        result = await translation_tool.create_batch_prompt(
+        result = await translation_tool.create_prompt(
             phrases=phrases,
             translations=translations,
             indices=indices,
@@ -81,27 +122,6 @@ class TestTranslationTool:
         assert '"Hello": "Greeting"' in result or '"Hello":"Greeting"' in result
         assert "Farewell" in result
         assert "Greeting someone arriving" in result
-
-    @pytest.mark.asyncio
-    async def test_fix_invalid_json(self, translation_tool, mock_llm_driver):
-        """Test fixing invalid JSON with the mock LLM driver."""
-        invalid_json = '{"Hello": "Hola", "Goodbye": "Adiós", Welcome: "Bienvenido"}'
-
-        # Patch the get_driver function to return our mock
-        with patch("lib.llm.get_driver", return_value=mock_llm_driver):
-            # Call the method
-            fixed_json = await translation_tool.fix_invalid_json(
-                invalid_json, mock_llm_driver
-            )
-
-            # Verify the result
-            assert isinstance(fixed_json, str)
-            assert '"Welcome"' in fixed_json  # The quotes should be fixed
-
-            # Try to parse the fixed JSON to ensure it's valid
-            parsed = json.loads(fixed_json)
-            assert parsed["Hello"] == "Hola"
-            assert parsed["Welcome"] == "Bienvenido"
 
     @pytest.mark.asyncio
     async def test_translate_standard(self, translation_tool, mock_llm_driver):

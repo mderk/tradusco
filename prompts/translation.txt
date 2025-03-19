@@ -6,9 +6,16 @@ You are a professional translator. Translate the following phrases from {base_la
 - Don't loose placeholders.
 
 {context}
-{phrase_contexts}
 
-Phrases to translate (in JSON format):
+Data to translate:
 {phrases_json}
 
+You take only phrases from the data, and translate the phrases, one by one, keeping in mind the global and phrase's context, if any. Don't translate or return the context.
 Provide ONLY the translations to the target language {dst_language}.
+
+Example (for en->es):
+Input:
+[["Hello", ""], ["Goodbye", "farewell phrase"]]
+Output:
+{{"translations": ["Hola", "Adiós"]}}
+

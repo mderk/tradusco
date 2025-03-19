@@ -1,11 +1,15 @@
 import os
+import json
 from pathlib import Path
 import re
-from typing import Any, Optional
+from typing import Optional
 
 import aiofiles
+from pydantic import BaseModel
 
 from lib.storage.base import StorageAdapter
+
+DEBUG = os.environ.get("TRADUSCO_DEBUG")
 
 
 class PromptManager:
@@ -171,36 +175,40 @@ class PromptManager:
         print(f"Warning: No valid prompt found for type '{prompt_type}'")
         return ""
 
-    def format_prompt(self, template: str, **kwargs: Any) -> str:
+    def format_prompt(self, template: str, data: BaseModel) -> str | None:
         """Format a prompt template with the provided variables.
 
         Args:
             template: The prompt template string
-            **kwargs: Variables to format into the template
+            data: template data
 
         Returns:
             The formatted prompt string
         """
         try:
+            data_dump = data.model_dump()
             # First check if all required variables are provided
             required_vars = set(re.findall(r"\{([^}]+)\}", template))
-            missing = required_vars - set(kwargs.keys())
-            if missing:
-                print(
-                    f"Warning: Missing variables in format_prompt: {', '.join(missing)}"
-                )
-                return template
+            for key in list(data_dump.keys()):
+                if f"{key}_json" in required_vars:
+                    data_dump[f"{key}_json"] = json.dumps(data_dump[key])
 
-            return template.format(**kwargs)
+            return template.format(**data_dump)
         except KeyError as e:
             print(f"Warning: Missing required variable in prompt template: {e}")
-            return template
+            if DEBUG:
+                raise e
+            return None
         except ValueError as e:
             print(f"Warning: Invalid format in prompt template: {e}")
-            return template
+            if DEBUG:
+                raise e
+            return None
         except Exception as e:
             print(f"Warning: Error formatting prompt template: {e}")
-            return template
+            if DEBUG:
+                raise e
+            return None
 
     def clear_cache(self, prompt_type: Optional[str] = None) -> None:
         """Clear the prompt cache.

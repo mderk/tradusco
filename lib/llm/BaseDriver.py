@@ -171,6 +171,9 @@ class BaseDriver(ABC):
         if output_schema is None:
             output_schema = self.get_structured_output_schema()
         for retry in range(max_retries):
+            if retry > 0:
+                # Add delay to avoid rate limiting
+                await asyncio.sleep(delay_seconds)
             try:
                 # Standard approach for models that support response_format parameter
                 response = await self.llm.ainvoke(
@@ -180,9 +183,6 @@ class BaseDriver(ABC):
                         "schema": output_schema,
                     },
                 )
-
-                # Add delay to avoid rate limiting
-                await asyncio.sleep(delay_seconds)
 
                 # Return the structured output
                 if hasattr(response, "content"):

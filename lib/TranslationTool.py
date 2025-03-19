@@ -1,11 +1,29 @@
 import json
 import re
 import os
-from typing import Optional, Union
+from typing import Annotated, Optional, Union
+
+from pydantic import BaseModel, Field
 from .llm import BaseDriver, get_driver, get_available_models
 from .PromptManager import PromptManager
 
 DEBUG = os.environ.get("TRADUSCO_DEBUG")
+
+
+class Input(BaseModel):
+    """
+    Input format for the translation prompt.
+    """
+
+    base_language: str
+    dst_language: str
+    context: str
+    phrases: Annotated[
+        list[tuple[str, str | None]],
+        Field(
+            description="List of phrases to translate, each element is a tuple of the phrase and its context (optional)"
+        ),
+    ]
 
 
 class TranslationTool:
@@ -34,44 +52,23 @@ class TranslationTool:
         dst_language: str,
         prompt: str,
         context: Optional[str] = None,
-    ) -> str:
+    ) -> str | None:
         """Create a prompt for translation using JSON format"""
         # Create a list of phrases and a separate context mapping
-        phrases_to_translate = []
-        phrase_contexts = {}
-
-        for phrase, context in phrases:
-            phrases_to_translate.append(phrase)
-            if context:  # Only include phrases that have context
-                phrase_contexts[phrase] = context
-
-        # Encode phrases and contexts as JSON
-        phrases_json = json.dumps(phrases_to_translate, ensure_ascii=False, indent=2)
-        contexts_json = (
-            json.dumps(phrase_contexts, ensure_ascii=False, indent=2)
-            if phrase_contexts
-            else ""
-        )
 
         # Add global context if provided
         context_section = (
             f"\nGlobal Translation Context:\n{context}\n" if context else ""
         )
-
-        # Add phrase-specific contexts section if any exist
-        phrase_contexts_section = (
-            f"\nPhrase-specific contexts:\n{contexts_json}\n" if contexts_json else ""
+        data = Input(
+            base_language=base_language.upper(),
+            dst_language=dst_language.upper(),
+            context=context_section,
+            phrases=phrases,
         )
 
         # Format the prompt template with the required variables
-        return self.prompt_manager.format_prompt(
-            prompt,
-            base_language=base_language.upper(),
-            dst_language=dst_language.upper(),
-            phrases_json=phrases_json,
-            context=context_section,
-            phrase_contexts=phrase_contexts_section,
-        )
+        return self.prompt_manager.format_prompt(prompt, data)
 
     def extract_json_from_response(self, response: str) -> str:
         """
@@ -113,6 +110,8 @@ class TranslationTool:
         """
 
         result = {}
+
+        print("Translated", len(translations_list), translations_list)
 
         for i, translation in enumerate(translations_list):
             if (
@@ -173,6 +172,13 @@ class TranslationTool:
             prompt=prompt,
             context=context,
         )
+        if not batch_prompt:
+            if DEBUG:
+                print(f"Warning: Could not create batch prompt for model {model}")
+            return None, ""
+
+        print(batch_prompt)
+        # raise Exception("Stop here")
 
         # Load the output format instructions
         if method_name == "standard":

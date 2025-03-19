@@ -201,10 +201,7 @@ class TestTranslationProject:
 
         # Configure the mock translate_standard method
         async def mock_translate_standard(
-            phrases: list[str],
-            indices: list[int],
-            translations: list[dict[str, str]],
-            progress: dict[str, str],
+            phrases: list[tuple[str, str | None]],
             model: str,
             base_language: str,
             dst_language: str,
@@ -212,12 +209,14 @@ class TestTranslationProject:
             context: Optional[str] = None,
             delay_seconds: float = 1.0,
             max_retries: int = 3,
-        ) -> int:
+        ) -> dict[str, str]:
             # Simulate translation
-            for i, phrase in enumerate(phrases):
-                translations[indices[i]][dst_language] = f"{phrase} (translated)"
+            translations = {}
+            progress = {}
+            for i, (phrase, context) in enumerate(phrases):
+                translations[phrase] = f"{phrase} (translated)"
                 progress[phrase] = f"{phrase} (translated)"
-            return len(phrases)
+            return progress
 
         # Set up the mocks
         mock_translate_standard_patch.side_effect = mock_translate_standard

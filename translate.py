@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import asyncio
+import os
 from pathlib import Path
 
 from lib.TranslationProject import TranslationProject
@@ -15,6 +16,8 @@ except ImportError:
     print(
         "Warning: python-dotenv not installed. Environment variables must be set manually."
     )
+
+DEBUG = os.environ.get("TRADUSCO_DEBUG")
 
 
 async def async_main():
@@ -90,8 +93,16 @@ async def async_main():
         default="filesystem",
         help="Storage adapter to use (default: filesystem)",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode",
+    )
 
     args = parser.parse_args()
+
+    if args.debug:
+        os.environ["TRADUSCO_DEBUG"] = "true"
 
     try:
         # If --list-models is specified, list models and exit
@@ -156,6 +167,8 @@ async def async_main():
         )
     except Exception as e:
         print(f"Error: {e}")
+        if DEBUG:
+            raise e
         return 1
 
     return 0

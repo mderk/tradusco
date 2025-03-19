@@ -29,9 +29,7 @@ class TranslationTool:
 
     async def create_prompt(
         self,
-        phrases: list[str],
-        translations: list[dict[str, str]],
-        indices: list[int],
+        phrases: list[tuple[str, str | None]],
         base_language: str,
         dst_language: str,
         prompt: str,
@@ -42,11 +40,10 @@ class TranslationTool:
         phrases_to_translate = []
         phrase_contexts = {}
 
-        for i, phrase in enumerate(phrases):
+        for phrase, context in phrases:
             phrases_to_translate.append(phrase)
-            phrase_context = translations[indices[i]].get("context", "")
-            if phrase_context:  # Only include phrases that have context
-                phrase_contexts[phrase] = phrase_context
+            if context:  # Only include phrases that have context
+                phrase_contexts[phrase] = context
 
         # Encode phrases and contexts as JSON
         phrases_json = json.dumps(phrases_to_translate, ensure_ascii=False, indent=2)
@@ -99,50 +96,40 @@ class TranslationTool:
         # Use the entire response as a last resort
         return response
 
-    def update_translations_from_list(
+    def merge_translations(
         self,
         translations_list: list[str],
-        phrases: list[str],
-        indices: list[int],
-        translations: list[dict[str, str]],
-        progress: dict[str, str],
-        dst_language: str,
-    ) -> int:
+        phrases: list[tuple[str, str | None]],
+    ) -> dict[str, str]:
         """
         Update translations from a list of translations (in the same order as phrases).
 
         Args:
             translations_list: List of translations
             phrases: List of original phrases
-            indices: Indices of phrases in the full translations list
-            translations: Full translations list to update
-            progress: Progress dictionary to update
-            dst_language: Target language
 
         Returns:
-            Number of translations updated
+            mapping of phrases to translations
         """
-        update_count = 0
+
+        result = {}
 
         for i, translation in enumerate(translations_list):
             if (
                 i < len(phrases) and translation.strip()
             ):  # Only update if we have a non-empty translation
-                translations[indices[i]][dst_language] = translation
-                progress[phrases[i]] = translation
-                update_count += 1
+                result[phrases[i][0]] = translation
+
                 if DEBUG:
                     print(f"Translated: {phrases[i]} -> {translation}")
             elif i < len(phrases) and DEBUG:
                 print(f"Warning: Empty translation for '{phrases[i]}'")
 
-        return update_count
+        return result
 
     async def setup(
         self,
-        phrases: list[str],
-        indices: list[int],
-        translations: list[dict[str, str]],
+        phrases: list[tuple[str, str | None]],
         model: str,
         base_language: str,
         dst_language: str,
@@ -155,9 +142,7 @@ class TranslationTool:
         Handles common setup and error handling logic.
 
         Args:
-            phrases: List of phrases to translate
-            indices: Indices of phrases in the translations list
-            translations: Full translations list
+            phrases: List of [phrase, context] tuples
             model: LLM model to use
             base_language: Source language
             dst_language: Target language
@@ -183,8 +168,6 @@ class TranslationTool:
         # Create the batch prompt
         batch_prompt = await self.create_prompt(
             phrases=phrases,
-            translations=translations,
-            indices=indices,
             base_language=base_language,
             dst_language=dst_language,
             prompt=prompt,
@@ -206,15 +189,11 @@ class TranslationTool:
 
         return driver, batch_prompt
 
-    def handle_response_format(
+    def handle_response(
         self,
         response: Union[str, dict, list],
-        phrases: list[str],
-        indices: list[int],
-        translations: list[dict[str, str]],
-        progress: dict[str, str],
-        dst_language: str,
-    ) -> int:
+        phrases: list[tuple[str, str | None]],
+    ) -> dict[str, str] | None:
         """
         Handle translation response format and update translations.
         Expects either a list of translations or a dict with a translations array.
@@ -222,13 +201,9 @@ class TranslationTool:
         Args:
             response: The response from the translation service
             phrases: List of original phrases
-            indices: Indices of phrases in the translations list
-            translations: Full translations list to update
-            progress: Progress dictionary to update
-            dst_language: Target language
 
         Returns:
-            Number of translations updated
+            Mapping of phrases to translations
         """
         if isinstance(response, str):
             # First extract JSON from code blocks if present
@@ -236,28 +211,20 @@ class TranslationTool:
             # Then try to parse it as JSON
             try:
                 parsed_response = json.loads(json_str)
-                return self.handle_response_format(
-                    parsed_response,
-                    phrases,
-                    indices,
-                    translations,
-                    progress,
-                    dst_language,
+                return self.merge_translations(
+                    translations_list=parsed_response,
+                    phrases=phrases,
                 )
             except json.JSONDecodeError:
                 if DEBUG:
                     print("Invalid JSON response received")
-                return 0
+                return None
 
         # Handle list of translations
         if isinstance(response, list):
-            return self.update_translations_from_list(
+            return self.merge_translations(
                 translations_list=response,
                 phrases=phrases,
-                indices=indices,
-                translations=translations,
-                progress=progress,
-                dst_language=dst_language,
             )
 
         # Handle dict with translations array
@@ -266,25 +233,18 @@ class TranslationTool:
             and "translations" in response
             and isinstance(response["translations"], list)
         ):
-            return self.update_translations_from_list(
+            return self.merge_translations(
                 translations_list=response["translations"],
                 phrases=phrases,
-                indices=indices,
-                translations=translations,
-                progress=progress,
-                dst_language=dst_language,
             )
 
         if DEBUG:
             print(f"Unexpected response format: {response}")
-        return 0
+        return None
 
     async def translate_standard(
         self,
-        phrases: list[str],
-        indices: list[int],
-        translations: list[dict[str, str]],
-        progress: dict[str, str],
+        phrases: list[tuple[str, str | None]],
         model: str,
         base_language: str,
         dst_language: str,
@@ -292,13 +252,11 @@ class TranslationTool:
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
-    ) -> int:
+    ) -> dict[str, str] | None:
         """Process a batch of phrases for translation"""
         # Get common setup
         driver, batch_prompt = await self.setup(
             phrases=phrases,
-            indices=indices,
-            translations=translations,
             model=model,
             base_language=base_language,
             dst_language=dst_language,
@@ -307,7 +265,9 @@ class TranslationTool:
             method_name="standard",
         )
         if not driver:
-            return 0
+            if DEBUG:
+                print("Skipping this batch...")
+            return None
 
         # Get the translation response
         try:
@@ -318,30 +278,23 @@ class TranslationTool:
             if DEBUG:
                 print(f"Error processing batch: {e}")
                 print("Skipping this batch...")
-            return 0
+            return None
 
         # Parse and handle the response using the same method as structured and function calls
         try:
-            return self.handle_response_format(
+            return self.handle_response(
                 response,
                 phrases,
-                indices,
-                translations,
-                progress,
-                dst_language,
             )
         except Exception as e:
             if DEBUG:
                 print(f"Error processing batch: {e}")
             print("Skipping this batch...")
-            return 0
+            return None
 
     async def translate_structured(
         self,
-        phrases: list[str],
-        indices: list[int],
-        translations: list[dict[str, str]],
-        progress: dict[str, str],
+        phrases: list[tuple[str, str | None]],
         model: str,
         base_language: str,
         dst_language: str,
@@ -349,13 +302,11 @@ class TranslationTool:
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
-    ) -> int:
+    ) -> dict[str, str] | None:
         """Process a batch of phrases using structured output"""
         # Get common setup
         driver, batch_prompt = await self.setup(
             phrases=phrases,
-            indices=indices,
-            translations=translations,
             model=model,
             base_language=base_language,
             dst_language=dst_language,
@@ -364,7 +315,9 @@ class TranslationTool:
             method_name="structured",
         )
         if not driver:
-            return 0
+            if DEBUG:
+                print("Skipping this batch...")
+            return None
 
         # Get the translation response using structured output
         try:
@@ -380,26 +333,19 @@ class TranslationTool:
                     f"DEBUG: Response type: {type(response)}, value: {repr(response)[:200]}"
                 )
 
-            return self.handle_response_format(
+            return self.handle_response(
                 response,
                 phrases,
-                indices,
-                translations,
-                progress,
-                dst_language,
             )
         except Exception as e:
             if DEBUG:
                 print(f"Error from structured output call: {e}")
                 print(f"Failed to process batch using structured output: {e}")
-            return 0
+            return None
 
     async def translate_function(
         self,
-        phrases: list[str],
-        indices: list[int],
-        translations: list[dict[str, str]],
-        progress: dict[str, str],
+        phrases: list[tuple[str, str | None]],
         model: str,
         base_language: str,
         dst_language: str,
@@ -407,13 +353,11 @@ class TranslationTool:
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
-    ) -> int:
+    ) -> dict[str, str] | None:
         """Process a batch of phrases using function calling"""
         # Get common setup
         driver, batch_prompt = await self.setup(
             phrases=phrases,
-            indices=indices,
-            translations=translations,
             model=model,
             base_language=base_language,
             dst_language=dst_language,
@@ -422,7 +366,9 @@ class TranslationTool:
             method_name="function",
         )
         if not driver:
-            return 0
+            if DEBUG:
+                print("Skipping this batch...")
+            return None
 
         # Get the translation response using function calling
         try:
@@ -441,24 +387,20 @@ class TranslationTool:
                     else:
                         args = response["arguments"]
 
-                    return self.handle_response_format(
+                    return self.handle_response(
                         args,
                         phrases,
-                        indices,
-                        translations,
-                        progress,
-                        dst_language,
                     )
                 except Exception as e:
                     if DEBUG:
                         print(f"Unexpected function arguments format: {e}")
-                    return 0
+                    return None
             else:
                 if DEBUG:
                     print(f"Unexpected response format: {response}")
-                return 0
+                return None
         except Exception as e:
             if DEBUG:
                 print(f"Error from function call: {e}")
                 print("Function call translation failed")
-            return 0
+            return None

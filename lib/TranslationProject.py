@@ -173,25 +173,19 @@ class TranslationProject:
 
     async def _process_translation_batch(
         self,
-        phrases_to_translate: list[str],
-        phrase_indices: list[int],
-        translations: list[dict[str, str]],
-        progress: dict[str, str],
+        phrases_to_translate: list[tuple[str, str | None]],
         model: str,
         method: str,
         prompt: str,
         context: str,
         delay_seconds: float,
         max_retries: int,
-    ) -> int:
+    ) -> dict[str, str] | None:
         """
         Process a batch of phrases for translation using the appropriate method.
 
         Args:
-            phrases_to_translate: list of phrases to translate
-            phrase_indices: list of indices corresponding to each phrase
-            translations: list of translation dictionaries
-            progress: Progress dictionary tracking completed translations
+            phrases_to_translate: list of tuples of (phrase, context)
             model: The LLM model to use
             method: The translation method to use
             prompt: The translation prompt
@@ -200,15 +194,12 @@ class TranslationProject:
             max_retries: Maximum number of retries for failed API calls
 
         Returns:
-            Number of translations processed successfully
+            Dictionary of translations
         """
-        translation_count = 0
+
         if method == "structured":
-            translation_count = await self.translation_tool.translate_structured(
+            translations = await self.translation_tool.translate_structured(
                 phrases_to_translate,
-                phrase_indices,
-                translations,
-                progress,
                 model,
                 self.base_language,
                 self.dst_language,
@@ -218,11 +209,8 @@ class TranslationProject:
                 max_retries,
             )
         elif method == "function":
-            translation_count = await self.translation_tool.translate_function(
+            translations = await self.translation_tool.translate_function(
                 phrases_to_translate,
-                phrase_indices,
-                translations,
-                progress,
                 model,
                 self.base_language,
                 self.dst_language,
@@ -232,11 +220,8 @@ class TranslationProject:
                 max_retries,
             )
         else:  # standard method
-            translation_count = await self.translation_tool.translate_standard(
+            translations = await self.translation_tool.translate_standard(
                 phrases_to_translate,
-                phrase_indices,
-                translations,
-                progress,
                 model,
                 self.base_language,
                 self.dst_language,
@@ -245,7 +230,7 @@ class TranslationProject:
                 delay_seconds,
                 max_retries,
             )
-        return translation_count
+        return translations
 
     async def _save_translation_progress(
         self,
@@ -316,8 +301,8 @@ class TranslationProject:
         changes_made = False
 
         # Collect phrases that need translation
-        phrases_to_translate = []
-        phrase_indices = []
+        phrases_to_translate: list[tuple[str, str | None]] = []
+        phrase_indices: dict[str, int] = {}
         current_batch_tokens = 0
 
         for i, row in enumerate(translations):
@@ -344,11 +329,14 @@ class TranslationProject:
                 continue
 
             # Add to batch for translation
-            phrases_to_translate.append(source_phrase)
-            phrase_indices.append(i)
+            phrase_context = row.get("context") or ""
+            phrases_to_translate.append((source_phrase, phrase_context))
+            phrase_indices[source_phrase] = i
 
             # Calculate batch size in tokens
-            phrase_tokens = self.count_tokens(source_phrase, model)
+            phrase_tokens = self.count_tokens(
+                source_phrase + " " + phrase_context, model
+            )
             current_batch_tokens += phrase_tokens
 
             # Process batch when it reaches the batch size limit (count or tokens)
@@ -356,11 +344,8 @@ class TranslationProject:
                 len(phrases_to_translate) >= batch_size
                 or current_batch_tokens >= batch_max_tokens
             ):
-                translation_count = await self._process_translation_batch(
+                translated = await self._process_translation_batch(
                     phrases_to_translate,
-                    phrase_indices,
-                    translations,
-                    progress,
                     model,
                     method,
                     prompt,
@@ -369,21 +354,25 @@ class TranslationProject:
                     max_retries,
                 )
 
+                if translated:
+                    for phrase, translation in translated.items():
+                        progress[phrase] = translation
+                        translations[phrase_indices[phrase]][
+                            self.dst_language
+                        ] = translation
+
                 # Save progress after batch processing
                 await self._save_translation_progress(progress, translations)
 
                 phrases_to_translate = []
-                phrase_indices = []
+                phrase_indices = {}
                 current_batch_tokens = 0
                 changes_made = True
 
         # Process any remaining phrases
         if phrases_to_translate:
-            translation_count = await self._process_translation_batch(
+            translated = await self._process_translation_batch(
                 phrases_to_translate,
-                phrase_indices,
-                translations,
-                progress,
                 model,
                 method,
                 prompt,
@@ -391,6 +380,13 @@ class TranslationProject:
                 delay_seconds,
                 max_retries,
             )
+
+            if translated:
+                for phrase, translation in translated.items():
+                    progress[phrase] = translation
+                    translations[phrase_indices[phrase]][
+                        self.dst_language
+                    ] = translation
 
             # Save progress after batch processing
             await self._save_translation_progress(progress, translations)

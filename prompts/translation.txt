@@ -7,6 +7,8 @@ You are a professional translator. Translate the following phrases from {base_la
 
 {context}
 
+The data schema is [["Phrase to translate", "context for the phease"], ...]. We translate only the phrases, not the context.
+
 Data to translate:
 {phrases_json}
 

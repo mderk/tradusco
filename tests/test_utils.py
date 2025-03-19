@@ -37,7 +37,7 @@ class TestUtilsFunctions:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
 
         # Create a storage adapter
-        storage = FileSystemStorageAdapter(tmp_path)
+        storage = FileSystemStorageAdapter(project_dir)
 
         # Load the config
         config = await storage.load_config("test_project")
@@ -62,7 +62,7 @@ class TestUtilsFunctions:
         progress_data = {"phrase1": "Hola", "phrase2": "Adiós", "phrase3": "Bienvenido"}
 
         # Create a storage adapter
-        storage = FileSystemStorageAdapter(tmp_path)
+        storage = FileSystemStorageAdapter(project_dir)
 
         # Save the progress
         await storage.save_progress("test_project", "es", progress_data)
@@ -86,7 +86,7 @@ class TestUtilsFunctions:
         os.makedirs(lang_dir, exist_ok=True)
 
         # Create a storage adapter
-        storage = FileSystemStorageAdapter(tmp_path)
+        storage = FileSystemStorageAdapter(project_dir)
 
         # Load the progress (should return empty dict)
         loaded_progress = await storage.load_progress("test_project", "fr")
@@ -108,7 +108,7 @@ class TestUtilsFunctions:
             f.write(context_content)
 
         # Create a storage adapter
-        storage = FileSystemStorageAdapter(tmp_path)
+        storage = FileSystemStorageAdapter(project_dir)
 
         # Test without specific context file (uses default in project dir)
         context_parts = await storage.load_context("test_project")

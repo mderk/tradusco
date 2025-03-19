@@ -139,12 +139,11 @@ async def async_main():
 
         # Create storage adapter
         if args.storage == "filesystem":
-            storage = FileSystemStorageAdapter(project_path.parent)
-            # Set prompt and context files in the storage adapter
-            if args.prompt:
-                storage.set_prompt_file(args.prompt)
-            if args.context_file:
-                storage.set_context_file(args.context_file)
+            storage = FileSystemStorageAdapter(
+                project_path,
+                prompt_file=args.prompt,
+                context_file=args.context_file,
+            )
         else:
             parser.error(f"Invalid storage adapter: {args.storage}")
 
@@ -153,7 +152,6 @@ async def async_main():
             project_name=project_name,
             dst_language=args.lang,
             context=args.context,
-            project_path=project_path,
             storage=storage,
         )
 

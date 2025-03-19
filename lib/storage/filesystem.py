@@ -21,16 +21,23 @@ class FileSystemStorageAdapter(StorageAdapter):
     Stores data in the local file system using the original project structure.
     """
 
-    def __init__(self, base_path: Path):
+    project_path: Path
+
+    def __init__(
+        self,
+        project_path: Path,
+        context_file: Optional[str] = None,
+        prompt_file: Optional[str] = None,
+    ):
         """
         Initialize the file system storage adapter.
 
         Args:
             base_path: Base path for all projects
         """
-        self.base_path = Path(base_path)
-        self.context_file = None
-        self.prompt_file = None
+        self.project_path = project_path
+        self.context_file = context_file
+        self.prompt_file = prompt_file
 
     def set_context_file(self, context_file: Optional[str]) -> None:
         """Set the context file path"""
@@ -40,29 +47,23 @@ class FileSystemStorageAdapter(StorageAdapter):
         """Set the prompt file path"""
         self.prompt_file = prompt_file
 
-    def _get_project_path(self, project_id: str) -> Path:
-        """Get the project directory path"""
-        return self.base_path / project_id
-
-    def _get_config_path(self, project_id: str) -> Path:
+    def _get_config_path(self) -> Path:
         """Get the config file path"""
-        return self._get_project_path(project_id) / "config.json"
+        return self.project_path / "config.json"
 
-    def _get_progress_path(self, project_id: str, language: str) -> Path:
+    def _get_progress_path(self, language: str) -> Path:
         """Get the progress file path for a language"""
-        return self._get_project_path(project_id) / language / "progress.json"
+        return self.project_path / language / "progress.json"
 
-    def _get_translations_path(
-        self, project_id: str, config: Optional[Config] = None
-    ) -> Path:
+    def _get_translations_path(self, config: Optional[Config] = None) -> Path:
         """Get the translations file path"""
         if config:
-            return self._get_project_path(project_id) / config.sourceFile
-        return self._get_project_path(project_id) / "translations.csv"
+            return self.project_path / config.sourceFile
+        return self.project_path / "translations.csv"
 
     async def load_config(self, project_id: str) -> Config:
         """Load project configuration from config.json"""
-        config_path = self._get_config_path(project_id)
+        config_path = self._get_config_path()
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
@@ -72,7 +73,7 @@ class FileSystemStorageAdapter(StorageAdapter):
 
     async def load_progress(self, project_id: str, language: str) -> Dict[str, str]:
         """Load translation progress from progress.json"""
-        progress_path = self._get_progress_path(project_id, language)
+        progress_path = self._get_progress_path(language)
         if not progress_path.exists():
             return {}
 
@@ -84,7 +85,7 @@ class FileSystemStorageAdapter(StorageAdapter):
         self, project_id: str, language: str, progress: Dict[str, str]
     ) -> None:
         """Save translation progress to progress.json"""
-        progress_path = self._get_progress_path(project_id, language)
+        progress_path = self._get_progress_path(language)
 
         # Create language directory if it doesn't exist
         os.makedirs(progress_path.parent, exist_ok=True)
@@ -95,7 +96,7 @@ class FileSystemStorageAdapter(StorageAdapter):
     async def load_translations(self, project_id: str) -> List[Dict[str, str]]:
         """Load translations from the CSV file"""
         config = await self.load_config(project_id)
-        source_file = self._get_translations_path(project_id, config)
+        source_file = self._get_translations_path(config)
 
         if not source_file.exists():
             raise FileNotFoundError(f"Source file not found: {source_file}")
@@ -114,7 +115,7 @@ class FileSystemStorageAdapter(StorageAdapter):
             return
 
         config = await self.load_config(project_id)
-        output_file = self._get_translations_path(project_id, config)
+        output_file = self._get_translations_path(config)
 
         fieldnames = list(translations[0].keys())
         output = StringIO()
@@ -129,12 +130,11 @@ class FileSystemStorageAdapter(StorageAdapter):
 
     async def load_context(self, project_id: str) -> List[str]:
         """Load translation context from various sources"""
-        project_path = self._get_project_path(project_id)
         context_parts = []
 
         # 1. Check for context.md or context.txt in project directory
         for ext in [".md", ".txt"]:
-            context_path = project_path / f"context{ext}"
+            context_path = self.project_path / f"context{ext}"
             try:
                 if os.path.exists(context_path):
                     async with aiofiles.open(context_path, "r", encoding="utf-8") as f:
@@ -159,7 +159,6 @@ class FileSystemStorageAdapter(StorageAdapter):
 
     async def load_prompt(self, project_id: str, prompt_type: str) -> str:
         """Load translation prompt from file"""
-        project_path = self._get_project_path(project_id)
 
         # First try the provided prompt file
         if self.prompt_file:
@@ -170,7 +169,7 @@ class FileSystemStorageAdapter(StorageAdapter):
                 print(f"Warning: Error reading prompt file {self.prompt_file}: {e}")
 
         # Then try the default prompt file in the project
-        prompt_path = project_path / "prompts" / f"{prompt_type}.txt"
+        prompt_path = self.project_path / "prompts" / f"{prompt_type}.txt"
         try:
             if prompt_path.exists():
                 async with aiofiles.open(prompt_path, "r", encoding="utf-8") as f:

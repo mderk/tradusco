@@ -1,13 +1,10 @@
-import json
-import os
-from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 from lib.PromptManager import PromptManager
 from lib.TranslationTool import TranslationTool
 from lib.utils import Config
 from lib.storage.base import StorageAdapter
-from lib.storage.filesystem import FileSystemStorageAdapter
+
 
 from .llm import get_driver, get_available_models
 
@@ -70,34 +67,9 @@ class TranslationProject:
         cls,
         project_name: str,
         dst_language: str,
-        prompt_file: str | None = None,
+        storage: StorageAdapter,
         context: str | None = None,
-        context_file: str | None = None,
-        project_path: Union[str, Path] | None = None,
-        storage: Optional[StorageAdapter] = None,
     ):
-        # If project_path is provided, use it directly
-        if project_path is not None:
-            project_path = (
-                Path(project_path) if isinstance(project_path, str) else project_path
-            )
-            # Get project name from the directory if not explicitly provided
-            if not project_name:
-                project_name = project_path.name
-        else:
-            # Backward compatibility: construct path from project name
-            project_path = Path(f"projects/{project_name}")
-
-        # Create storage adapter if not provided
-        if storage is None:
-            storage = FileSystemStorageAdapter(project_path.parent)
-
-        # Set prompt_file and context_file in the storage adapter
-        if prompt_file:
-            storage.set_prompt_file(prompt_file)
-        if context_file:
-            storage.set_context_file(context_file)
-
         # Load config using storage adapter
         config = await storage.load_config(project_name)
 
@@ -304,8 +276,12 @@ class TranslationProject:
         phrases_to_translate: list[tuple[str, str | None]] = []
         phrase_indices: dict[str, int] = {}
         current_batch_tokens = 0
-
+        start_next_batch = False
         for i, row in enumerate(translations):
+            if start_next_batch:
+                await driver.wait(delay_seconds)
+                start_next_batch = False
+
             source_phrase = row[self.base_language]
 
             # Skip empty source phrases
@@ -367,7 +343,7 @@ class TranslationProject:
                 phrases_to_translate = []
                 phrase_indices = {}
                 current_batch_tokens = 0
-                changes_made = True
+                start_next_batch = True
 
         # Process any remaining phrases
         if phrases_to_translate:
@@ -390,7 +366,6 @@ class TranslationProject:
 
             # Save progress after batch processing
             await self._save_translation_progress(progress, translations)
-            changes_made = True
 
         # Always save progress at the end to ensure the test passes
         # This also handles any changes made to progress that weren't from translate_standard

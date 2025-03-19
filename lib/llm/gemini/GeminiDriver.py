@@ -104,113 +104,6 @@ class GeminiDriver(BaseDriver):
 
         return response_schema
 
-    async def translate_async(
-        self, prompt: str, delay_seconds: float = 1.0, max_retries: int = 3
-    ) -> str:
-        """
-        Enhanced async translate method that can better handle JSON responses.
-        For Gemini, we use this as the primary method for all translation, including
-        what would normally be handled by the structured output method.
-
-        Args:
-            prompt: The formatted prompt to send to the model
-            delay_seconds: Delay between retries to avoid rate limiting
-            max_retries: Maximum number of retries for failed API calls
-
-        Returns:
-            The model's response content as a string
-        """
-        for retry in range(max_retries):
-            try:
-                # Check if the prompt is asking for JSON output
-                json_requested = (
-                    "JSON" in prompt
-                    or "json" in prompt
-                    or "schema" in prompt
-                    or "array" in prompt
-                    or "dictionary" in prompt
-                    or "translations" in prompt
-                )
-
-                # If JSON is requested, add more explicit instructions
-                if json_requested:
-                    # Check if we have schema instructions in the prompt
-                    schema_match = re.search(
-                        r"schema:?\s*(\{[\s\S]*?\})", prompt, re.IGNORECASE
-                    )
-
-                    if "respond with a valid JSON" not in prompt.lower():
-                        # Generic JSON enhancement
-                        enhanced_prompt = (
-                            f"{prompt}\n\n"
-                            f"VERY IMPORTANT: Your ENTIRE response must be ONLY a valid JSON object "
-                            f"without any explanations, markdown formatting, or text outside of the JSON. "
-                            f"For translation tasks, use the format: {{\n"
-                            f'  "translations": [\n'
-                            f'    "translated phrase 1",\n'
-                            f'    "translated phrase 2",\n'
-                            f'    "translated phrase 3"\n'
-                            f"  ]\n"
-                            f"}}"
-                        )
-                        prompt = enhanced_prompt
-
-                # Send the batch to the LLM
-                response = await self.llm.ainvoke(prompt)
-
-                # Add delay to avoid rate limiting
-                await asyncio.sleep(delay_seconds)
-
-                # Extract the content
-                content = (
-                    str(response.content)
-                    if hasattr(response, "content")
-                    else str(response)
-                )
-
-                # For JSON requests, try to clean up the response to ensure it's valid JSON
-                if json_requested:
-                    # Extract JSON from markdown code blocks if present
-                    json_block_match = re.search(
-                        r"```(?:json)?\s*([\s\S]*?)\s*```", content
-                    )
-                    if json_block_match:
-                        json_content = json_block_match.group(1).strip()
-                        return json_content
-
-                    # If no code blocks, try to extract a JSON object
-                    json_obj_match = re.search(r"(\{[\s\S]*\})", content)
-                    if json_obj_match:
-                        json_content = json_obj_match.group(1).strip()
-                        return json_content
-
-                    # If no JSON object, try to extract a JSON array
-                    json_array_match = re.search(r"(\[[\s\S]*\])", content)
-                    if json_array_match:
-                        json_content = json_array_match.group(1).strip()
-                        return json_content
-
-                return content
-
-            except Exception as e:
-                if DEBUG:
-                    print(
-                        f"Error in {self.model} API call (attempt {retry+1}/{max_retries}): {e}"
-                    )
-                if retry < max_retries - 1:
-                    # Exponential backoff
-                    wait_time = delay_seconds * (2**retry)
-                    if DEBUG:
-                        print(f"Retrying in {wait_time:.1f} seconds...")
-                    await asyncio.sleep(wait_time)
-                else:
-                    raise Exception(
-                        f"Failed to translate after {max_retries} attempts: {e}"
-                    )
-
-        # This should never be reached due to the raise in the else clause above
-        raise Exception(f"Failed to translate after {max_retries} attempts")
-
     async def translate_structured_async(
         self,
         prompt: str,
@@ -317,51 +210,9 @@ class GeminiDriver(BaseDriver):
                     return result
 
                 except json.JSONDecodeError as e:
-                    if DEBUG:
-                        print(
-                            f"JSON parse error (attempt {retry+1}/{max_retries}): {e}"
-                        )
-
-                    # If this is the last retry, try the fallback extraction
-                    if retry == max_retries - 1:
-                        # For translation tasks, try to extract as a fallback
-                        if output_schema.get("properties", {}).get("translations"):
-                            # Look for proper JSON array-style translations
-                            array_match = re.search(
-                                r'"translations"\s*:\s*\[(.*?)\]', content, re.DOTALL
-                            )
-                            if array_match:
-                                # Extract individual items from the array
-                                array_content = array_match.group(1)
-                                # Find all quoted strings in the array
-                                translations = re.findall(
-                                    r'"((?:[^"\\]|\\.)*)"', array_content
-                                )
-                                if translations:
-                                    if DEBUG:
-                                        print(
-                                            f"Using array extraction, found {len(translations)} translations"
-                                        )
-                                    return {"translations": translations}
-
-                            # If array extraction fails, try to find all quoted strings but filter out 'translations'
-                            translations = re.findall(r'"((?:[^"\\]|\\.)*)"', content)
-                            # Remove the literal string "translations" from the list if present
-                            translations = [
-                                t for t in translations if t != "translations"
-                            ]
-                            if translations:
-                                if DEBUG:
-                                    print(
-                                        f"Using fallback extraction, found {len(translations)} translations"
-                                    )
-                                return {"translations": translations}
-
-                        # Return error information
-                        return {"error": f"Failed to parse JSON response: {str(e)}"}
-
-                    # Otherwise, this will continue to the next retry iteration
-                    # (without needing an explicit continue statement)
+                    raise ValueError(
+                        f"Failed to parse LLM response as JSON: {e}\nContent: {content}"
+                    ) from e
 
             except Exception as e:
                 if DEBUG:

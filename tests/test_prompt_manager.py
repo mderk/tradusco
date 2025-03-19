@@ -4,9 +4,19 @@ import tempfile
 from pathlib import Path
 import asyncio
 from unittest.mock import patch, mock_open, MagicMock
+from pydantic import BaseModel
 
 from lib.PromptManager import PromptManager
 from lib.storage.base import StorageAdapter
+
+
+# Simple Pydantic model for testing
+class TestData(BaseModel):
+    base_language: str = ""
+    dst_language: str = ""
+    phrases_json: str = ""
+    variable: str = ""
+    wrong_name: str = ""
 
 
 # Mock storage adapter for testing
@@ -156,42 +166,51 @@ class TestPromptManager:
     def test_format_prompt_valid(self, prompt_manager):
         """Test formatting a valid prompt."""
         template = "Translate from {base_language} to {dst_language}: {phrases_json}"
-        formatted = prompt_manager.format_prompt(
-            template,
+
+        test_data = TestData(
             base_language="English",
             dst_language="Spanish",
             phrases_json='["hello", "goodbye"]',
         )
+
+        formatted = prompt_manager.format_prompt(template, test_data)
         assert formatted == 'Translate from English to Spanish: ["hello", "goodbye"]'
 
     def test_format_prompt_missing_vars(self, prompt_manager):
         """Test formatting with missing variables."""
         template = "Translate from {base_language} to {dst_language}: {phrases_json}"
-        # Missing dst_language
-        formatted = prompt_manager.format_prompt(
-            template, base_language="English", phrases_json='["hello", "goodbye"]'
+        # Missing dst_language, but present with empty string from TestData default
+        test_data = TestData(
+            base_language="English",
+            phrases_json='["hello", "goodbye"]',
         )
-        # Should return unformatted template when missing variables
-        assert formatted == template
 
-    @patch("builtins.print")
-    def test_format_prompt_error_handling(self, mock_print, prompt_manager):
-        """Test error handling in format_prompt."""
-        # Create a bad template that will cause a ValueError
-        template = "Bad format: {base_language"  # Missing closing brace
-        result = prompt_manager.format_prompt(template, base_language="English")
-        assert result == template  # Should return original template on error
-        mock_print.assert_called_once()  # Should print a warning
+        formatted = prompt_manager.format_prompt(template, test_data)
+        # Empty string is used for dst_language
+        assert formatted == 'Translate from English to : ["hello", "goodbye"]'
 
     @patch("builtins.print")
     def test_format_prompt_key_error(self, mock_print, prompt_manager):
         """Test KeyError handling in format_prompt."""
         template = "Test {variable}"
-        # Intentionally pass a different variable name to cause KeyError
-        result = prompt_manager.format_prompt(template, wrong_name="value")
-        assert result == template
+        # variable is present but empty from TestData default
+        test_data = TestData(wrong_name="value")
+
+        result = prompt_manager.format_prompt(template, test_data)
+        # Empty string is used for variable
+        assert result == "Test "
+        mock_print.assert_not_called()  # No error when all fields exist
+
+    @patch("builtins.print")
+    def test_format_prompt_real_key_error(self, mock_print, prompt_manager):
+        """Test KeyError handling in format_prompt with a truly missing key."""
+        template = "Test {non_existent}"
+        test_data = TestData(wrong_name="value")
+
+        result = prompt_manager.format_prompt(template, test_data)
+        assert result is None  # Should return None for missing variables
         mock_print.assert_called_once()
-        assert "Missing variables in format_prompt" in mock_print.call_args[0][0]
+        assert "Missing required variable" in mock_print.call_args[0][0]
 
     @patch("builtins.print")
     def test_format_prompt_general_exception(self, mock_print, prompt_manager):
@@ -373,3 +392,14 @@ class TestPromptManager:
 
             # Verify result
             assert result == "Content from second default path"
+
+    @patch("builtins.print")
+    def test_format_prompt_error_handling(self, mock_print, prompt_manager):
+        """Test error handling in format_prompt."""
+        # Create a bad template that will cause a ValueError
+        template = "Bad format: {base_language"  # Missing closing brace
+        test_data = TestData(base_language="English")
+
+        result = prompt_manager.format_prompt(template, test_data)
+        assert result is None  # Should return None on error
+        mock_print.assert_called_once()  # Should print a warning

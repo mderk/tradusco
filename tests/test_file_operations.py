@@ -43,7 +43,7 @@ class TestFileOperations:
         # Create a storage adapter and project directory
         project_dir = tmp_path / "test_project"
         os.makedirs(project_dir, exist_ok=True)
-        storage = FileSystemStorageAdapter(tmp_path)
+        storage = FileSystemStorageAdapter(project_dir)
 
         # Create a config file
         config_data = {
@@ -115,7 +115,7 @@ class TestFileOperations:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
 
         # Create storage adapter
-        storage = FileSystemStorageAdapter(tmp_path)
+        storage = FileSystemStorageAdapter(project_dir)
 
         # Test loading translations
         loaded_translations = await storage.load_translations("test_project")
@@ -135,7 +135,7 @@ class TestFileOperations:
         os.makedirs(project_dir, exist_ok=True)
 
         # Create storage adapter
-        storage = FileSystemStorageAdapter(tmp_path)
+        storage = FileSystemStorageAdapter(project_dir)
 
         # Verify that FileNotFoundError is raised
         with pytest.raises(FileNotFoundError):
@@ -161,7 +161,7 @@ class TestFileOperations:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
 
         # Create storage adapter
-        storage = FileSystemStorageAdapter(tmp_path)
+        storage = FileSystemStorageAdapter(project_dir)
 
         # Create test data with special characters
         test_data = [
@@ -246,7 +246,7 @@ class TestFileOperations:
             json.dump(progress_data, f, ensure_ascii=False, indent=2)
 
         # Create storage adapter
-        storage = FileSystemStorageAdapter(tmp_path)
+        storage = FileSystemStorageAdapter(project_dir)
 
         # Load the config
         config = await storage.load_config("test_project")

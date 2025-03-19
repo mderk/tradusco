@@ -4,11 +4,11 @@ import pytest
 import json
 import asyncio
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.TranslationTool import TranslationTool
+from lib.TranslationTool import TranslationTool, Input
 from lib.PromptManager import PromptManager
 from lib.storage.base import StorageAdapter
 from tests.mock_llm_driver import MockLLMDriver
@@ -83,25 +83,21 @@ class TestTranslationTool:
     @pytest.mark.asyncio
     async def test_create_prompt(self, translation_tool, prompt_manager):
         """Test creating a batch prompt."""
-        # Prepare test data
-        phrases = ["Hello", "Goodbye", "Welcome"]
-        translations = [
-            {"key": "phrase1", "en": "Hello", "context": "Greeting"},
-            {"key": "phrase2", "en": "Goodbye", "context": "Farewell"},
-            {"key": "phrase3", "en": "Welcome", "context": "Greeting someone arriving"},
+        # Prepare test data using the new format (list of tuples with phrase and context)
+        phrases = [
+            ("Hello", "Greeting"),
+            ("Goodbye", "Farewell"),
+            ("Welcome", "Greeting someone arriving"),
         ]
-        indices = [0, 1, 2]
         base_language = "en"
         dst_language = "es"
-        # Use the template with correct placeholders including phrase_contexts
-        prompt = "Translate the following phrases from {base_language} to {dst_language}.\n\nPhrases to translate:\n{phrases_json}\n{context}\n{phrase_contexts}"
+        # Use template with correct placeholders
+        prompt = "Translate the following phrases from {base_language} to {dst_language}.\n\nPhrases to translate:\n{phrases_json}\n{context}"
         context = "These are common greetings."
 
-        # Call the method with real components
+        # Call the method with updated parameters
         result = await translation_tool.create_prompt(
             phrases=phrases,
-            translations=translations,
-            indices=indices,
             base_language=base_language,
             dst_language=dst_language,
             prompt=prompt,
@@ -114,32 +110,19 @@ class TestTranslationTool:
         assert "Hello" in result
         assert "Goodbye" in result
         assert "Welcome" in result
-        # The context should now be included
+        # The context should be included
         assert "common greetings" in result
-
-        # Check that phrase contexts are included
-        # The contexts are stored as a JSON object
-        assert '"Hello": "Greeting"' in result or '"Hello":"Greeting"' in result
-        assert "Farewell" in result
-        assert "Greeting someone arriving" in result
 
     @pytest.mark.asyncio
     async def test_translate_standard(self, translation_tool, mock_llm_driver):
         """Test processing a batch of translations with the mock LLM driver."""
-        # Prepare test data
-        phrases = ["Hello", "Goodbye", "Welcome"]
-        translations = [
-            {"key": "phrase1", "en": "Hello"},
-            {"key": "phrase2", "en": "Goodbye"},
-            {"key": "phrase3", "en": "Welcome"},
-        ]
-        indices = [0, 1, 2]
-        progress = {}
+        # Prepare test data using the new format
+        phrases = [("Hello", None), ("Goodbye", None), ("Welcome", None)]
         base_language = "en"
         dst_language = "es"
         prompt = "Translate the following phrases from {base_language} to {dst_language}.\n\nPhrases to translate:\n{phrases_json}"
 
-        # Ensure mock_llm_driver is properly registered in the lib.llm module
+        # Ensure mock_llm_driver is properly registered
         with patch(
             "lib.TranslationTool.get_driver", return_value=mock_llm_driver
         ), patch("lib.llm.get_driver", return_value=mock_llm_driver):
@@ -148,31 +131,29 @@ class TestTranslationTool:
             mock_llm_driver.register_response(
                 r"Translate.*from EN to ES",
                 """```json
-                {
-                    "translations": [
-                        "Hola",
-                        "Adiós",
-                        "Bienvenido"
-                    ]
-                }
+                ["Hola", "Adiós", "Bienvenido"]
                 ```""",
+            )
+
+            # Set up mock translate_async method
+            mock_llm_driver.translate_async = AsyncMock(
+                return_value="""```json
+                ["Hola", "Adiós", "Bienvenido"]
+                ```"""
             )
 
             # Call the method
             result = await translation_tool.translate_standard(
                 phrases=phrases,
-                indices=indices,
-                translations=translations,
-                progress=progress,
                 model="mock-model",
                 base_language=base_language,
                 dst_language=dst_language,
                 prompt=prompt,
             )
 
-            # Verify the result
-            assert result == 3
-            assert translations[0]["es"] == "Hola"
-            assert translations[1]["es"] == "Adiós"
-            assert translations[2]["es"] == "Bienvenido"
-            assert progress.get("Hello") == "Hola"
+            # Verify the result is a dictionary mapping phrases to translations
+            assert isinstance(result, dict)
+            assert result.get("Hello") == "Hola"
+            assert result.get("Goodbye") == "Adiós"
+            assert result.get("Welcome") == "Bienvenido"
+            assert len(result) == 3

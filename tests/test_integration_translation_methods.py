@@ -99,13 +99,12 @@ class TestIntegrationTranslationMethods:
         """Create test data for translation tests."""
         return {
             "phrases": [
-                "Hello world",
-                "Goodbye",
-                "Thank you",
-                "How are you?",
-                "What is your name?",
+                ("Hello world", "Greeting"),
+                ("Goodbye", ""),
+                ("Thank you", ""),
+                ("How are you?", ""),
+                ("What is your name?", ""),
             ],
-            "indices": [0, 1, 2, 3, 4],
             "translations": [
                 {"en": "Hello world", "es": ""},
                 {"en": "Goodbye", "es": ""},
@@ -158,32 +157,41 @@ class TestIntegrationTranslationMethods:
         translations = [dict(item) for item in test_data["translations"]]
         progress = dict(test_data["progress"])
 
+        # Load the real prompt from the PromptManager
+        prompt = await translation_tool.prompt_manager.load_prompt("translation")
+
         # Run the translation
-        translation_count = await translation_tool.translate_standard(
+        translated = await translation_tool.translate_standard(
             test_data["phrases"],
-            test_data["indices"],
-            translations,
-            progress,
             model,
             test_data["base_language"],
             test_data["dst_language"],
-            "Translate from {base_language} to {dst_language}: {phrases_json}",
+            prompt,
             None,
             translation_params["delay_seconds"],
             translation_params["max_retries"],
         )
 
         # Check that we got translations
-        assert translation_count > 0, "No translations were produced"
+        assert translated, "No translations were produced"
+
+        # Update translations and progress with results
+        for i, phrase_data in enumerate(test_data["phrases"]):
+            phrase = phrase_data[0]
+            translation = translated.get(phrase)
+            if translation:
+                translations[i]["es"] = translation
+                progress[phrase] = translation
 
         # Print translations if verbose
         if translation_params["verbose"]:
             print("\nTranslations from standard method:")
             for i, translation in enumerate(translations):
-                print(f"{test_data['phrases'][i]} -> {translation['es']}")
+                print(f"{test_data['phrases'][i][0]} -> {translation['es']}")
 
         # Verify translations
-        for i, phrase in enumerate(test_data["phrases"]):
+        for i, phrase_data in enumerate(test_data["phrases"]):
+            phrase = phrase_data[0]
             assert translations[i]["es"], f"No translation for '{phrase}'"
             assert progress[phrase], f"Translation not added to progress for '{phrase}'"
 
@@ -206,20 +214,31 @@ class TestIntegrationTranslationMethods:
         translations = [dict(item) for item in test_data["translations"]]
         progress = dict(test_data["progress"])
 
+        prompt = await translation_tool.prompt_manager.load_prompt("translation")
+
         # Run the translation
-        translation_count = await translation_tool.translate_structured(
+        translated = await translation_tool.translate_structured(
             test_data["phrases"],
-            test_data["indices"],
-            translations,
-            progress,
             model,
             test_data["base_language"],
             test_data["dst_language"],
-            "Translate from {base_language} to {dst_language}: {phrases_json}",
-            None,
+            prompt,
+            None,  # context
             translation_params["delay_seconds"],
             translation_params["max_retries"],
         )
+
+        # Check that we got translations
+        assert translated, "No translations were produced"
+
+        # Update translations and progress with results
+        translation_count = 0
+        for phrase, translation in translated.items():
+            for i, phrase_data in enumerate(test_data["phrases"]):
+                if phrase_data[0] == phrase:
+                    translations[i]["es"] = translation
+                    progress[phrase] = translation
+                    translation_count += 1
 
         # Check that we got translations
         assert translation_count > 0, "No translations were produced"
@@ -228,10 +247,11 @@ class TestIntegrationTranslationMethods:
         if translation_params["verbose"]:
             print("\nTranslations from structured method:")
             for i, translation in enumerate(translations):
-                print(f"{test_data['phrases'][i]} -> {translation['es']}")
+                print(f"{test_data['phrases'][i][0]} -> {translation['es']}")
 
         # Verify translations
-        for i, phrase in enumerate(test_data["phrases"]):
+        for i, phrase_data in enumerate(test_data["phrases"]):
+            phrase = phrase_data[0]
             assert translations[i]["es"], f"No translation for '{phrase}'"
             assert progress[phrase], f"Translation not added to progress for '{phrase}'"
 
@@ -259,20 +279,31 @@ class TestIntegrationTranslationMethods:
         translations = [dict(item) for item in test_data["translations"]]
         progress = dict(test_data["progress"])
 
+        prompt = await translation_tool.prompt_manager.load_prompt("translation")
+
         # Run the translation
-        translation_count = await translation_tool.translate_function(
+        translated = await translation_tool.translate_function(
             test_data["phrases"],
-            test_data["indices"],
-            translations,
-            progress,
             model,
             test_data["base_language"],
             test_data["dst_language"],
-            "Translate from {base_language} to {dst_language}: {phrases_json}",
-            None,
+            prompt,
+            None,  # context
             translation_params["delay_seconds"],
             translation_params["max_retries"],
         )
+
+        # Check that we got translations
+        assert translated, "No translations were produced"
+
+        # Update translations and progress with results
+        translation_count = 0
+        for phrase, translation in translated.items():
+            for i, phrase_data in enumerate(test_data["phrases"]):
+                if phrase_data[0] == phrase:
+                    translations[i]["es"] = translation
+                    progress[phrase] = translation
+                    translation_count += 1
 
         # Check that we got translations
         assert translation_count > 0, "No translations were produced"
@@ -281,10 +312,11 @@ class TestIntegrationTranslationMethods:
         if translation_params["verbose"]:
             print("\nTranslations from function method:")
             for i, translation in enumerate(translations):
-                print(f"{test_data['phrases'][i]} -> {translation['es']}")
+                print(f"{test_data['phrases'][i][0]} -> {translation['es']}")
 
         # Verify translations
-        for i, phrase in enumerate(test_data["phrases"]):
+        for i, phrase_data in enumerate(test_data["phrases"]):
+            phrase = phrase_data[0]
             assert translations[i]["es"], f"No translation for '{phrase}'"
             assert progress[phrase], f"Translation not added to progress for '{phrase}'"
 

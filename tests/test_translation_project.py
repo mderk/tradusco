@@ -32,12 +32,6 @@ class MockStorageAdapter(StorageAdapter):
         self.context_file = None
         self.prompt_file = None
 
-    def set_context_file(self, context_file):
-        self.context_file = context_file
-
-    def set_prompt_file(self, prompt_file):
-        self.prompt_file = prompt_file
-
     async def load_config(self, project_id: str) -> Config:
         return self.config
 

@@ -84,6 +84,12 @@ class BaseDriver(ABC):
             },
         }
 
+    async def wait(self, delay_seconds: float = 1.0):
+        """
+        Wait for a specified number of seconds.
+        """
+        await asyncio.sleep(delay_seconds)
+
     async def translate_async(
         self, prompt: str, delay_seconds: float = 1.0, max_retries: int = 3
     ) -> str:
@@ -100,14 +106,14 @@ class BaseDriver(ABC):
         Raises:
             Exception: If all retry attempts fail
         """
-
+        wait_time = delay_seconds
         for retry in range(max_retries):
+            if retry > 0:
+                # Add delay to avoid rate limiting
+                await asyncio.sleep(wait_time)
             try:
                 # Send the batch to the LLM
                 response = await self.llm.ainvoke(prompt)
-
-                # Add delay to avoid rate limiting
-                await asyncio.sleep(delay_seconds)
 
                 # Ensure we return a string
                 return str(response.content)
@@ -121,7 +127,6 @@ class BaseDriver(ABC):
                     wait_time = delay_seconds * (2**retry)
                     if DEBUG:
                         print(f"Retrying in {wait_time:.1f} seconds...")
-                    await asyncio.sleep(wait_time)
                 else:
                     raise Exception(
                         f"Failed to translate after {max_retries} attempts: {e}"
@@ -168,12 +173,13 @@ class BaseDriver(ABC):
         Raises:
             Exception: If all retry attempts fail
         """
+        wait_time = delay_seconds
         if output_schema is None:
             output_schema = self.get_structured_output_schema()
         for retry in range(max_retries):
             if retry > 0:
                 # Add delay to avoid rate limiting
-                await asyncio.sleep(delay_seconds)
+                await asyncio.sleep(wait_time)
             try:
                 # Standard approach for models that support response_format parameter
                 response = await self.llm.ainvoke(
@@ -229,7 +235,6 @@ class BaseDriver(ABC):
                     wait_time = delay_seconds * (2**retry)
                     if DEBUG:
                         print(f"Retrying in {wait_time:.1f} seconds...")
-                    await asyncio.sleep(wait_time)
                 else:
                     raise Exception(
                         f"Failed to get structured output after {max_retries} attempts: {e}"
@@ -275,7 +280,7 @@ class BaseDriver(ABC):
                 # Add delay before retries (but not before the first attempt)
                 if retry > 0:
                     # Exponential backoff
-                    wait_time = delay_seconds * (2 ** (retry - 1))
+                    wait_time = delay_seconds * (2**retry)
                     if DEBUG:
                         print(
                             f"Retrying function call in {wait_time:.1f} seconds (attempt {retry+1}/{max_retries})..."
@@ -357,37 +362,10 @@ class BaseDriver(ABC):
                                 "name": function_name or "translations",
                                 "arguments": content_json,
                             }
-                        except:
-                            # If JSON parsing failed, try to extract translations line by line
-                            # This helps with models that don't properly format JSON but still give translations
-                            lines = content.strip().split("\n")
-                            translations = []
-
-                            # Extract meaningful lines (skipping code block markers, etc.)
-                            for line in lines:
-                                line = line.strip()
-                                if line and not line.startswith(("```", "{", "}")):
-                                    # Clean up the line (remove numbers, quotes, etc.)
-                                    cleaned_line = re.sub(r"^\d+\.\s*", "", line)
-                                    cleaned_line = re.sub(
-                                        r'^["\']|["\']$', "", cleaned_line
-                                    )
-                                    if cleaned_line:
-                                        translations.append(cleaned_line)
-
-                            # If we found enough translations, use them
-                            if len(translations) >= 3:  # Assuming 3 phrases is common
-                                return {
-                                    "name": function_name or "translations",
-                                    "arguments": {"translations": translations[:3]},
-                                }
-
-                            # If we still have no translations, return the content as a single translation
-                            # This may not be ideal but prevents returning nothing
-                            return {
-                                "name": function_name or "translations",
-                                "arguments": {"translations": [content]},
-                            }
+                        except json.JSONDecodeError as e:
+                            raise ValueError(
+                                f"Failed to parse LLM response as JSON: {e}\nContent: {json_content}"
+                            ) from e
 
                 # 3. Response is already a dict (common with some wrappers)
                 if isinstance(response, dict):

@@ -4,7 +4,7 @@ import os
 from typing import Annotated, Optional, Union
 
 from pydantic import BaseModel, Field
-from .llm import BaseDriver, get_driver, get_available_models
+from .llm import BaseDriver, get_driver
 from .PromptManager import PromptManager
 
 DEBUG = os.environ.get("TRADUSCO_DEBUG")
@@ -217,10 +217,22 @@ class TranslationTool:
             # Then try to parse it as JSON
             try:
                 parsed_response = json.loads(json_str)
-                return self.merge_translations(
-                    translations_list=parsed_response,
-                    phrases=phrases,
-                )
+                translations_list = None
+                if isinstance(parsed_response, dict):
+                    if "translations" in parsed_response:  # type: ignore
+                        translations_list = parsed_response["translations"]
+                elif isinstance(parsed_response, list):
+                    translations_list = parsed_response
+
+                if translations_list:
+                    return self.merge_translations(
+                        translations_list=translations_list,
+                        phrases=phrases,
+                    )
+                else:
+                    if DEBUG:
+                        print("Invalid JSON response received")
+                    return None
             except json.JSONDecodeError:
                 if DEBUG:
                     print("Invalid JSON response received")

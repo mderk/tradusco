@@ -53,13 +53,3 @@ class StorageAdapter(ABC):
     async def load_prompt(self, project_id: str, prompt_type: str) -> str:
         """Load translation prompt"""
         pass
-
-    @abstractmethod
-    def set_context_file(self, context_file: Optional[str]) -> None:
-        """Set the context file path"""
-        pass
-
-    @abstractmethod
-    def set_prompt_file(self, prompt_file: Optional[str]) -> None:
-        """Set the prompt file path"""
-        pass

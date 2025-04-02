@@ -112,7 +112,6 @@ class TestPromptManager:
         """Test PromptManager initialization."""
         assert prompt_manager.storage == mock_storage
         assert prompt_manager.project_id == "test_project"
-        assert isinstance(prompt_manager.prompts_dir, Path)
         assert prompt_manager._cache == {}
         assert "translation" in prompt_manager._required_vars
 
@@ -263,38 +262,6 @@ class TestPromptManager:
         assert prompt_manager._cache == {"translation": "Translate prompt"}
 
     @pytest.mark.asyncio
-    async def test_load_prompt_from_path_success(
-        self, prompt_manager, setup_prompt_files
-    ):
-        """Test loading a prompt from a path successfully."""
-        file_path = setup_prompt_files["translation.txt"]
-        result = await prompt_manager._load_prompt_from_path("translation", file_path)
-        assert "translating from {base_language} to {dst_language}" in result.lower()
-
-    @pytest.mark.asyncio
-    async def test_load_prompt_from_path_not_exists(
-        self, prompt_manager, temp_project_dir
-    ):
-        """Test loading a prompt from a non-existent path."""
-        with patch("builtins.print") as mock_print:
-            result = await prompt_manager._load_prompt_from_path(
-                "translation", temp_project_dir / "nonexistent.txt", is_default=True
-            )
-            assert result == ""
-            mock_print.assert_called_once()
-            assert "not found" in mock_print.call_args[0][0].lower()
-
-    @pytest.mark.asyncio
-    async def test_load_prompt_from_path_empty_file(
-        self, prompt_manager, setup_prompt_files
-    ):
-        """Test loading an empty prompt file."""
-        file_path = setup_prompt_files["empty.txt"]
-        with patch("builtins.print") as mock_print:
-            result = await prompt_manager._load_prompt_from_path("empty", file_path)
-            assert result == ""
-
-    @pytest.mark.asyncio
     async def test_load_prompt_with_cache(self, prompt_manager):
         """Test loading a prompt with caching."""
         # Set up cache
@@ -344,7 +311,7 @@ class TestPromptManager:
         mock_storage.prompts = {}
 
         # Mock _load_prompt_from_path to return a default prompt
-        with patch.object(prompt_manager, "_load_prompt_from_path") as mock_load:
+        with patch.object(prompt_manager, "get_default_prompt") as mock_load:
             mock_load.return_value = "Default prompt content"
 
             # Load prompt - should fall back to default
@@ -361,37 +328,12 @@ class TestPromptManager:
         mock_storage.prompts = {}
 
         # Mock _load_prompt_from_path to always return empty
-        with patch.object(prompt_manager, "_load_prompt_from_path", return_value=""):
+        with patch.object(prompt_manager, "get_default_prompt", return_value=""):
             with patch("builtins.print") as mock_print:
                 result = await prompt_manager.load_prompt("nonexistent")
                 assert result == ""
                 mock_print.assert_called_once()
                 assert "No valid prompt found" in mock_print.call_args[0][0]
-
-    @pytest.mark.asyncio
-    async def test_load_prompt_try_all_default_paths(self, prompt_manager):
-        """Test that all default paths are tried when loading a prompt."""
-
-        # Create a mock that returns different values for different paths
-        async def mock_load_from_path(
-            prompt_type,
-            path,
-            is_default=False,
-        ):
-            # Return content only for the second default path
-            if str(path).endswith("prompt.txt"):
-                return "Content from second default path"
-            return ""
-
-        # Patch the method
-        with patch.object(
-            prompt_manager, "_load_prompt_from_path", side_effect=mock_load_from_path
-        ):
-            # Call the method without a custom path
-            result = await prompt_manager.load_prompt("test")
-
-            # Verify result
-            assert result == "Content from second default path"
 
     @patch("builtins.print")
     def test_format_prompt_error_handling(self, mock_print, prompt_manager):

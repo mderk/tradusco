@@ -4,9 +4,9 @@ from pathlib import Path
 import re
 from typing import Optional
 
-import aiofiles
 from pydantic import BaseModel
 
+import prompts
 from lib.storage.base import StorageAdapter
 
 DEBUG = os.environ.get("TRADUSCO_DEBUG")
@@ -24,7 +24,6 @@ class PromptManager:
         """
         self.storage = storage
         self.project_id = project_id
-        self.prompts_dir = Path(__file__).parent.parent / "prompts"
         self._cache: dict[str, str] = {}
         self._required_vars: dict[str, set[str]] = {
             "translation": {"base_language", "dst_language", "phrases_json"},
@@ -58,37 +57,16 @@ class PromptManager:
 
         return True, ""
 
-    async def _load_prompt_from_path(
-        self,
-        prompt_type: str,
-        path: Path | str,
-        is_default: bool = False,
-    ) -> str:
-        """Load a prompt from a specific path with filesystem operations.
+    def get_default_prompt(self, prompt_type: str) -> str:
+        """Get the default prompt for a given prompt type.
 
         Args:
-            prompt_type: Type of prompt to load
-            path: Path to the prompt file
-            is_default: Whether this is loading a default prompt
+            prompt_type: Type of prompt to get
 
         Returns:
-            The loaded prompt template string
+            The default prompt string
         """
-        try:
-            if os.path.exists(path):
-                async with aiofiles.open(path, "r", encoding="utf-8") as f:
-                    prompt = (await f.read()).strip()
-                    if prompt:
-                        return prompt
-            else:
-                source = "Default" if is_default else "Custom"
-                print(f"Warning: {source} {prompt_type} prompt file {path} not found.")
-        except Exception as e:
-            source = "Default" if is_default else "Custom"
-            print(
-                f"Warning: Error reading {source} {prompt_type} prompt file {path}: {e}"
-            )
-        return ""
+        return getattr(prompts, prompt_type)
 
     async def load_prompt(
         self,
@@ -139,38 +117,9 @@ class PromptManager:
         except Exception as e:
             print(f"Warning: Error loading prompt '{prompt_type}': {e}")
 
-        # Fallback to default prompts in the package if nothing found in storage
-        prompt_paths = [
-            self.prompts_dir / f"{prompt_type}.txt",
-            self.prompts_dir / prompt_type / "prompt.txt",
-        ]
-
-        for path in prompt_paths:
-            prompt = await self._load_prompt_from_path(
-                prompt_type,
-                path,
-                is_default=True,
-            )
-            if prompt:
-                if validate:
-                    is_valid, error = self.validate_prompt(
-                        prompt_type, prompt, strict_validation
-                    )
-                    if error:
-                        source = "Default"
-                        print(
-                            f"{'Warning' if is_valid else 'Error'}: {source} prompt validation failed: {error}"
-                        )
-
-                    if not is_valid and strict_validation:
-                        continue
-                    elif use_cache:
-                        # Cache prompt if not in strict mode or if valid
-                        self._cache[prompt_type] = prompt
-                elif use_cache:
-                    # If not validating, only cache if requested
-                    self._cache[prompt_type] = prompt
-                return prompt
+        prompt = self.get_default_prompt(prompt_type)
+        if prompt:
+            return prompt
 
         print(f"Warning: No valid prompt found for type '{prompt_type}'")
         return ""

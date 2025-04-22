@@ -16,7 +16,7 @@ class GeminiDriver(BaseDriver):
 
     def __init__(
         self,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash-preview-04-17",
         api_key: Optional[str] = None,
     ):
         """

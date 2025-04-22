@@ -293,7 +293,7 @@ class TranslationProject:
                 continue
 
             # Skip already translated phrases
-            if row[self.dst_language] and not regenerate:
+            if row.get(self.dst_language) and not regenerate:
                 # Update progress file if needed
                 if (source_phrase not in progress) or regenerate:
                     progress[source_phrase] = row[self.dst_language]
@@ -310,6 +310,12 @@ class TranslationProject:
 
             # Add to batch for translation
             phrase_context = row.get("context") or ""
+            phrase_context_language = row.get(f"context_{self.dst_language}") or ""
+            phrase_context = (
+                phrase_context + f"; {phrase_context_language}"
+                if phrase_context_language
+                else ""
+            )
             phrases_to_translate.append((source_phrase, phrase_context))
             phrase_indices[source_phrase] = i
 

@@ -45,7 +45,7 @@ class StorageAdapter(ABC):
         pass
 
     @abstractmethod
-    async def load_context(self, project_id: str) -> List[str]:
+    async def load_context(self, project_id: str, language: str) -> List[str]:
         """Load translation context"""
         pass
 

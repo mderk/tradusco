@@ -98,6 +98,12 @@ async def async_main():
         action="store_true",
         help="Enable debug mode",
     )
+    # Add regenerate argument
+    parser.add_argument(
+        "--regenerate",
+        action="store_true",
+        help="Regenerate all translations, ignoring existing ones and saved progress.",
+    )
 
     args = parser.parse_args()
 
@@ -162,6 +168,7 @@ async def async_main():
             model=args.model,
             batch_max_tokens=args.batch_max_tokens,
             translation_method=args.method,
+            regenerate=args.regenerate,
         )
     except Exception as e:
         print(f"Error: {e}")

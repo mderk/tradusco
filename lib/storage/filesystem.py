@@ -128,7 +128,7 @@ class FileSystemStorageAdapter(StorageAdapter):
         async with aiofiles.open(output_file, "w", newline="", encoding="utf-8") as f:
             await f.write(content)
 
-    async def load_context(self, project_id: str) -> List[str]:
+    async def load_context(self, project_id: str, language: str) -> List[str]:
         """Load translation context from various sources"""
         context_parts = []
 
@@ -143,7 +143,18 @@ class FileSystemStorageAdapter(StorageAdapter):
             except Exception as e:
                 print(f"Warning: Error reading context file {context_path}: {e}")
 
-        # 2. Check for context from command line file
+        # 2. Check for context.md or context.txt in language directory
+        for ext in [".md", ".txt"]:
+            context_path = self.project_path / language / f"context{ext}"
+            try:
+                if os.path.exists(context_path):
+                    async with aiofiles.open(context_path, "r", encoding="utf-8") as f:
+                        content = await f.read()
+                        context_parts.append(content.strip())
+            except Exception as e:
+                print(f"Warning: Error reading context file {context_path}: {e}")
+
+        # 3. Check for context from command line file
         if self.context_file:
             try:
                 if os.path.exists(self.context_file):

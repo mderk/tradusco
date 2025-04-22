@@ -113,7 +113,9 @@ class TranslationProject:
 
     async def _load_context(self) -> str:
         """Load translation context from various sources"""
-        context_parts = await self.storage.load_context(self.project_id)
+        context_parts = await self.storage.load_context(
+            self.project_id, self.dst_language
+        )
 
         # Add direct context string if provided
         if self.context:
@@ -234,6 +236,7 @@ class TranslationProject:
         model: str = "gemini",
         batch_max_tokens: int = 2048,
         translation_method: str = "standard",
+        regenerate: bool = False,
     ) -> None:
         """Translate phrases from base language to destination language
 
@@ -244,6 +247,7 @@ class TranslationProject:
             model: The LLM model to use for translation
             batch_max_tokens: Maximum number of tokens for a translation batch
             translation_method: Method to use for translation ('auto', 'standard', 'structured', or 'function')
+            regenerate: If True, ignore existing translations and progress, and re-translate all phrases.
         """
         # Validate translation method
         valid_methods = ["auto", "standard", "structured", "function"]
@@ -289,15 +293,15 @@ class TranslationProject:
                 continue
 
             # Skip already translated phrases
-            if row[self.dst_language]:
+            if row[self.dst_language] and not regenerate:
                 # Update progress file if needed
-                if source_phrase not in progress:
+                if (source_phrase not in progress) or regenerate:
                     progress[source_phrase] = row[self.dst_language]
                     changes_made = True
                 continue
 
             # Check if we already have a translation in progress
-            if source_phrase in progress:
+            if (source_phrase in progress) and not regenerate:
                 translation = progress[source_phrase]
                 row[self.dst_language] = translation
                 changes_made = True

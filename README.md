@@ -20,6 +20,40 @@ GROK_API_KEY = "your_api_key_here"
 OPENROUTER_API_KEY = "your_api_key_here"
 ```
 
+Notes:
+
+- **OpenRouter**: set `OPENROUTER_API_KEY` and pass any OpenRouter model id containing `/`
+  (example: `google/gemini-2.5-flash`). Tradusco will route it through OpenRouter automatically.
+- **Debugging**: set `TRADUSCO_DEBUG=true` (or pass `--debug` to `translate.py`) to enable verbose logs.
+
+## Using Tradusco inside another repository (recommended)
+
+Tradusco does **not** require projects to live inside this repo. You can store translation state
+in your application repo (for example under `.tradusco/`) and call Tradusco as an external tool.
+
+Typical layout in your app repo:
+
+```
+your-app/
+  .tradusco/
+    myproject/
+      config.json
+      translations.csv
+      context.txt
+      ru/progress.json
+      fr/progress.json
+```
+
+All Tradusco scripts accept absolute paths, so you can run them from your app repo:
+
+```bash
+TRADUSCO_ROOT=/path/to/ai_translator
+PYTHON="$TRADUSCO_ROOT/.venv/bin/python"  # optional
+
+# translate missing strings into French using OpenRouter
+$PYTHON "$TRADUSCO_ROOT/translate.py" -p .tradusco/myproject -l fr -m google/gemini-2.5-flash --method auto
+```
+
 ## Creating a New Project
 
 You can create a new translation project using the `create_project.py` script. This script sets up the necessary directory structure and configuration files based on a CSV file containing your translations.
@@ -88,9 +122,9 @@ goodbye_message,Goodbye,Au revoir,Adiós
 
 The utility works with projects that follow this structure:
 
--   `projects/[project_name]/config.json` - Project configuration
--   `projects/[project_name]/translations.csv` - Source and destination translations
--   `projects/[project_name]/[language]/progress.json` - Translation progress for each language
+-   `[project_dir]/config.json` - Project configuration
+-   `[project_dir]/translations.csv` - Source and destination translations
+-   `[project_dir]/[language]/progress.json` - Translation progress for each language
 
 ### Project Configuration
 
@@ -138,6 +172,9 @@ python translate.py -p projects/myproject -l ru
 # Using an absolute path
 python translate.py -p /path/to/my/project -l fr -m openai
 
+# OpenRouter: pass a raw OpenRouter model id (must contain "/")
+python translate.py -p /path/to/my/project -l fr -m google/gemini-2.5-flash
+
 # Using a relative path
 python translate.py -p ./custom_projects/myproject -l de -b 30
 
@@ -161,6 +198,68 @@ python translate.py -p projects/myproject -l fr --method auto
 
 # List available models
 python translate.py --list-models
+```
+
+## Helper scripts for integrations (CSV + gettext PO workflows)
+
+These scripts are designed to make Tradusco easy to integrate into other codebases.
+They are **framework-agnostic**: your app owns extraction/build; Tradusco owns translation state
+and correctness helpers.
+
+### `extract_translations_csv.py` (PO → translations.csv)
+
+Extract unique `msgid` strings from base-locale `.po` files and merge them into a `translations.csv`.
+
+```bash
+python extract_translations_csv.py --po-dir locale_src/en --out-csv locale_src/translations.csv --base-col en
+```
+
+Notes:
+
+- Reads `.po` as UTF-8 (prevents mojibake issues).
+- Intended for common `msgid`/`msgstr` flows. It does not currently treat plural forms (`msgid_plural`) as separate keys.
+
+### `sync_project_from_csv.py` (source CSV → Tradusco project)
+
+Sync an extracted phrase CSV into a Tradusco project directory. This writes:
+
+- `config.json`
+- `translations.csv` (prefilled from `progress.json` caches)
+
+```bash
+python sync_project_from_csv.py --project-dir .tradusco/myproject --source-csv locale_src/translations.csv --base-col en
+```
+
+Quality/safety features:
+
+- **Progress sanitization (default on)**:
+  - migrates common UTF-8-as-Latin1 mojibake keys back to UTF-8 (for current phrases)
+  - quarantines placeholder-breaking translations into `progress._quarantine.json`
+- Preserves metadata columns:
+  - `context` (or `--context-col ...`) and `context_<lang>` columns are kept in the output CSV
+
+### `apply_progress_to_po.py` (progress.json → PO files)
+
+Fill empty/fuzzy `msgstr` entries from `progress.json` into your `.po` files:
+
+```bash
+python apply_progress_to_po.py --lang fr --project-dir .tradusco/myproject --po-dir locale_src/fr
+```
+
+### `po_status.py` (status check)
+
+Report missing translations and placeholder/tag mismatches:
+
+```bash
+python po_status.py --lang fr --po-dir locale_src/fr --fail
+```
+
+### `sort_po.py` (stable diffs)
+
+Sort `.po` files by `msgid`:
+
+```bash
+python sort_po.py locale_src/fr
 ```
 
 ### Custom Prompts
@@ -251,6 +350,16 @@ The LLM receives both types of context in a structured format, ensuring accurate
 5. The translations are saved to both the CSV file and the language-specific progress.json file
 6. Translations are cached to avoid redundant API calls
 7. The utility implements rate limiting and retries to handle API quotas
+
+### Placeholder / tag validation
+
+Tradusco validates that translations preserve common runtime placeholders:
+
+- `{name}` / `{count}` style curly placeholders
+- Lingui-style numeric rich-text tags like `<0>...</0>`
+
+If a mismatch is detected, the translation is skipped (and `sync_project_from_csv.py` can quarantine
+already-saved bad entries).
 
 ## Core Classes
 

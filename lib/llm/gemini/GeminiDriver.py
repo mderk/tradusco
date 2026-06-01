@@ -39,7 +39,7 @@ class GeminiDriver(BaseDriver):
         self.llm = ChatGoogleGenerativeAI(model=model, api_key=SecretStr(self.api_key))
 
         # Set capability flags based on model version
-        if "2.0" in model:
+        if "2." in model:
             # Gemini 2.0 supports structured output
             self.supports_structured_output = True
             self.supports_function_calling = False

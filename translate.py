@@ -125,9 +125,14 @@ async def async_main():
         # Validate the model
         available_models = TranslationProject.get_available_models()
         if args.model not in available_models:
-            parser.error(
-                f"Invalid model: {args.model}. Use --list-models to see available models."
-            )
+            # Allow raw OpenRouter model IDs (e.g. "google/gemini-2.5-flash")
+            # when OPENROUTER_API_KEY is present.
+            if "/" in args.model and os.environ.get("OPENROUTER_API_KEY"):
+                pass
+            else:
+                parser.error(
+                    f"Invalid model: {args.model}. Use --list-models to see available models."
+                )
 
         # Create a Path object from the project path
         project_path = Path(args.project).resolve()

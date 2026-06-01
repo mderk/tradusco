@@ -1,6 +1,11 @@
-translation = open(f"{__package__}/translation.txt", "r").read()
+from pathlib import Path
 
-output_format = open(f"{__package__}/output_format.txt", "r").read()
+
+_PROMPTS_DIR = Path(__file__).resolve().parent
+
+translation = (_PROMPTS_DIR / "translation.txt").read_text(encoding="utf-8")
+
+output_format = (_PROMPTS_DIR / "output_format.txt").read_text(encoding="utf-8")
 
 
 __all__ = [

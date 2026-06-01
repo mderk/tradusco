@@ -9,6 +9,18 @@ from .PromptManager import PromptManager
 
 DEBUG = os.environ.get("TRADUSCO_DEBUG")
 
+_CURLY_TOKEN_RE = re.compile(r"\{[^}]+\}")
+_LINGUI_TAG_RE = re.compile(r"</?\d+/?\s*>")
+
+
+def _extract_curly_tokens(text: str) -> set[str]:
+    return set(_CURLY_TOKEN_RE.findall(text))
+
+
+def _extract_lingui_tags(text: str) -> set[str]:
+    # Lingui uses numeric tags like <0>...</0>. Keep them intact.
+    return set(_LINGUI_TAG_RE.findall(text))
+
 
 class Input(BaseModel):
     """
@@ -44,6 +56,31 @@ class TranslationTool:
             prompt_manager: PromptManager instance for loading and formatting prompts
         """
         self.prompt_manager = prompt_manager
+
+    def validate_placeholders(self, source: str, translation: str) -> tuple[bool, str]:
+        """
+        Ensure translation preserves placeholders and Lingui tags.
+
+        This prevents breaking runtime interpolation like `{num}` / `{name}` and
+        rich-text tags like `<0>...</0>`.
+        """
+        src_tokens = _extract_curly_tokens(source)
+        dst_tokens = _extract_curly_tokens(translation)
+        if src_tokens != dst_tokens:
+            return (
+                False,
+                f"curly placeholders mismatch: src={sorted(src_tokens)} dst={sorted(dst_tokens)}",
+            )
+
+        src_tags = _extract_lingui_tags(source)
+        dst_tags = _extract_lingui_tags(translation)
+        if src_tags != dst_tags:
+            return (
+                False,
+                f"lingui tags mismatch: src={sorted(src_tags)} dst={sorted(dst_tags)}",
+            )
+
+        return True, ""
 
     async def create_prompt(
         self,
@@ -111,7 +148,8 @@ class TranslationTool:
 
         result = {}
 
-        print("Translated", len(translations_list), translations_list)
+        if DEBUG:
+            print("Translated", len(translations_list), translations_list)
 
         for i, translation in enumerate(translations_list):
             if (
@@ -177,8 +215,8 @@ class TranslationTool:
                 print(f"Warning: Could not create batch prompt for model {model}")
             return None, ""
 
-        print(batch_prompt)
-        # raise Exception("Stop here")
+        if DEBUG:
+            print(batch_prompt)
 
         # Load the output format instructions
         if method_name == "standard":

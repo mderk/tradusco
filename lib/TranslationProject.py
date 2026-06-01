@@ -342,6 +342,14 @@ class TranslationProject:
 
                 if translated:
                     for phrase, translation in translated.items():
+                        ok, reason = self.translation_tool.validate_placeholders(
+                            phrase, translation
+                        )
+                        if not ok:
+                            print(
+                                f"Warning: Skipping translation due to placeholder/tag mismatch for: {phrase}\n{reason}"
+                            )
+                            continue
                         progress[phrase] = translation
                         translations[phrase_indices[phrase]][
                             self.dst_language
@@ -369,6 +377,14 @@ class TranslationProject:
 
             if translated:
                 for phrase, translation in translated.items():
+                    ok, reason = self.translation_tool.validate_placeholders(
+                        phrase, translation
+                    )
+                    if not ok:
+                        print(
+                            f"Warning: Skipping translation due to placeholder/tag mismatch for: {phrase}\n{reason}"
+                        )
+                        continue
                     progress[phrase] = translation
                     translations[phrase_indices[phrase]][
                         self.dst_language

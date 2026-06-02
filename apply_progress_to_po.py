@@ -15,6 +15,7 @@ from po_utils import (
 
 _CURLY_TOKEN_RE = re.compile(r"\{[^}]+\}")
 _LINGUI_TAG_RE = re.compile(r"</?\d+/?\s*>")
+_SPACE_BEFORE_NL_RE = re.compile(r"[ \t]+\n")
 
 
 def _extract_curly_tokens(text: str) -> set[str]:
@@ -79,6 +80,60 @@ def _build_progress_lookup(progress: dict[str, str]) -> dict[str, str]:
             lookup.setdefault(recovered, v)
             lookup.setdefault(recovered.replace("\r\n", "\n"), v)
     return lookup
+
+
+def _strip_space_before_newlines(text: str) -> str:
+    # Some extractors produce msgids like "foo \n" (space before newline).
+    # For lookup we treat it as equivalent to "foo\n".
+    return _SPACE_BEFORE_NL_RE.sub("\n", text)
+
+
+def _preserve_edge_whitespace(source: str, translation: str) -> str:
+    m1 = re.match(r"^\s+", source)
+    m2 = re.search(r"\s+$", source)
+    lead = m1.group(0) if m1 else ""
+    trail = m2.group(0) if m2 else ""
+    if not (lead or trail):
+        return translation
+    return lead + translation.strip() + trail
+
+
+def _lookup_translation(msgid: str, progress_lookup: dict[str, str]) -> str | None:
+    """
+    Look up a translation for a PO msgid from progress.json, with conservative
+    whitespace normalization fallbacks.
+
+    This helps when translation memory keys were normalized (trimmed) but PO
+    msgids contain trailing spaces or "space before newline" sequences.
+    """
+    candidates: list[str] = []
+
+    candidates.append(msgid)
+    msgid_n = msgid.replace("\r\n", "\n")
+    if msgid_n != msgid:
+        candidates.append(msgid_n)
+
+    msgid_rstrip = msgid.rstrip()
+    if msgid_rstrip != msgid:
+        candidates.append(msgid_rstrip)
+
+    msgid_n_rstrip = msgid_n.rstrip()
+    if msgid_n_rstrip not in candidates:
+        candidates.append(msgid_n_rstrip)
+
+    msgid_n_compact = _strip_space_before_newlines(msgid_n)
+    if msgid_n_compact not in candidates:
+        candidates.append(msgid_n_compact)
+
+    msgid_n_compact_rstrip = msgid_n_compact.rstrip()
+    if msgid_n_compact_rstrip not in candidates:
+        candidates.append(msgid_n_compact_rstrip)
+
+    for c in candidates:
+        tr = progress_lookup.get(c)
+        if tr:
+            return tr
+    return None
 
 
 def _parse_blocks(content: str) -> list[str]:
@@ -164,9 +219,7 @@ def apply_progress_to_po_file(
 
         missing_before += 1
 
-        translation = progress_lookup.get(msgid) or progress_lookup.get(
-            msgid.replace("\r\n", "\n")
-        )
+        translation = _lookup_translation(msgid, progress_lookup)
         if not translation:
             missing_after += 1
             new_parts.append(block)
@@ -180,6 +233,7 @@ def apply_progress_to_po_file(
                 new_parts.append(block)
                 continue
 
+        translation = _preserve_edge_whitespace(msgid, translation)
         new_block = _replace_msgstr(block, translation)
         if fz:
             new_block = strip_fuzzy_flag(new_block)

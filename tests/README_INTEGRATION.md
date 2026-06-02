@@ -2,6 +2,9 @@
 
 This directory contains integration tests that make real API calls to test the translator against actual LLM services.
 
+Note: “integration” here means **real provider calls**, not “integrating Tradusco into another project”.
+For integration into other repositories, see `INTEGRATION_GUIDE.md` in the repo root.
+
 ## Running Integration Tests
 
 Integration tests are **excluded from normal test runs** (when using `pytest` command) to avoid unnecessary API usage and costs. There are several ways to run the integration tests:
@@ -23,7 +26,7 @@ pytest -k "integration" tests/test_integration_translation_methods.py -vv
 
 ## Test Description
 
-The integration tests verify that all three translation methods work with the Gemini API:
+The integration tests verify that all three translation methods work end-to-end with real providers:
 
 1. **Standard Method**: Uses basic prompt formatting and parses the JSON response
 2. **Structured Method**: Uses the structured output API for more reliable JSON responses
@@ -31,17 +34,22 @@ The integration tests verify that all three translation methods work with the Ge
 
 The tests also include a comparison test that runs all three methods on the same inputs and displays a side-by-side comparison of the results.
 
+Default models (can be changed in `tests/test_integration_translation_methods.py`, fixture `translation_params`):
+
+- **standard/structured**: `model="gemini"` (requires `GEMINI_API_KEY`)
+- **function**: an OpenRouter-backed alias (requires `OPENROUTER_API_KEY`)
+
 ## Requirements
 
 To run these tests, you need:
 
-1. An active Gemini API key in your `.env` file
-2. An active OpenRouter API key in your `.env` file
+1. An active Gemini API key (`GEMINI_API_KEY`)
+2. An active OpenRouter API key (`OPENROUTER_API_KEY`)
 3. Internet connectivity to make API calls
 
 ## API Key Setup
 
-Ensure your `.env` file contains the API key:
+You can set keys in your environment or in a `.env` file at the repo root.
 
 ```
 GEMINI_API_KEY=your_api_key_here

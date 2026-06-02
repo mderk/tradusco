@@ -10,7 +10,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Running integration tests that make real API calls${NC}"
-echo -e "${YELLOW}These tests will use your Gemini API key from .env${NC}"
+echo -e "${YELLOW}These tests will use GEMINI_API_KEY and OPENROUTER_API_KEY (loaded from .env if present)${NC}"
 echo ""
 
 # Check if pytest is installed
@@ -29,7 +29,21 @@ cd "$PROJECT_DIR" || { echo -e "${RED}Error: Could not change to project directo
 # Run the integration tests
 echo -e "${GREEN}Starting integration tests...${NC}"
 # Override the default configuration to run integration tests specifically
-python -m pytest tests/test_integration_translation_methods.py -vv -k "integration"
+python - <<'PY'
+import sys
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    # If python-dotenv isn't installed, environment variables must be set manually.
+    pass
+
+import pytest
+
+sys.exit(pytest.main(["tests/test_integration_translation_methods.py", "-vv", "-k", "integration"]))
+PY
 
 # Check if tests passed
 if [ $? -eq 0 ]; then

@@ -31,6 +31,11 @@ To run with verbose output:
 pytest -v
 ```
 
+## Integration Tests (real API calls)
+
+Integration tests are marked with `@pytest.mark.integration` and are excluded from normal runs.
+See `tests/README_INTEGRATION.md` for details.
+
 ## Test Coverage
 
 To generate test coverage reports, run:

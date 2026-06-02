@@ -24,6 +24,9 @@ Notes:
 
 - **OpenRouter**: set `OPENROUTER_API_KEY` and pass any OpenRouter model id containing `/`
   (example: `google/gemini-2.5-flash`). Tradusco will route it through OpenRouter automatically.
+- **OpenRouter methods**: for compatibility across providers, the OpenRouter driver defaults to the
+  standard prompt-based method. If you need structured output or function calling, prefer a direct
+  provider driver that supports it.
 - **Debugging**: set `TRADUSCO_DEBUG=true` (or pass `--debug` to `translate.py`) to enable verbose logs.
 
 ## Using Tradusco inside another repository (recommended)
@@ -54,9 +57,14 @@ PYTHON="$TRADUSCO_ROOT/.venv/bin/python"  # optional
 $PYTHON "$TRADUSCO_ROOT/translate.py" -p .tradusco/myproject -l fr -m google/gemini-2.5-flash --method auto
 ```
 
+For a step-by-step integration recipe (including gettext/PO workflows), see `INTEGRATION_GUIDE.md`.
+
 ## Creating a New Project
 
 You can create a new translation project using the `create_project.py` script. This script sets up the necessary directory structure and configuration files based on a CSV file containing your translations.
+
+This is a convenient “CSV-first” bootstrap. For workflows where your app extracts phrases and you want to keep state
+in the app repo, also see `sync_project_from_csv.py` in the “Helper scripts for integrations” section.
 
 ### Usage
 
@@ -218,6 +226,9 @@ Notes:
 
 - Reads `.po` as UTF-8 (prevents mojibake issues).
 - Intended for common `msgid`/`msgstr` flows. It does not currently treat plural forms (`msgid_plural`) as separate keys.
+- Useful options:
+  - `--regenerate`: rebuild CSV from scratch instead of merging
+  - `--languages "en,fr,es"`: define columns for a brand new CSV file
 
 ### `sync_project_from_csv.py` (source CSV → Tradusco project)
 
@@ -238,6 +249,14 @@ Quality/safety features:
 - Preserves metadata columns:
   - `context` (or `--context-col ...`) and `context_<lang>` columns are kept in the output CSV
 
+Useful options:
+
+- `--no-sanitize-progress`: disable sanitization/quarantine
+- `--bootstrap-from <dir>`: seed empty `progress.json` files from another project cache
+- `--ignore-columns "context,notes"`: comma-separated non-locale columns to ignore when inferring languages
+- `--context-col <name>`: context column name in the source CSV (default: `context`)
+- `--dry-run`: print summary without writing files
+
 ### `apply_progress_to_po.py` (progress.json → PO files)
 
 Fill empty/fuzzy `msgstr` entries from `progress.json` into your `.po` files:
@@ -245,6 +264,11 @@ Fill empty/fuzzy `msgstr` entries from `progress.json` into your `.po` files:
 ```bash
 python apply_progress_to_po.py --lang fr --project-dir .tradusco/myproject --po-dir locale_src/fr
 ```
+
+Useful options:
+
+- `--force`: overwrite already-translated entries (default fills only missing/fuzzy)
+- `--no-validate-placeholders`: disable placeholder/tag validation when applying
 
 ### `po_status.py` (status check)
 

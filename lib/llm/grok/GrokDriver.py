@@ -1,6 +1,5 @@
 import os
-import time
-from typing import Optional
+from typing import Any, Optional
 from pydantic import SecretStr
 from langchain_xai import ChatXAI
 from ..BaseDriver import BaseDriver
@@ -33,10 +32,13 @@ class GrokDriver(BaseDriver):
             )
 
         # Initialize the LLM - pass parameters according to API requirements
-        self.llm = ChatXAI(api_key=SecretStr(self.api_key))
-        self.llm.model = (
-            model  # Set model as attribute if it's not accepted as a parameter
-        )
+        try:
+            self.llm = ChatXAI(model=model, api_key=SecretStr(self.api_key))
+        except TypeError:
+            # Older versions may not accept `model` as a named argument.
+            chat_xai_any: Any = ChatXAI
+            self.llm = chat_xai_any(api_key=SecretStr(self.api_key))
+            self.llm.model = model
 
         # Set capability flags based on model version
         if "grok-3" in model.lower() or "grok-beta" in model.lower():

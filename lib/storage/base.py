@@ -4,7 +4,6 @@ Base storage adapter interface.
 
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict
-from pathlib import Path
 
 from lib.utils import Config
 

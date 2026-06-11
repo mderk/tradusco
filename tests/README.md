@@ -1,6 +1,6 @@
-# AI Translator Tests
+# Tradusco Tests
 
-This directory contains tests for the AI Translator application.
+This directory contains tests for the Tradusco application.
 
 ## Test Structure
 
@@ -14,21 +14,21 @@ This directory contains tests for the AI Translator application.
 To run the tests, execute the following command from the project root:
 
 ```bash
-pytest
+uv run pytest
 ```
 
 To run specific test files:
 
 ```bash
-pytest tests/test_translation_project.py
-pytest tests/test_translation_tool.py
-pytest tests/test_utils.py
+uv run pytest tests/test_translation_project.py
+uv run pytest tests/test_translation_tool.py
+uv run pytest tests/test_utils.py
 ```
 
 To run with verbose output:
 
 ```bash
-pytest -v
+uv run pytest -v
 ```
 
 ## Integration Tests (real API calls)
@@ -41,7 +41,7 @@ See `tests/README_INTEGRATION.md` for details.
 To generate test coverage reports, run:
 
 ```bash
-pytest --cov=lib tests/
+uv run pytest --cov=lib tests/
 ```
 
 ## Writing New Tests

@@ -1,0 +1,33 @@
+[project]
+name = "tradusco"
+version = "0.1.0"
+description = "A Python utility for translating texts using LLMs."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiofiles==24.1.0",
+    "dotenv>=0.9.9",
+    "google-generativeai==0.8.4",
+    "langchain==0.3.20",
+    "langchain-google-genai==2.0.10",
+    "langchain-openai==0.3.7",
+    "langchain-xai==0.2.1",
+    "pathlib>=1.0.0",
+    "python-dotenv==1.0.1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "pytest==8.3.5",
+    "pytest-asyncio==0.25.3",
+    "ruff>=0.15.16",
+]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+exclude = "^tests/"

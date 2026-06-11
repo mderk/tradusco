@@ -5,10 +5,10 @@ A Python utility for translating texts using LLMs.
 ## Installation
 
 1. Clone this repository
-2. Install the required packages:
+2. Install the required packages (recommended: `uv`):
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 3. Set up your API keys in a `.env` file:
@@ -28,6 +28,20 @@ Notes:
   standard prompt-based method. If you need structured output or function calling, prefer a direct
   provider driver that supports it.
 - **Debugging**: set `TRADUSCO_DEBUG=true` (or pass `--debug` to `translate.py`) to enable verbose logs.
+
+## Development commands
+
+From the repo root:
+
+```bash
+make sync
+make lint
+make fmt
+make test
+
+# real API calls (loads .env if present)
+make test-integration
+```
 
 ## Using Tradusco inside another repository (recommended)
 
@@ -50,7 +64,7 @@ your-app/
 All Tradusco scripts accept absolute paths, so you can run them from your app repo:
 
 ```bash
-TRADUSCO_ROOT=/path/to/ai_translator
+TRADUSCO_ROOT=/path/to/tradusco
 PYTHON="$TRADUSCO_ROOT/.venv/bin/python"  # optional
 
 # translate missing strings into French using OpenRouter
@@ -463,7 +477,7 @@ You can adjust the batch size with the `-b` or `--batch-size` parameter.
 You can verify that your environment is properly set up by running:
 
 ```bash
-python test_setup.py
+uv run python test_setup.py
 ```
 
 This will check:
@@ -478,13 +492,13 @@ The project includes a comprehensive test suite to ensure functionality works as
 
 ```bash
 # Run all tests (excluding integration tests)
-pytest
+uv run pytest
 
 # Run tests with verbose output
-pytest -v
+uv run pytest -v
 
-# Include integration tests (will make real API calls)
-pytest --run-integration
+# Run integration tests (will make real API calls; loads .env if present)
+./tests/run_integration_tests.sh
 ```
 
 Integration tests are excluded from normal test runs by default to avoid unnecessary API usage and costs. This is configured in the `pytest.ini` file using markers.
@@ -500,16 +514,16 @@ If you want to run a specific test file or test, you can use pytest with more sp
 
 ```bash
 # Run a specific test file
-pytest tests/test_translation_project.py -v
+uv run pytest tests/test_translation_project.py -v
 
 # Run a specific test class
-pytest tests/test_translation_project.py::TestTranslationProject -v
+uv run pytest tests/test_translation_project.py::TestTranslationProject -v
 
 # Run a specific test method
-pytest tests/test_translation_project.py::TestTranslationProject::test_translate -v
+uv run pytest tests/test_translation_project.py::TestTranslationProject::test_translate -v
 
 # Run tests matching a specific keyword
-pytest -k "translate" -v
+uv run pytest -k "translate" -v
 ```
 
 ### Integration Tests
@@ -522,14 +536,14 @@ The project also includes integration tests that make real API calls to test the
 # Use the provided script (recommended)
 ./tests/run_integration_tests.sh
 
-# Run all integration tests directly with pytest
-pytest -k "integration" -v
+# Run all integration tests directly (note: does NOT load .env)
+uv run pytest -m integration -v
 
-# Run specific integration tests file
-pytest -k "integration" tests/test_integration_translation_methods.py -v
+# Run specific integration tests file (note: does NOT load .env)
+uv run pytest -m integration tests/test_integration_translation_methods.py -v
 
-# Run a specific integration test
-pytest -k "integration" tests/test_integration_translation_methods.py::TestIntegrationTranslationMethods::test_standard_method -v
+# Run a specific integration test (note: does NOT load .env)
+uv run pytest -m integration tests/test_integration_translation_methods.py::TestIntegrationTranslationMethods::test_standard_method -v
 ```
 
 #### What Integration Tests Verify

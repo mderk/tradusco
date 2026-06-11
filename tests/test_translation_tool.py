@@ -1,14 +1,11 @@
 import os
 import sys
 import pytest
-import json
-import asyncio
-from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.TranslationTool import TranslationTool, Input
+from lib.TranslationTool import TranslationTool
 from lib.PromptManager import PromptManager
 from lib.storage.base import StorageAdapter
 from tests.mock_llm_driver import MockLLMDriver

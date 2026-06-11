@@ -47,10 +47,10 @@ class BaseDriver(ABC):
             "properties": {
                 "translations": {
                     "type": "array",
-                    "description": f"Array of translations from source language to target language in the same order as input phrases",
+                    "description": "Array of translations from source language to target language in the same order as input phrases",
                     "items": {
                         "type": "string",
-                        "description": f"Translated text in target language",
+                        "description": "Translated text in target language",
                     },
                 }
             },
@@ -67,16 +67,16 @@ class BaseDriver(ABC):
         """
         return {
             "name": "translations",
-            "description": f"Translated phrases from source language to target language",
+            "description": "Translated phrases from source language to target language",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "translations": {
                         "type": "array",
-                        "description": f"Array of translations from source language to target language in the same order as input phrases",
+                        "description": "Array of translations from source language to target language in the same order as input phrases",
                         "items": {
                             "type": "string",
-                            "description": f"Translated text in target language",
+                            "description": "Translated text in target language",
                         },
                     }
                 },
@@ -213,14 +213,14 @@ class BaseDriver(ABC):
                             elif isinstance(response.content, str):
                                 try:
                                     return json.loads(response.content)
-                                except:
+                                except Exception:
                                     return {"result": response.content}
                         # Last resort: convert to string and try to parse
                         try:
                             return json.loads(str(response))
-                        except:
+                        except Exception:
                             return {"result": str(response)}
-                    except:
+                    except Exception:
                         # If all conversion attempts fail, return a simple dict with the response
                         return {"result": str(response)}
                 return response

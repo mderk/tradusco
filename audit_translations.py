@@ -95,10 +95,10 @@ def audit_project(*, project_dir: Path, langs: list[str] | None, max_samples: in
     if not config_langs:
         raise SystemExit("Invalid config.json: missing languages[]")
 
-    all_langs = [l for l in config_langs if l != base_col]
+    all_langs = [lang for lang in config_langs if lang != base_col]
     if langs:
         allow = set(langs)
-        all_langs = [l for l in all_langs if l in allow]
+        all_langs = [lang for lang in all_langs if lang in allow]
 
     key_col = str(config.get("keyColumn") or "").strip() or None
 

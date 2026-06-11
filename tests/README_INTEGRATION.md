@@ -15,13 +15,13 @@ Integration tests are **excluded from normal test runs** (when using `pytest` co
 
 # Alternative methods with pytest directly:
 # Run all integration tests
-pytest -k "integration" tests/test_integration_translation_methods.py -v
+uv run pytest -m integration tests/test_integration_translation_methods.py -v
 
 # Run a specific integration test
-pytest -k "integration" tests/test_integration_translation_methods.py::TestIntegrationTranslationMethods::test_standard_method -v
+uv run pytest -m integration tests/test_integration_translation_methods.py::TestIntegrationTranslationMethods::test_standard_method -v
 
 # Run with extra verbosity to see all output
-pytest -k "integration" tests/test_integration_translation_methods.py -vv
+uv run pytest -m integration tests/test_integration_translation_methods.py -vv
 ```
 
 ## Test Description

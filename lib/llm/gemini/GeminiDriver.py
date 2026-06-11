@@ -1,8 +1,7 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import SecretStr
-from typing import Any, Optional, Dict, List
+from typing import Optional
 import os
-import time
 import json
 import re
 import asyncio
@@ -188,7 +187,7 @@ class GeminiDriver(BaseDriver):
                         # If we can't parse the extracted content, continue to next parsing attempt
                         if DEBUG:
                             print(
-                                f"Failed to parse extracted JSON content, trying full content"
+                                "Failed to parse extracted JSON content, trying full content"
                             )
 
                 # If no code blocks or parsing the extracted content failed, try parsing the full content

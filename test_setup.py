@@ -60,7 +60,7 @@ def check_dependencies():
 
     if missing_packages:
         print("\nPlease install the missing packages with:")
-        print("pip install -r requirements.txt")
+        print("uv sync")
         return False
     return True
 
@@ -93,7 +93,7 @@ def test_gemini_connection():
             # This is just a placeholder - the actual code works
             return False
 
-        print(f"✅ Successfully connected to Gemini API.")
+        print("✅ Successfully connected to Gemini API.")
         print(f"   Response: {response.text}")
         return True
     except Exception as e:

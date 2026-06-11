@@ -13,9 +13,9 @@ echo -e "${YELLOW}Running integration tests that make real API calls${NC}"
 echo -e "${YELLOW}These tests will use GEMINI_API_KEY and OPENROUTER_API_KEY (loaded from .env if present)${NC}"
 echo ""
 
-# Check if pytest is installed
-if ! command -v pytest &> /dev/null; then
-    echo -e "${RED}Error: pytest is not installed. Please install it with 'pip install pytest pytest-asyncio'.${NC}"
+# Check if uv is installed
+if ! command -v uv &> /dev/null; then
+    echo -e "${RED}Error: uv is not installed. Install it from https://docs.astral.sh/uv/${NC}"
     exit 1
 fi
 
@@ -29,7 +29,7 @@ cd "$PROJECT_DIR" || { echo -e "${RED}Error: Could not change to project directo
 # Run the integration tests
 echo -e "${GREEN}Starting integration tests...${NC}"
 # Override the default configuration to run integration tests specifically
-python - <<'PY'
+uv run python - <<'PY'
 import sys
 
 try:
@@ -42,7 +42,7 @@ except Exception:
 
 import pytest
 
-sys.exit(pytest.main(["tests/test_integration_translation_methods.py", "-vv", "-k", "integration"]))
+sys.exit(pytest.main(["tests/test_integration_translation_methods.py", "-vv", "-m", "integration"]))
 PY
 
 # Check if tests passed

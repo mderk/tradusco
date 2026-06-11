@@ -1,9 +1,6 @@
 import os
 import pytest
-import tempfile
-from pathlib import Path
-import asyncio
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import patch, MagicMock
 from pydantic import BaseModel
 
 from lib.PromptManager import PromptManager

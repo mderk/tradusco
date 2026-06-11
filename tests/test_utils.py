@@ -2,14 +2,10 @@ import os
 import sys
 import pytest
 import json
-import asyncio
-import tempfile
-from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.utils import Config
-from lib.storage.base import StorageAdapter
 from lib.storage.filesystem import FileSystemStorageAdapter
 
 

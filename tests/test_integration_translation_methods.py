@@ -1,10 +1,7 @@
 import os
 import sys
 import pytest
-import json
-import asyncio
 from pathlib import Path
-from typing import Dict, List, Optional
 from unittest.mock import MagicMock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -72,7 +69,7 @@ class IntegrationTestStorageAdapter(StorageAdapter):
 
 
 # Mark these tests as integration tests so they can be skipped by default
-# Run with: pytest tests/test_integration_translation_methods.py -v
+# Run with: ./tests/run_integration_tests.sh
 # Note: To run tests with openrouter-grok-3-beta, you need an OpenRouter API key
 # set in your environment as OPENROUTER_API_KEY
 @pytest.mark.integration

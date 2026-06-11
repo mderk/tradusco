@@ -1,5 +1,7 @@
 import os
 
+from collections.abc import Callable
+
 from .BaseDriver import BaseDriver
 from .gemini import GeminiDriver
 from .grok import GrokDriver
@@ -35,7 +37,7 @@ def _openrouter_driver(openrouter_model_id: str) -> OpenAIDriver:
     return driver
 
 
-drivers = {
+drivers: dict[str, Callable[[], BaseDriver]] = {
     "gemini": GeminiDriver,
     "grok": GrokDriver,
     "openai": OpenAIDriver,

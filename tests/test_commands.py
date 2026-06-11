@@ -1,11 +1,7 @@
 import os
 import sys
 import pytest
-import json
-import asyncio
-import csv
-from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open, AsyncMock
+from unittest.mock import patch, AsyncMock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

@@ -46,7 +46,7 @@ class IntegrationTestStorageAdapter(StorageAdapter):
     async def save_translations(self, project_id, translations):
         pass
 
-    async def load_context(self, project_id):
+    async def load_context(self, project_id, language):
         return []
 
     async def load_prompt(self, project_id, prompt_type):

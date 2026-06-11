@@ -1,25 +1,19 @@
 import json
 import re
 import os
+import ast
 from typing import Annotated, Optional, Union
 
 from pydantic import BaseModel, Field
 from .llm import BaseDriver, get_driver
 from .PromptManager import PromptManager
+from .utils import (
+    looks_like_json_artifact as _looks_like_json_artifact,
+    placeholders_match as _placeholders_match,
+    validate_translation_text as _validate_translation_text,
+)
 
 DEBUG = os.environ.get("TRADUSCO_DEBUG")
-
-_CURLY_TOKEN_RE = re.compile(r"\{[^}]+\}")
-_LINGUI_TAG_RE = re.compile(r"</?\d+/?\s*>")
-
-
-def _extract_curly_tokens(text: str) -> set[str]:
-    return set(_CURLY_TOKEN_RE.findall(text))
-
-
-def _extract_lingui_tags(text: str) -> set[str]:
-    # Lingui uses numeric tags like <0>...</0>. Keep them intact.
-    return set(_LINGUI_TAG_RE.findall(text))
 
 
 class Input(BaseModel):
@@ -64,23 +58,17 @@ class TranslationTool:
         This prevents breaking runtime interpolation like `{num}` / `{name}` and
         rich-text tags like `<0>...</0>`.
         """
-        src_tokens = _extract_curly_tokens(source)
-        dst_tokens = _extract_curly_tokens(translation)
-        if src_tokens != dst_tokens:
-            return (
-                False,
-                f"curly placeholders mismatch: src={sorted(src_tokens)} dst={sorted(dst_tokens)}",
-            )
+        return _placeholders_match(source, translation)
 
-        src_tags = _extract_lingui_tags(source)
-        dst_tags = _extract_lingui_tags(translation)
-        if src_tags != dst_tags:
-            return (
-                False,
-                f"lingui tags mismatch: src={sorted(src_tags)} dst={sorted(dst_tags)}",
-            )
+    def validate_translation_text(self, translation: str) -> tuple[bool, str]:
+        """
+        Reject obvious model-output artifacts that can slip through parsing.
 
-        return True, ""
+        Delegates to the shared ``lib.utils`` implementation so the live path,
+        the storage layer and the offline audit all agree on what counts as a
+        valid translation.
+        """
+        return _validate_translation_text(translation)
 
     async def create_prompt(
         self,
@@ -272,6 +260,76 @@ class TranslationTool:
                         print("Invalid JSON response received")
                     return None
             except json.JSONDecodeError:
+                # Some providers/models occasionally emit “JSON-like” output that isn't
+                # strict JSON (single quotes, trailing commas, etc). Try a safe
+                # Python literal parse, then fall back to line-based parsing.
+                try:
+                    parsed_response = ast.literal_eval(json_str)
+                except Exception:
+                    parsed_response = None
+
+                translations_list = None
+                if isinstance(parsed_response, dict) and "translations" in parsed_response:
+                    translations_list = parsed_response.get("translations")
+                elif isinstance(parsed_response, list):
+                    translations_list = parsed_response
+
+                if isinstance(translations_list, list):
+                    return self.merge_translations(
+                        translations_list=[str(x) for x in translations_list],
+                        phrases=phrases,
+                    )
+
+                # Last resort: accept plain line output (one translation per line).
+                cleaned = re.sub(r"```(?:json)?|```", "", response)
+                lines: list[str] = []
+                for line in cleaned.splitlines():
+                    s = line.strip()
+                    if not s:
+                        continue
+                    # Strip simple list markers / numbering.
+                    s = re.sub(r"^\s*[-*•]\s+", "", s)
+                    s = re.sub(r"^\s*\d+\s*[\).\:-]\s+", "", s)
+                    s = s.strip()
+                    if not s:
+                        continue
+                    # Skip JSON scaffolding lines (brackets / the translations key).
+                    if _looks_like_json_artifact(s):
+                        continue
+                    # If the model returned the full dict literally, skip it here.
+                    if s.startswith("{") and s.endswith("}"):
+                        continue
+
+                    # If this is a JSON string literal, decode it safely.
+                    if s.startswith('"') and (s.endswith('"') or s.endswith('",')):
+                        try:
+                            decoded = json.loads(s[:-1] if s.endswith('",') else s)
+                            lines.append(str(decoded))
+                            continue
+                        except Exception:
+                            pass
+                    if s.startswith("'") and (s.endswith("'") or s.endswith("',")):
+                        try:
+                            decoded = ast.literal_eval(s[:-1] if s.endswith("',") else s)
+                            lines.append(str(decoded))
+                            continue
+                        except Exception:
+                            pass
+
+                    lines.append(s)
+
+                # Positional merge is only safe when line and phrase counts match.
+                # Drop a leading prelude (more lines than phrases), but if the
+                # counts still disagree, refuse rather than silently misalign and
+                # persist shifted translations — the batch is retried instead.
+                if len(lines) > len(phrases):
+                    lines = lines[-len(phrases) :]
+                if lines and len(lines) == len(phrases):
+                    return self.merge_translations(
+                        translations_list=lines,
+                        phrases=phrases,
+                    )
+
                 if DEBUG:
                     print("Invalid JSON response received")
                 return None

@@ -4,18 +4,19 @@ import asyncio
 import os
 from pathlib import Path
 
-from lib.TranslationProject import TranslationProject
-from lib.storage.filesystem import FileSystemStorageAdapter
-
-# Load environment variables from .env file
+# Load environment variables from .env file (must happen before importing drivers)
 try:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    # Do not override env passed by the caller project/process.
+    load_dotenv(override=False)
 except ImportError:
     print(
         "Warning: python-dotenv not installed. Environment variables must be set manually."
     )
+
+from lib.TranslationProject import TranslationProject
+from lib.storage.filesystem import FileSystemStorageAdapter
 
 DEBUG = os.environ.get("TRADUSCO_DEBUG")
 
@@ -155,6 +156,8 @@ async def async_main():
                 prompt_file=args.prompt,
                 context_file=args.context_file,
             )
+            storage.set_active_language(args.lang)
+            storage.set_overwrite_active_language(bool(args.regenerate))
         else:
             parser.error(f"Invalid storage adapter: {args.storage}")
 

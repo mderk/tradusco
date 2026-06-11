@@ -49,11 +49,18 @@ Notes:
 
 - one **base** column (e.g. `en`)
 - one column per target locale (e.g. `fr`, `es`)
+- optional **stable key** column (e.g. `id`) if your application uses string IDs like `CAR_COMMON`
 - optional context/metadata columns:
   - `context` (phrase-specific notes)
   - `context_<lang>` (language-specific phrase notes)
 
 Tradusco translates only rows where the destination column is empty (unless `--regenerate` is used).
+
+Notes:
+
+- Column names are **case-sensitive**. `baseLanguage` and `--lang` must match the CSV headers exactly (recommended: lowercase BCP-47-ish codes like `en`, `fr`, `pt-BR`).
+- `translate.py` currently uses the **base-language text** as the key for `progress.json` (translation memory). If you keep an `id` column, it will be preserved in the CSV, but it is not used as the translation-memory key.
+  - **Base strings should be unique within a project.** If you have the same English text under multiple IDs but need different translations, Tradusco cannot reliably disambiguate them today because both caching and updates are keyed by the base text. Make the base strings distinct (or update the code to key by `id`).
 
 ### `progress.json`
 
@@ -75,6 +82,23 @@ It is used for caching and can be applied back into other formats.
 1) Create a project dir (either manually or via `create_project.py`)
 2) Run `translate.py` for each target locale
 3) Consume results from `translations.csv` or `progress.json`
+
+Example “keyed” source CSV (IDs + English):
+
+```csv
+id,en,fr,es,ru,context
+CAR_COMMON,Common Car Box,,,,UI label
+BTN_SAVE,Save,,,,Button label
+ERR_REQUIRED,Field is required,,,,Validation error
+WELCOME_USER,"Welcome, {name}!",,,,Keep `{name}` placeholder
+RICH_TEXT,"<0>Learn more</0>",,,,Keep Lingui rich-text tags
+```
+
+Create a Tradusco project from it:
+
+```bash
+python create_project.py -p .tradusco/myproject -c path/to/translations.csv -b en -k id -i context
+```
 
 ### Workflow B: gettext `.po` (extract → translate → apply)
 
@@ -169,6 +193,59 @@ done
 # build catalogs in your app (project-specific)
 # e.g. yarn lingui:build / npm run i18n:compile / etc
 ```
+
+## Auditing completeness & correctness (recommended)
+
+When integrating Tradusco into another repo, it’s useful to have a deterministic “sanity check” step
+that catches:
+
+- missing destination cells in `translations.csv`
+- invalid JSON-like artifacts accidentally saved as translations (e.g. `{` or `"translations": [`)
+- placeholder / Lingui-tag mismatches (`{name}`, `<0>...</0>`)
+- progress/cache drift between `translations.csv` and `<lang>/progress.json`
+
+Run:
+
+```bash
+python audit_translations.py --project-dir .tradusco/myproject
+```
+
+Machine-readable output:
+
+```bash
+python audit_translations.py --project-dir .tradusco/myproject --json
+```
+
+Fail CI if issues exist:
+
+```bash
+python audit_translations.py --project-dir .tradusco/myproject --fail
+```
+
+## Translating all locales (parallel)
+
+Tradusco ships a small helper runner that reads `languages[]` from `config.json` and runs `translate.py`
+for each locale with a concurrency limit.
+
+Example (Gemini → Grok fallback, run only locales that still have missing/invalid cells):
+
+```bash
+python translate_all.py \
+  --project-dir .tradusco/myproject \
+  --model google/gemini-2.5-flash \
+  --fallback-model x-ai/grok-4.3 \
+  --parallel 3 \
+  --batch-size 50 \
+  --batch-max-tokens 2048 \
+  --method auto \
+  --only-missing
+```
+
+Notes:
+
+- The runner prints per-locale logs prefixed with `[<lang>]`.
+- During parallel runs, Tradusco uses lockfiles like `.translations.csv.lock` and `.<lang>/.progress.json.lock`
+  to avoid races. These files are safe to ignore and can be excluded from VCS.
 
 ### Workflow C: “Bring your own extractor/applier”
 

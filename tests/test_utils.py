@@ -111,7 +111,7 @@ class TestUtilsFunctions:
         storage = FileSystemStorageAdapter(project_dir)
 
         # Test without specific context file (uses default in project dir)
-        context_parts = await storage.load_context("test_project")
+        context_parts = await storage.load_context("test_project", "es")
 
         # Verify the loaded context
         assert len(context_parts) == 1
@@ -127,7 +127,7 @@ class TestUtilsFunctions:
         storage.set_context_file(str(specific_file))
 
         # Load context with specified file
-        context_parts = await storage.load_context("test_project")
+        context_parts = await storage.load_context("test_project", "es")
 
         # Verify the loaded context includes the specific file
         assert len(context_parts) >= 1

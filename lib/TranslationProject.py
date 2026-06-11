@@ -104,7 +104,7 @@ class TranslationProject:
         try:
             driver = get_driver(model)
             return driver.count_tokens(text)
-        except Exception as e:
+        except Exception:
             # Fallback to a simple character-based approximation
             # Most models use ~4 characters per token on average
             if not text:
@@ -273,9 +273,6 @@ class TranslationProject:
         context = await self._load_context()
         prompt = await self._load_prompt()
 
-        # Track changes to know if we need to save
-        changes_made = False
-
         # Collect phrases that need translation
         phrases_to_translate: list[tuple[str, str | None]] = []
         phrase_indices: dict[str, int] = {}
@@ -293,29 +290,45 @@ class TranslationProject:
                 continue
 
             # Skip already translated phrases
-            if row.get(self.dst_language) and not regenerate:
-                # Update progress file if needed
-                if (source_phrase not in progress) or regenerate:
-                    progress[source_phrase] = row[self.dst_language]
-                    changes_made = True
-                continue
+            existing_translation = row.get(self.dst_language) or ""
+            if existing_translation and not regenerate:
+                ok, _ = self.translation_tool.validate_translation_text(
+                    existing_translation
+                )
+                if ok:
+                    # Update progress cache if needed
+                    if source_phrase not in progress:
+                        progress[source_phrase] = existing_translation
+                    continue
+                # Invalid artifact in CSV – clear and treat as missing.
+                row[self.dst_language] = ""
 
             # Check if we already have a translation in progress
             if (source_phrase in progress) and not regenerate:
                 translation = progress[source_phrase]
-                row[self.dst_language] = translation
-                changes_made = True
-                print(f"Using cached translation for: {source_phrase} -> {translation}")
-                continue
+                ok, _ = self.translation_tool.validate_translation_text(translation)
+                if not ok:
+                    # Invalid artifact in cache – drop and retranslate.
+                    del progress[source_phrase]
+                else:
+                    row[self.dst_language] = translation
+                    print(
+                        f"Using cached translation for: {source_phrase} -> {translation}"
+                    )
+                    continue
 
             # Add to batch for translation
             phrase_context = row.get("context") or ""
             phrase_context_language = row.get(f"context_{self.dst_language}") or ""
-            phrase_context = (
-                phrase_context + f"; {phrase_context_language}"
-                if phrase_context_language
-                else ""
-            )
+            # Append the language-specific context (if any) to the base context.
+            # The base context must be preserved even when no language-specific
+            # context is present.
+            if phrase_context_language:
+                phrase_context = (
+                    f"{phrase_context}; {phrase_context_language}"
+                    if phrase_context
+                    else phrase_context_language
+                )
             phrases_to_translate.append((source_phrase, phrase_context))
             phrase_indices[source_phrase] = i
 
@@ -348,6 +361,14 @@ class TranslationProject:
                         if not ok:
                             print(
                                 f"Warning: Skipping translation due to placeholder/tag mismatch for: {phrase}\n{reason}"
+                            )
+                            continue
+                        ok, reason = self.translation_tool.validate_translation_text(
+                            translation
+                        )
+                        if not ok:
+                            print(
+                                f"Warning: Skipping translation due to invalid translation text for: {phrase}\n{reason}"
                             )
                             continue
                         progress[phrase] = translation
@@ -383,6 +404,14 @@ class TranslationProject:
                     if not ok:
                         print(
                             f"Warning: Skipping translation due to placeholder/tag mismatch for: {phrase}\n{reason}"
+                        )
+                        continue
+                    ok, reason = self.translation_tool.validate_translation_text(
+                        translation
+                    )
+                    if not ok:
+                        print(
+                            f"Warning: Skipping translation due to invalid translation text for: {phrase}\n{reason}"
                         )
                         continue
                     progress[phrase] = translation

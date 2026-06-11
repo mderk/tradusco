@@ -126,12 +126,18 @@ welcome_message,Welcome,Bienvenue,Bienvenido
 goodbye_message,Goodbye,Au revoir,Adiós
 ```
 
+Notes:
+
+- Column names are **case-sensitive**. `--base-lang` and `translate.py --lang` must match the CSV headers exactly (recommended: lowercase codes like `en`, `fr`, `pt-BR`).
+- You can add a `context` column (and optionally `context_<lang>` columns) to guide translations for ambiguous strings.
+- `translate.py` currently uses the **base-language text** (e.g. the `en` cell) as the key for `progress.json`. If you keep an `id` column, it will be preserved in the CSV, but it is not used as the translation-memory key.
+
 ### Project Structure
 
 The utility works with projects that follow this structure:
 
 -   `[project_dir]/config.json` - Project configuration
--   `[project_dir]/translations.csv` - Source and destination translations
+-   `[project_dir]/<sourceFile>` - Source and destination translations (often `translations.csv`)
 -   `[project_dir]/[language]/progress.json` - Translation progress for each language
 
 ### Project Configuration
@@ -213,6 +219,43 @@ python translate.py --list-models
 These scripts are designed to make Tradusco easy to integrate into other codebases.
 They are **framework-agnostic**: your app owns extraction/build; Tradusco owns translation state
 and correctness helpers.
+
+### `audit_translations.py` (project audit)
+
+Audit a Tradusco project for:
+
+- missing destination cells in `translations.csv`
+- invalid JSON-like artifacts saved as translations (e.g. `{` or `"translations": [`)
+- placeholder / Lingui-tag mismatches (`{name}`, `<0>...</0>`)
+- drift between `translations.csv` and per-locale `<lang>/progress.json`
+
+```bash
+python audit_translations.py --project-dir .tradusco/myproject
+```
+
+Fail CI/build if issues exist:
+
+```bash
+python audit_translations.py --project-dir .tradusco/myproject --fail
+```
+
+### `translate_all.py` (translate all locales)
+
+Run `translate.py` for every locale listed in `config.json` (with a concurrency limit).
+
+Two-pass example (Gemini → Grok fallback) that runs only locales with missing/invalid cells:
+
+```bash
+python translate_all.py \
+  --project-dir .tradusco/myproject \
+  --model google/gemini-2.5-flash \
+  --fallback-model x-ai/grok-4.3 \
+  --parallel 3 \
+  --batch-size 50 \
+  --batch-max-tokens 2048 \
+  --method auto \
+  --only-missing
+```
 
 ### `extract_translations_csv.py` (PO → translations.csv)
 

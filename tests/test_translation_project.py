@@ -51,7 +51,7 @@ class MockStorageAdapter(StorageAdapter):
     ) -> None:
         self.translations = translations
 
-    async def load_context(self, project_id: str) -> List[str]:
+    async def load_context(self, project_id: str, language: str) -> List[str]:
         return self.context_strings
 
     async def load_prompt(self, project_id: str, prompt_type: str) -> str:

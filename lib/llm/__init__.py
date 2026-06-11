@@ -6,7 +6,6 @@ from .grok import GrokDriver
 from .openai import OpenAIDriver
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 
 def _openrouter_driver(openrouter_model_id: str) -> OpenAIDriver:
@@ -16,7 +15,8 @@ def _openrouter_driver(openrouter_model_id: str) -> OpenAIDriver:
     We intentionally default capability flags to "standard" to avoid relying on
     tool calling / response_format support across different OpenRouter models.
     """
-    if not OPENROUTER_API_KEY:
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
         raise ValueError(
             "OPENROUTER_API_KEY environment variable not set. Please check your environment."
         )
@@ -24,7 +24,7 @@ def _openrouter_driver(openrouter_model_id: str) -> OpenAIDriver:
     driver = OpenAIDriver(
         model=openrouter_model_id,
         base_url=OPENROUTER_BASE_URL,
-        api_key=OPENROUTER_API_KEY,
+        api_key=api_key,
     )
 
     # Be conservative by default. Users can still request other methods,

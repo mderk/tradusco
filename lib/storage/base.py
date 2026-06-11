@@ -53,3 +53,19 @@ class StorageAdapter(ABC):
     async def load_prompt(self, project_id: str, prompt_type: str) -> str:
         """Load translation prompt"""
         pass
+
+    def set_active_language(self, language: Optional[str]) -> None:
+        """
+        Set the destination language for the current run.
+
+        Adapters that support concurrent per-language runs use this to merge
+        only the active language's column. No-op by default.
+        """
+        pass
+
+    def set_overwrite_active_language(self, enabled: bool) -> None:
+        """
+        Allow overwriting non-empty cells for the active language (e.g.
+        ``--regenerate``). No-op by default.
+        """
+        pass

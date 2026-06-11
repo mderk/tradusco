@@ -15,7 +15,7 @@ Integration tests are **excluded from normal test runs** (when using `pytest` co
 
 # Alternative methods with pytest directly:
 # Run all integration tests
-uv run pytest -m integration tests/test_integration_translation_methods.py -v
+uv run pytest -m integration tests -v
 
 # Run a specific integration test
 uv run pytest -m integration tests/test_integration_translation_methods.py::TestIntegrationTranslationMethods::test_standard_method -v
@@ -28,7 +28,7 @@ uv run pytest -m integration tests/test_integration_translation_methods.py -vv
 
 The integration tests verify that all three translation methods work end-to-end with real providers:
 
-1. **Standard Method**: Uses basic prompt formatting and parses the JSON response
+1. **Standard Method**: Uses basic prompt formatting (plain-text output) and parses the model response
 2. **Structured Method**: Uses the structured output API for more reliable JSON responses
 3. **Function Method**: Uses function calling to guide the response format
 
@@ -38,6 +38,12 @@ Default models (can be changed in `tests/test_integration_translation_methods.py
 
 - **standard/structured**: `model="gemini"` (requires `GEMINI_API_KEY`)
 - **function**: an OpenRouter-backed alias (requires `OPENROUTER_API_KEY`)
+- **openrouter structured outputs**: raw OpenRouter model ID `google/gemini-2.5-flash` by default, can be overridden via `OPENROUTER_STRUCTURED_MODEL` (requires `OPENROUTER_API_KEY`)
+
+Additional E2E integration tests:
+
+- `tests/test_e2e_openrouter_structured_output.py`: temp-project run via OpenRouter (Structured Outputs) + contract test for `failures`
+- `tests/test_e2e_gemini_structured_output.py`: temp-project run via direct Gemini driver + contract test for `failures`
 
 ## Requirements
 
@@ -54,6 +60,8 @@ You can set keys in your environment or in a `.env` file at the repo root.
 ```
 GEMINI_API_KEY=your_api_key_here
 OPENROUTER_API_KEY=your_api_key_here
+# Optional (recommended): choose an OpenRouter model known to support Structured Outputs
+OPENROUTER_STRUCTURED_MODEL=google/gemini-2.5-flash
 ```
 
 ## Adding New Integration Tests

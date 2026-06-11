@@ -122,6 +122,10 @@ class TestIntegrationTranslationMethods:
             "standard_model": "gemini",  # or "gpt-3.5-turbo"
             "structured_model": "gemini",  # or "gpt-3.5-turbo" or "claude-3-opus-20240229"
             "function_model": "openrouter-gemini-2.0-flash-lite-preview-02-05",  # Use OpenRouter for function calling
+            # Optional: OpenRouter model for Structured Outputs (json_schema).
+            # Recommend setting OPENROUTER_STRUCTURED_MODEL to a known-supported model for your account.
+            "openrouter_structured_model": os.environ.get("OPENROUTER_STRUCTURED_MODEL")
+            or "google/gemini-2.5-flash",
             "delay_seconds": 1.0,
             "max_retries": 2,
             "verbose": True,  # Set to true to see more detailed output
@@ -316,6 +320,52 @@ class TestIntegrationTranslationMethods:
             phrase = phrase_data[0]
             assert translations[i]["es"], f"No translation for '{phrase}'"
             assert progress[phrase], f"Translation not added to progress for '{phrase}'"
+
+    @pytest.mark.asyncio
+    async def test_openrouter_structured_method(self, translation_tool, translation_params):
+        """Test OpenRouter Structured Outputs (response_format json_schema) end-to-end."""
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            pytest.skip("OPENROUTER_API_KEY not set")
+
+        model = translation_params["openrouter_structured_model"]
+        if model not in get_available_models() and "/" not in model:
+            pytest.skip(f"Model {model} not available")
+
+        driver = get_driver(model)
+        if not getattr(driver, "supports_structured_output", False):
+            pytest.skip(
+                f"Model {model} does not advertise structured_outputs on OpenRouter. "
+                f"Set OPENROUTER_STRUCTURED_MODEL to a model that supports it."
+            )
+
+        # Sanity: auto method should choose structured.
+        assert driver.get_best_translation_method("auto") == "structured"
+
+        prompt = await translation_tool.prompt_manager.load_prompt("translation")
+        phrases = [
+            ("Hello world", "Greeting"),
+            ("Goodbye", "Farewell phrase"),
+        ]
+
+        translated = await translation_tool.translate_structured(
+            phrases,
+            model,
+            base_language="en",
+            dst_language="es",
+            prompt=prompt,
+            context=None,
+            delay_seconds=translation_params["delay_seconds"],
+            max_retries=translation_params["max_retries"],
+        )
+
+        assert translated, "No translations were produced"
+        assert translated.get("Hello world"), "Missing translation for 'Hello world'"
+        assert translated.get("Goodbye"), "Missing translation for 'Goodbye'"
+
+        # Ensure we don't persist JSON scaffolding as a "translation".
+        for value in translated.values():
+            ok, reason = translation_tool.validate_translation_text(value)
+            assert ok, reason
 
 
 if __name__ == "__main__":

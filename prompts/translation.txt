@@ -3,21 +3,15 @@ You are a professional translator. Translate the following phrases from {base_la
 - If there are any cultural nuances, adapt them appropriately.
 - Try to maintain the original length of the text.
 - Respect the formatting of the text - preserve newlines, extra spaces and other formatting features whenever possible. *Don't* break multiline strings to pieces!
-- Don't loose placeholders.
+- Don't lose placeholders (e.g. `{{name}}`) or Lingui tags (e.g. `<0>...</0>`).
 
 {context}
 
-The data schema is [["Phrase to translate", "context for the phease"], ...]. We translate only the phrases, not the context.
+The input data schema is `[[\"Phrase to translate\", \"context for the phrase\"], ...]`. Translate only the phrases, not the context.
 
 Data to translate:
 {phrases_json}
 
-You take only phrases from the data, and translate the phrases, one by one, keeping in mind the global and phrase's context, if any. Don't translate or return the context.
-Provide ONLY the translations to the target language {dst_language}.
-
-Example (for en->es):
-Input:
-[["Hello", ""], ["Goodbye", "farewell phrase"]]
-Output:
-{{"translations": ["Hola", "Adiós"]}}
+Translate each phrase in order, taking into account the global context and the phrase-specific context (if any).
+Do not translate or return the context. Output only the translations in the target language {dst_language}, in the same order as the input phrases.
 

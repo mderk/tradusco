@@ -2,8 +2,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import SecretStr
 from typing import Optional
 import os
-import json
-import re
 import asyncio
 from ..BaseDriver import BaseDriver, DEBUG
 
@@ -15,7 +13,7 @@ class GeminiDriver(BaseDriver):
 
     def __init__(
         self,
-        model: str = "gemini-2.5-flash-preview-04-17",
+        model: str = "gemini-2.5-flash",
         api_key: Optional[str] = None,
     ):
         """
@@ -82,26 +80,15 @@ class GeminiDriver(BaseDriver):
         Returns:
             JSON schema for structured output in Gemini's format
         """
-        # Create our Gemini-specific schema for the structured output
-        response_schema = {
-            "type": "object",
-            "properties": {
-                "translations": {
-                    "type": "array",
-                    "description": "Array of translations from source language to target language in the same order as input phrases",
-                    "items": {
-                        "type": "string",
-                        "description": "Translated text in target language",
-                    },
-                }
-            },
-            "required": ["translations"],
-            "propertyOrdering": [
-                "translations"
-            ],  # Gemini-specific for consistent property ordering
-        }
+        # Keep the structured output contract in one place (Pydantic). Gemini's
+        # GenAI SDK can transform JSON Schemas (including $defs/$ref) for
+        # compatibility.
+        from lib.contracts.translation_contracts import TranslationsResponse
 
-        return response_schema
+        schema: dict = TranslationsResponse.model_json_schema()
+        # Gemini-specific: preserve property ordering when possible.
+        schema["propertyOrdering"] = ["translations", "failures"]
+        return schema
 
     async def translate_structured_async(
         self,
@@ -112,7 +99,7 @@ class GeminiDriver(BaseDriver):
     ) -> dict:
         """
         Send a request to the LLM asynchronously and get a structured response.
-        Uses Gemini's native structured output capability.
+        Uses Gemini tool-calling + Pydantic parsing for structured output.
 
         Args:
             prompt: The formatted prompt to send to the model
@@ -126,11 +113,20 @@ class GeminiDriver(BaseDriver):
         if output_schema is None:
             output_schema = self.get_structured_output_schema()
 
+        # This version of `langchain-google-genai` implements structured output
+        # via tool calling + output parsers. Passing a Pydantic model gives us
+        # typed parsing (instead of a list of tool calls).
+        from lib.contracts.translation_contracts import TranslationsResponse
+
+        include_raw = bool(DEBUG)
+        structured = self.llm.with_structured_output(
+            TranslationsResponse, include_raw=include_raw
+        )
+
         for retry in range(max_retries):
             try:
                 # Add delay before retries (but not before the first attempt)
                 if retry > 0:
-                    # Apply exponential backoff for retries
                     wait_time = delay_seconds * (2 ** (retry - 1))
                     if DEBUG:
                         print(
@@ -138,88 +134,42 @@ class GeminiDriver(BaseDriver):
                         )
                     await asyncio.sleep(wait_time)
 
-                # Debug output to see what we're doing
                 if DEBUG:
                     print(f"\nUsing structured output with schema: {output_schema}")
 
-                # Use Gemini's native structured output
-                response = await self.llm.ainvoke(
-                    prompt,
-                    config={
-                        "response_mime_type": "application/json",
-                        "response_schema": output_schema,
-                    },
+                result = await structured.ainvoke(prompt)
+                parsed = (
+                    result.get("parsed")
+                    if include_raw and isinstance(result, dict)
+                    else result
                 )
 
-                # Extract and parse the response
-                content = str(
-                    response.content if hasattr(response, "content") else response
-                )
+                if parsed is None:
+                    raise TypeError("Structured output returned no parsed result")
 
-                if DEBUG:
-                    print(f"Raw response: {content}")
+                if isinstance(parsed, dict):
+                    return parsed
 
-                # First, try to extract JSON from markdown code blocks if present
-                json_block_match = re.search(
-                    r"```(?:json)?\s*([\s\S]*?)\s*```", content
-                )
+                # Pydantic v2
+                model_dump = getattr(parsed, "model_dump", None)
+                if callable(model_dump):
+                    dumped = model_dump()
+                    if isinstance(dumped, dict):
+                        return dumped
 
-                if json_block_match:
-                    extracted_json = json_block_match.group(1).strip()
-                    if DEBUG:
-                        print(f"Extracted JSON from markdown: {extracted_json}")
-                    try:
-                        result = json.loads(extracted_json)
+                # Pydantic v1
+                as_dict = getattr(parsed, "dict", None)
+                if callable(as_dict):
+                    dumped = as_dict()
+                    if isinstance(dumped, dict):
+                        return dumped
 
-                        # Handle the case where we get a valid JSON but not in the expected format
-                        if "translations" not in result and output_schema.get(
-                            "properties", {}
-                        ).get("translations"):
-                            # If the response is just an array, assume it's translations
-                            if isinstance(result, list):
-                                result = {"translations": result}
-                            # If it's a string, wrap it in an array
-                            elif isinstance(result, str):
-                                result = {"translations": [result]}
-
-                        return result
-                    except json.JSONDecodeError:
-                        # If we can't parse the extracted content, continue to next parsing attempt
-                        if DEBUG:
-                            print(
-                                "Failed to parse extracted JSON content, trying full content"
-                            )
-
-                # If no code blocks or parsing the extracted content failed, try parsing the full content
-                try:
-                    # Parse the JSON response
-                    result = json.loads(content)
-
-                    # Handle the case where we get a valid JSON but not in the expected format
-                    if "translations" not in result and output_schema.get(
-                        "properties", {}
-                    ).get("translations"):
-                        # If the response is just an array, assume it's translations
-                        if isinstance(result, list):
-                            result = {"translations": result}
-                        # If it's a string, wrap it in an array
-                        elif isinstance(result, str):
-                            result = {"translations": [result]}
-
-                    return result
-
-                except json.JSONDecodeError as e:
-                    raise ValueError(
-                        f"Failed to parse LLM response as JSON: {e}\nContent: {content}"
-                    ) from e
-
+                raise TypeError(f"Unexpected structured output type: {type(parsed)}")
             except Exception as e:
                 if DEBUG:
                     print(
                         f"Error in {self.model} structured output call (attempt {retry+1}/{max_retries}): {e}"
                     )
-                # No need to sleep here since we'll sleep at the start of the next iteration
-                # if we're not on the last retry
                 if retry == max_retries - 1:
                     raise Exception(
                         f"Failed to get structured output after {max_retries} attempts: {e}"

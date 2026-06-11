@@ -5,15 +5,16 @@ description = "A Python utility for translating texts using LLMs."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "aiofiles==24.1.0",
-    "dotenv>=0.9.9",
+    "aiofiles==25.1.0",
     "google-generativeai==0.8.4",
-    "langchain==0.3.20",
+    "langchain==0.3.30",
     "langchain-google-genai==2.0.10",
-    "langchain-openai==0.3.7",
-    "langchain-xai==0.2.1",
-    "pathlib>=1.0.0",
-    "python-dotenv==1.0.1",
+    "langchain-openai==0.3.35",
+    "langchain-xai==0.2.5",
+    "openai==1.109.1",
+    "pydantic>=2.13.4",
+    "python-dotenv==1.2.2",
+    "tiktoken==0.13.0",
 ]
 
 [dependency-groups]

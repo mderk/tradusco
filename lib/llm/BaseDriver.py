@@ -42,20 +42,10 @@ class BaseDriver(ABC):
         Returns:
             JSON schema for structured output
         """
-        return {
-            "type": "object",
-            "properties": {
-                "translations": {
-                    "type": "array",
-                    "description": "Array of translations from source language to target language in the same order as input phrases",
-                    "items": {
-                        "type": "string",
-                        "description": "Translated text in target language",
-                    },
-                }
-            },
-            "required": ["translations"],
-        }
+        # Keep this as a contract in code, not a hand-written schema.
+        from lib.contracts.translation_contracts import TranslationsResponse
+
+        return TranslationsResponse.model_json_schema()
 
     def get_function_schema(self) -> dict:
         """
@@ -181,14 +171,29 @@ class BaseDriver(ABC):
                 # Add delay to avoid rate limiting
                 await asyncio.sleep(wait_time)
             try:
-                # Standard approach for models that support response_format parameter
-                response = await self.llm.ainvoke(
-                    prompt,
-                    response_format={
-                        "type": "json_object",
-                        "schema": output_schema,
-                    },
-                )
+                # Preferred: OpenAI-style Structured Outputs (JSON Schema).
+                # OpenRouter uses the same Chat Completions `response_format` shape:
+                # { type: "json_schema", json_schema: { name, strict, schema } }.
+                response = None
+                try:
+                    response = await self.llm.ainvoke(
+                        prompt,
+                        response_format={
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": "translations",
+                                "strict": True,
+                                "schema": output_schema,
+                            },
+                        },
+                    )
+                except Exception:
+                    # Fallback: JSON mode (valid JSON, but no schema enforcement).
+                    # Some providers/models support `json_object` but reject `json_schema`.
+                    response = await self.llm.ainvoke(
+                        prompt,
+                        response_format={"type": "json_object"},
+                    )
 
                 # Return the structured output
                 if hasattr(response, "content"):

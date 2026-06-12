@@ -74,6 +74,39 @@ class TestUtilsFunctions:
         assert loaded_progress == progress_data
 
     @pytest.mark.asyncio
+    async def test_save_progress_merge_policy(self, tmp_path):
+        """save_progress merges with disk: it never regresses a valid value to an
+        empty/invalid one, but `overwrite_keys` forces authoritative corrections."""
+        project_dir = tmp_path / "test_project"
+        lang_dir = project_dir / "es"
+        os.makedirs(lang_dir, exist_ok=True)
+
+        storage = FileSystemStorageAdapter(project_dir)
+        await storage.save_progress("test_project", "es", {"Hello": "Hola-OLD"})
+
+        # Without overwrite_keys: a valid on-disk value is preserved (no regression),
+        # and unrelated keys are merged in (union, never delete).
+        await storage.save_progress(
+            "test_project",
+            "es",
+            {"Hello": "Hola-FIXED", "Bye": "Adios"},
+        )
+        loaded = await storage.load_progress("test_project", "es")
+        assert loaded["Hello"] == "Hola-OLD"
+        assert loaded["Bye"] == "Adios"
+
+        # With overwrite_keys: the correction replaces the existing valid value.
+        await storage.save_progress(
+            "test_project",
+            "es",
+            {"Hello": "Hola-FIXED"},
+            overwrite_keys={"Hello"},
+        )
+        loaded = await storage.load_progress("test_project", "es")
+        assert loaded["Hello"] == "Hola-FIXED"
+        assert loaded["Bye"] == "Adios"  # untouched key survives
+
+    @pytest.mark.asyncio
     async def test_load_progress_nonexistent_file(self, tmp_path):
         """Test loading progress from a nonexistent file."""
         # Create a project directory without progress file

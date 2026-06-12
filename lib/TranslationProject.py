@@ -211,6 +211,7 @@ class TranslationProject:
         progress: dict[str, str],
         translations: list[dict[str, str]],
         is_final: bool = False,
+        csv_corrections: Optional[set[str]] = None,
     ) -> None:
         """
         Save translation progress and translations to storage.
@@ -219,8 +220,15 @@ class TranslationProject:
             progress: Progress dictionary tracking completed translations
             translations: list of translation dictionaries
             is_final: Whether this is the final save (affects log message)
+            csv_corrections: Keys whose value was taken from a valid CSV cell and
+                must overwrite stale translation memory (manual edits in the CSV).
         """
-        await self.storage.save_progress(self.project_id, self.dst_language, progress)
+        await self.storage.save_progress(
+            self.project_id,
+            self.dst_language,
+            progress,
+            overwrite_keys=csv_corrections,
+        )
         await self.storage.save_translations(self.project_id, translations)
 
         if is_final:
@@ -276,6 +284,9 @@ class TranslationProject:
         # Collect phrases that need translation
         phrases_to_translate: list[tuple[str, str | None]] = []
         phrase_indices: dict[str, int] = {}
+        # Keys whose value comes from a valid CSV cell and must overwrite stale
+        # translation memory (manual edits made directly in the CSV).
+        csv_corrections: set[str] = set()
         current_batch_tokens = 0
         start_next_batch = False
         for i, row in enumerate(translations):
@@ -296,9 +307,13 @@ class TranslationProject:
                     existing_translation
                 )
                 if ok:
-                    # Update progress cache if needed
-                    if source_phrase not in progress:
+                    # The CSV is the source of truth for a valid, non-empty cell.
+                    # Sync it into the progress cache when it differs (e.g. a manual
+                    # correction edited directly in the CSV) and mark it as an
+                    # authoritative override so it is not lost to stale memory.
+                    if progress.get(source_phrase) != existing_translation:
                         progress[source_phrase] = existing_translation
+                        csv_corrections.add(source_phrase)
                     continue
                 # Invalid artifact in CSV – clear and treat as missing.
                 row[self.dst_language] = ""
@@ -377,7 +392,9 @@ class TranslationProject:
                         ] = translation
 
                 # Save progress after batch processing
-                await self._save_translation_progress(progress, translations)
+                await self._save_translation_progress(
+                    progress, translations, csv_corrections=csv_corrections
+                )
 
                 phrases_to_translate = []
                 phrase_indices = {}
@@ -420,8 +437,12 @@ class TranslationProject:
                     ] = translation
 
             # Save progress after batch processing
-            await self._save_translation_progress(progress, translations)
+            await self._save_translation_progress(
+                progress, translations, csv_corrections=csv_corrections
+            )
 
         # Always save progress at the end to ensure the test passes
         # This also handles any changes made to progress that weren't from translate_standard
-        await self._save_translation_progress(progress, translations, is_final=True)
+        await self._save_translation_progress(
+            progress, translations, is_final=True, csv_corrections=csv_corrections
+        )

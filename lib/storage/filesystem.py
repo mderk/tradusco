@@ -93,7 +93,11 @@ class FileSystemStorageAdapter(StorageAdapter):
             return json.loads(content)
 
     async def save_progress(
-        self, project_id: str, language: str, progress: Dict[str, str]
+        self,
+        project_id: str,
+        language: str,
+        progress: Dict[str, str],
+        overwrite_keys: Optional[set] = None,
     ) -> None:
         """Save translation progress to progress.json.
 
@@ -103,6 +107,11 @@ class FileSystemStorageAdapter(StorageAdapter):
         - take an exclusive lock
         - merge with the latest on-disk progress (union, never delete)
         - write atomically
+
+        ``overwrite_keys`` lists keys whose incoming value is authoritative and
+        must replace the on-disk value even if the latter is valid (e.g. a manual
+        correction made directly in the CSV). All other keys keep the
+        conservative "prefer a valid on-disk value" policy.
         """
         progress_path = self._get_progress_path(language)
         progress_path.parent.mkdir(parents=True, exist_ok=True)
@@ -146,13 +155,16 @@ class FileSystemStorageAdapter(StorageAdapter):
                 merged = dict(current)
 
                 overwrite = bool(self.overwrite_active_language)
+                force_keys = overwrite_keys or set()
                 for k, v in (progress or {}).items():
                     if v is None:
                         continue
                     sv = str(v)
                     if not sv.strip():
                         continue
-                    if overwrite:
+                    # `overwrite` (--regenerate) forces every value; `force_keys`
+                    # forces specific authoritative corrections (e.g. edited in CSV).
+                    if overwrite or k in force_keys:
                         merged[k] = sv
                         continue
                     current_val = merged.get(k)

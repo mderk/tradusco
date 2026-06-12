@@ -26,9 +26,18 @@ class StorageAdapter(ABC):
 
     @abstractmethod
     async def save_progress(
-        self, project_id: str, language: str, progress: Dict[str, str]
+        self,
+        project_id: str,
+        language: str,
+        progress: Dict[str, str],
+        overwrite_keys: Optional[set] = None,
     ) -> None:
-        """Save translation progress for a specific language"""
+        """Save translation progress for a specific language.
+
+        ``overwrite_keys`` lists keys whose incoming value is authoritative and
+        should replace any existing stored value (e.g. corrections made directly
+        in the CSV). Adapters that do not merge may ignore it.
+        """
         pass
 
     @abstractmethod

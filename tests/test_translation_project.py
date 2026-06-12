@@ -27,17 +27,24 @@ class MockStorageAdapter(StorageAdapter):
         self.prompts = {}
         self.context_file = None
         self.prompt_file = None
+        self.progress: Dict[str, str] = {}
+        self.progress_overwrite_keys: set = set()
 
     async def load_config(self, project_id: str) -> Config:
         return self.config
 
     async def load_progress(self, project_id: str, language: str) -> Dict[str, str]:
-        return {}
+        return dict(self.progress)
 
     async def save_progress(
-        self, project_id: str, language: str, progress: Dict[str, str]
+        self,
+        project_id: str,
+        language: str,
+        progress: Dict[str, str],
+        overwrite_keys=None,
     ) -> None:
-        pass
+        self.progress = dict(progress)
+        self.progress_overwrite_keys = set(overwrite_keys or set())
 
     async def load_translations(self, project_id: str) -> List[Dict[str, Any]]:
         return self.translations
@@ -239,3 +246,50 @@ class TestTranslationProject:
         assert len(translations) > 0
         assert "es" in translations[0]
         assert "(translated)" in translations[0]["es"]
+
+    @patch("lib.llm.get_driver")
+    @patch("lib.TranslationProject.get_driver")
+    async def test_manual_csv_correction_synced_to_progress(
+        self,
+        project_get_driver_mock,
+        llm_get_driver_mock,
+        mock_llm_driver,
+        mock_storage,
+    ):
+        """A valid CSV cell that differs from stale progress must overwrite it.
+
+        Reproduces editing a translation directly in the CSV: on the next run the
+        phrase is already translated (so it is not re-sent to the model), and the
+        corrected value must be promoted into translation memory as an
+        authoritative override rather than being shadowed by the stale entry.
+        """
+        llm_get_driver_mock.return_value = mock_llm_driver
+        project_get_driver_mock.return_value = mock_llm_driver
+
+        # All destination cells are filled and valid; "Hello" was corrected by hand
+        # in the CSV to a value that differs from the (stale) progress memory.
+        mock_storage.translations = [
+            {"en": "Hello", "es": "Hola-FIXED"},
+            {"en": "Bye", "es": "Adios"},
+        ]
+        mock_storage.progress = {"Hello": "Hola-OLD", "Bye": "Adios"}
+
+        config = await mock_storage.load_config("test_project")
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_language="es",
+            storage=mock_storage,
+            prompt="Translate from {base_language} to {dst_language}: {phrases_json}",
+        )
+
+        await project.translate(model="test_model")
+
+        # The manual correction is promoted into memory and flagged as override.
+        assert mock_storage.progress["Hello"] == "Hola-FIXED"
+        assert "Hello" in mock_storage.progress_overwrite_keys
+        # An unchanged, in-sync cell is not flagged as a correction.
+        assert "Bye" not in mock_storage.progress_overwrite_keys
+        # The CSV keeps the corrected value (the phrase was not retranslated).
+        saved = await mock_storage.load_translations("test_project")
+        assert saved[0]["es"] == "Hola-FIXED"

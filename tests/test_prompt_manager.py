@@ -35,7 +35,7 @@ class MockStorageAdapter(StorageAdapter):
     async def load_progress(self, project_id, language):
         return {}
 
-    async def save_progress(self, project_id, language, progress):
+    async def save_progress(self, project_id, language, progress, overwrite_keys=None):
         pass
 
     async def load_translations(self, project_id):

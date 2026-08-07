@@ -24,8 +24,11 @@ class MockLLMDriver(BaseDriver):
 
     def __init__(self, model: str = "mock-model", api_key: Optional[str] = None):
         """Initialize the mock LLM driver with a model name."""
-        self.model = model
+        super().__init__(model, api_key)
         self.llm = self  # Set self as the LLM to handle invoke calls
+        self.supports_structured_output = True
+        self.supports_function_calling = True
+        self.preferred_method = "standard"
 
         # Dictionary of prompt patterns to responses
         self.response_map = {}

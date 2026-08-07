@@ -33,6 +33,18 @@ class BaseDriver(ABC):
         self.preferred_method = (
             "standard"  # Can be 'standard', 'structured', or 'function'
         )
+        self.openrouter_require_parameters = False
+
+    def _openrouter_request_kwargs(self, **extra: Any) -> dict[str, Any]:
+        """Attach OpenRouter provider routing hints when enabled."""
+        if not self.openrouter_require_parameters:
+            return extra
+        extra_body = dict(extra.pop("extra_body", {}))
+        provider = dict(extra_body.get("provider") or {})
+        provider["require_parameters"] = True
+        extra_body["provider"] = provider
+        extra["extra_body"] = extra_body
+        return extra
 
     def get_structured_output_schema(self) -> dict:
         """
@@ -186,6 +198,7 @@ class BaseDriver(ABC):
                                 "schema": output_schema,
                             },
                         },
+                        **self._openrouter_request_kwargs(),
                     )
                 except Exception:
                     # Fallback: JSON mode (valid JSON, but no schema enforcement).
@@ -193,6 +206,7 @@ class BaseDriver(ABC):
                     response = await self.llm.ainvoke(
                         prompt,
                         response_format={"type": "json_object"},
+                        **self._openrouter_request_kwargs(),
                     )
 
                 # Return the structured output
@@ -303,6 +317,7 @@ class BaseDriver(ABC):
                         if function_name
                         else "auto"
                     ),
+                    **self._openrouter_request_kwargs(),
                 )
 
                 # Print response type for debugging

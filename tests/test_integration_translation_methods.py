@@ -67,6 +67,9 @@ class IntegrationTestStorageAdapter(StorageAdapter):
 
         return ""
 
+    async def append_failure(self, project_id, language, record):
+        pass
+
 
 # Mark these tests as integration tests so they can be skipped by default
 # Run with: ./tests/run_integration_tests.sh

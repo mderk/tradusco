@@ -77,3 +77,13 @@ class StorageAdapter(ABC):
         ``--regenerate``). No-op by default.
         """
         pass
+
+    @abstractmethod
+    async def append_failure(
+        self,
+        project_id: str,
+        language: str,
+        record: dict[str, str | None],
+    ) -> None:
+        """Append a failure record for the active locale."""
+        pass

@@ -6,8 +6,6 @@ from pathlib import Path
 import pytest
 
 from lib.TranslationProject import TranslationProject
-from lib.contracts.translation_contracts import TranslationsResponse
-from lib.llm import get_driver
 from lib.storage.filesystem import FileSystemStorageAdapter
 from lib.utils import is_valid_translation
 
@@ -148,54 +146,3 @@ async def test_e2e_temp_project_openrouter_gemini25_structured_output(
 
         assert src in progress
         assert progress[src] == dst
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_openrouter_structured_output_can_return_failure_contract(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """
-    Contract test (OpenRouter-first): prove a model can emit a failure record
-    in the Structured Outputs response shape.
-
-    We avoid relying on real provider policy refusals (variable) by using a
-    sentinel token and explicit instructions.
-    """
-    if not os.environ.get("OPENROUTER_API_KEY"):
-        pytest.skip("OPENROUTER_API_KEY not set")
-
-    monkeypatch.setenv("TRADUSCO_OPENROUTER_SO", "force")
-
-    model = _openrouter_model_for_tests()
-    driver = get_driver(model)
-
-    prompt = (
-        "You are a professional translator.\n"
-        "Translate the following phrases from EN to ES.\n"
-        "If a phrase contains the token [[REFUSE]], do not translate it. Instead:\n"
-        "- Set its translation to an empty string\n"
-        "- Add an entry to `failures` with:\n"
-        "  - index (0-based)\n"
-        "  - phrase (original)\n"
-        "  - category = \"refusal\"\n"
-        "  - message = \"forced refusal for testing\"\n"
-        "\n"
-        "Phrases (in order):\n"
-        "0) Hello\n"
-        "1) [[REFUSE]] do not translate\n"
-    )
-
-    raw = await driver.translate_structured_async(prompt, delay_seconds=1.0, max_retries=2)
-    parsed = TranslationsResponse.model_validate(raw)
-
-    assert len(parsed.translations) == 2
-    assert parsed.translations[0].strip()
-    assert parsed.translations[1] == ""
-
-    assert parsed.failures, "Expected at least one failure record"
-    refusal = parsed.failures[0]
-    assert refusal.index == 1
-    assert "[[REFUSE]]" in refusal.phrase
-    assert refusal.category == "refusal"
-

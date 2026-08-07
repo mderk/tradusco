@@ -153,6 +153,7 @@ The utility works with projects that follow this structure:
 -   `[project_dir]/config.json` - Project configuration
 -   `[project_dir]/<sourceFile>` - Source and destination translations (often `translations.csv`)
 -   `[project_dir]/[language]/progress.json` - Translation progress for each language
+-   `[project_dir]/[language]/failures.jsonl` - Append-only log of phrase-level failures (why a string is still missing)
 
 ### Project Configuration
 
@@ -226,7 +227,21 @@ python translate.py -p projects/myproject -l fr --method auto
 
 # List available models
 python translate.py --list-models
+
+# Retry failed batches and fill remaining gaps with a fallback model
+python translate.py -p projects/myproject -l fr \
+  -m google/gemini-2.5-flash \
+  --fallback-model x-ai/grok-4.3 \
+  --method auto
 ```
+
+When `--fallback-model` is set, Tradusco:
+
+1. Retries each **failed batch** once with the fallback model (e.g. rate limit, provider block, parse error).
+2. Runs a **gap-filling pass** at the end if valid cells are still missing (without `--regenerate`).
+
+Phrase-level failures (batch errors, placeholder mismatches, rejected JSON artifacts) are appended to
+`<lang>/failures.jsonl` for debugging and CI triage.
 
 ## Helper scripts for integrations (CSV + gettext PO workflows)
 

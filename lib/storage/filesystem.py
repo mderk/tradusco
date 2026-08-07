@@ -66,6 +66,10 @@ class FileSystemStorageAdapter(StorageAdapter):
         """Get the progress file path for a language"""
         return self.project_path / language / "progress.json"
 
+    def _get_failures_path(self, language: str) -> Path:
+        """Get the append-only failure log path for a language."""
+        return self.project_path / language / "failures.jsonl"
+
     def _get_translations_path(self, config: Optional[Config] = None) -> Path:
         """Get the translations file path"""
         if config:
@@ -354,6 +358,33 @@ class FileSystemStorageAdapter(StorageAdapter):
                 print(f"Warning: Error reading context file {self.context_file}: {e}")
 
         return context_parts
+
+    async def append_failure(
+        self,
+        project_id: str,
+        language: str,
+        record: dict[str, str | None],
+    ) -> None:
+        """Append a failure record to ``<lang>/failures.jsonl``."""
+        failures_path = self._get_failures_path(language)
+        failures_path.parent.mkdir(parents=True, exist_ok=True)
+
+        lock_path = failures_path.with_name(f".{failures_path.name}.lock")
+        try:
+            import fcntl  # type: ignore
+        except Exception:
+            fcntl = None  # type: ignore
+
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+        with lock_path.open("a", encoding="utf-8") as lock_fp:
+            if fcntl is not None:
+                fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
+            try:
+                with failures_path.open("a", encoding="utf-8") as out_fp:
+                    out_fp.write(line)
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
 
     async def load_prompt(self, project_id: str, prompt_type: str) -> str:
         """Load translation prompt from file"""

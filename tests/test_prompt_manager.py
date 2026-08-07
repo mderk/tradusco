@@ -52,6 +52,9 @@ class MockStorageAdapter(StorageAdapter):
             return self.prompts[prompt_type]
         return ""
 
+    async def append_failure(self, project_id, language, record):
+        pass
+
 
 @pytest.fixture
 def mock_storage():

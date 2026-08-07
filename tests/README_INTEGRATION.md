@@ -42,8 +42,8 @@ Default models (can be changed in `tests/test_integration_translation_methods.py
 
 Additional E2E integration tests:
 
-- `tests/test_e2e_openrouter_structured_output.py`: temp-project run via OpenRouter (Structured Outputs) + contract test for `failures`
-- `tests/test_e2e_gemini_structured_output.py`: temp-project run via direct Gemini driver + contract test for `failures`
+- `tests/test_e2e_openrouter_structured_output.py`: temp-project run via OpenRouter (Structured Outputs)
+- `tests/test_e2e_gemini_structured_output.py`: temp-project run via direct Gemini driver (Structured Outputs)
 
 ## Requirements
 

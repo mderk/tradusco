@@ -74,6 +74,29 @@ class TestUtilsFunctions:
         assert loaded_progress == progress_data
 
     @pytest.mark.asyncio
+    async def test_append_failure_writes_jsonl(self, tmp_path):
+        project_dir = tmp_path / "test_project"
+        lang_dir = project_dir / "es"
+        lang_dir.mkdir(parents=True)
+
+        storage = FileSystemStorageAdapter(project_dir)
+        record = {
+            "ts": "2026-01-01T00:00:00+00:00",
+            "model": "test-model",
+            "method": "standard",
+            "phrase": "Hello",
+            "category": "parse_error",
+            "message": "failed to parse",
+        }
+        await storage.append_failure("test_project", "es", record)
+
+        failures_file = lang_dir / "failures.jsonl"
+        assert failures_file.exists()
+        lines = failures_file.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 1
+        assert '"phrase": "Hello"' in lines[0]
+
+    @pytest.mark.asyncio
     async def test_save_progress_merge_policy(self, tmp_path):
         """save_progress merges with disk: it never regresses a valid value to an
         empty/invalid one, but `overwrite_keys` forces authoritative corrections."""

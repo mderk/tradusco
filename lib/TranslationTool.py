@@ -2,6 +2,7 @@ import json
 import re
 import os
 import ast
+from dataclasses import dataclass
 from typing import Annotated, Optional, Union
 
 from pydantic import BaseModel, Field
@@ -14,6 +15,99 @@ from .utils import (
 )
 
 DEBUG = os.environ.get("TRADUSCO_DEBUG")
+
+
+@dataclass(frozen=True)
+class BatchErrorInfo:
+    """
+    Minimal batch-level error classification used for fallback routing.
+
+    We intentionally keep this coarse-grained:
+    - auth_error
+    - rate_limit
+    - blocked (policy / content filter)
+    - model_error (everything else)
+    """
+
+    kind: str
+    message: str
+    status_code: int | None = None
+
+
+class BatchTranslationError(Exception):
+    def __init__(self, info: BatchErrorInfo):
+        super().__init__(info.message)
+        self.info = info
+
+
+def _extract_status_code(e: Exception) -> int | None:
+    for attr in ("status_code", "status"):
+        v = getattr(e, attr, None)
+        if isinstance(v, int):
+            return v
+
+    resp = getattr(e, "response", None)
+    if resp is not None:
+        v = getattr(resp, "status_code", None)
+        if isinstance(v, int):
+            return v
+
+    return None
+
+
+def classify_llm_error(e: Exception) -> BatchErrorInfo:
+    """
+    Best-effort classification for "why did this batch fail?".
+
+    This is intentionally simple and based on:
+    - HTTP status codes when available
+    - common substrings in provider/SDK error messages
+    """
+    status = _extract_status_code(e)
+    msg = str(e)
+    text = msg.lower()
+    cls = e.__class__.__name__.lower()
+
+    def _has(*needles: str) -> bool:
+        return any(n in text for n in needles)
+
+    # Provider policy / content filtering
+    if _has(
+        "content_filter",
+        "content filter",
+        "content policy",
+        "policy",
+        "safety",
+        "blocked",
+        "refused",
+        "refuse",
+        "moderation",
+    ):
+        return BatchErrorInfo(kind="blocked", message=msg, status_code=status)
+
+    # Auth / permissions
+    if status in (401, 403) or _has(
+        "unauthorized",
+        "authentication",
+        "invalid api key",
+        "api key",
+        "permission denied",
+        "forbidden",
+        "environment variable not set",
+        "not set",
+    ):
+        return BatchErrorInfo(kind="auth_error", message=msg, status_code=status)
+
+    # Rate limiting / quotas
+    if status == 429 or _has(
+        "rate limit",
+        "quota",
+        "too many requests",
+        "resourceexhausted",
+    ) or ("ratelimit" in cls):
+        return BatchErrorInfo(kind="rate_limit", message=msg, status_code=status)
+
+    return BatchErrorInfo(kind="model_error", message=msg, status_code=status)
 
 
 class Input(BaseModel):
@@ -366,21 +460,37 @@ class TranslationTool:
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
+        raise_on_error: bool = False,
     ) -> dict[str, str] | None:
         """Process a batch of phrases for translation"""
         # Get common setup
-        driver, batch_prompt = await self.setup(
-            phrases=phrases,
-            model=model,
-            base_language=base_language,
-            dst_language=dst_language,
-            prompt=prompt,
-            context=context,
-            method_name="standard",
-        )
+        try:
+            driver, batch_prompt = await self.setup(
+                phrases=phrases,
+                model=model,
+                base_language=base_language,
+                dst_language=dst_language,
+                prompt=prompt,
+                context=context,
+                method_name="standard",
+            )
+        except Exception as e:
+            if raise_on_error:
+                raise BatchTranslationError(classify_llm_error(e)) from e
+            if DEBUG:
+                print(f"Error processing batch: {e}")
+                print("Skipping this batch...")
+            return None
         if not driver:
             if DEBUG:
                 print("Skipping this batch...")
+            if raise_on_error:
+                raise BatchTranslationError(
+                    BatchErrorInfo(
+                        kind="model_error",
+                        message="No driver available for model",
+                    )
+                )
             return None
 
         # Get the translation response
@@ -389,6 +499,8 @@ class TranslationTool:
                 batch_prompt, delay_seconds=delay_seconds, max_retries=max_retries
             )
         except Exception as e:
+            if raise_on_error:
+                raise BatchTranslationError(classify_llm_error(e)) from e
             if DEBUG:
                 print(f"Error processing batch: {e}")
                 print("Skipping this batch...")
@@ -396,11 +508,21 @@ class TranslationTool:
 
         # Parse and handle the response using the same method as structured and function calls
         try:
-            return self.handle_response(
+            handled = self.handle_response(
                 response,
                 phrases,
             )
+            if handled is None and raise_on_error:
+                raise BatchTranslationError(
+                    BatchErrorInfo(
+                        kind="model_error",
+                        message="Failed to parse/align translations from standard response",
+                    )
+                )
+            return handled
         except Exception as e:
+            if raise_on_error:
+                raise BatchTranslationError(classify_llm_error(e)) from e
             if DEBUG:
                 print(f"Error processing batch: {e}")
             print("Skipping this batch...")
@@ -416,21 +538,37 @@ class TranslationTool:
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
+        raise_on_error: bool = False,
     ) -> dict[str, str] | None:
         """Process a batch of phrases using structured output"""
         # Get common setup
-        driver, batch_prompt = await self.setup(
-            phrases=phrases,
-            model=model,
-            base_language=base_language,
-            dst_language=dst_language,
-            prompt=prompt,
-            context=context,
-            method_name="structured",
-        )
+        try:
+            driver, batch_prompt = await self.setup(
+                phrases=phrases,
+                model=model,
+                base_language=base_language,
+                dst_language=dst_language,
+                prompt=prompt,
+                context=context,
+                method_name="structured",
+            )
+        except Exception as e:
+            if raise_on_error:
+                raise BatchTranslationError(classify_llm_error(e)) from e
+            if DEBUG:
+                print(f"Error processing batch: {e}")
+                print("Skipping this batch...")
+            return None
         if not driver:
             if DEBUG:
                 print("Skipping this batch...")
+            if raise_on_error:
+                raise BatchTranslationError(
+                    BatchErrorInfo(
+                        kind="model_error",
+                        message="No driver available for model",
+                    )
+                )
             return None
 
         # Get the translation response using structured output
@@ -447,11 +585,21 @@ class TranslationTool:
                     f"DEBUG: Response type: {type(response)}, value: {repr(response)[:200]}"
                 )
 
-            return self.handle_response(
+            handled = self.handle_response(
                 response,
                 phrases,
             )
+            if handled is None and raise_on_error:
+                raise BatchTranslationError(
+                    BatchErrorInfo(
+                        kind="model_error",
+                        message="Failed to parse/align translations from structured response",
+                    )
+                )
+            return handled
         except Exception as e:
+            if raise_on_error:
+                raise BatchTranslationError(classify_llm_error(e)) from e
             if DEBUG:
                 print(f"Error from structured output call: {e}")
                 print(f"Failed to process batch using structured output: {e}")
@@ -467,21 +615,37 @@ class TranslationTool:
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
+        raise_on_error: bool = False,
     ) -> dict[str, str] | None:
         """Process a batch of phrases using function calling"""
         # Get common setup
-        driver, batch_prompt = await self.setup(
-            phrases=phrases,
-            model=model,
-            base_language=base_language,
-            dst_language=dst_language,
-            prompt=prompt,
-            context=context,
-            method_name="function",
-        )
+        try:
+            driver, batch_prompt = await self.setup(
+                phrases=phrases,
+                model=model,
+                base_language=base_language,
+                dst_language=dst_language,
+                prompt=prompt,
+                context=context,
+                method_name="function",
+            )
+        except Exception as e:
+            if raise_on_error:
+                raise BatchTranslationError(classify_llm_error(e)) from e
+            if DEBUG:
+                print(f"Error processing batch: {e}")
+                print("Skipping this batch...")
+            return None
         if not driver:
             if DEBUG:
                 print("Skipping this batch...")
+            if raise_on_error:
+                raise BatchTranslationError(
+                    BatchErrorInfo(
+                        kind="model_error",
+                        message="No driver available for model",
+                    )
+                )
             return None
 
         # Get the translation response using function calling
@@ -501,19 +665,38 @@ class TranslationTool:
                     else:
                         args = response["arguments"]
 
-                    return self.handle_response(
+                    handled = self.handle_response(
                         args,
                         phrases,
                     )
+                    if handled is None and raise_on_error:
+                        raise BatchTranslationError(
+                            BatchErrorInfo(
+                                kind="model_error",
+                                message="Failed to parse/align translations from function-call response",
+                            )
+                        )
+                    return handled
                 except Exception as e:
+                    if raise_on_error:
+                        raise BatchTranslationError(classify_llm_error(e)) from e
                     if DEBUG:
                         print(f"Unexpected function arguments format: {e}")
                     return None
             else:
                 if DEBUG:
                     print(f"Unexpected response format: {response}")
+                if raise_on_error:
+                    raise BatchTranslationError(
+                        BatchErrorInfo(
+                            kind="model_error",
+                            message="Unexpected function-call response format",
+                        )
+                    )
                 return None
         except Exception as e:
+            if raise_on_error:
+                raise BatchTranslationError(classify_llm_error(e)) from e
             if DEBUG:
                 print(f"Error from function call: {e}")
                 print("Function call translation failed")

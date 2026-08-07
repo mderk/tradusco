@@ -93,6 +93,7 @@ def _openrouter_driver(openrouter_model_id: str) -> OpenAIDriver:
 
     driver.supports_structured_output = supports_structured_output
     driver.supports_function_calling = tools_supported
+    driver.openrouter_require_parameters = True
     driver.preferred_method = (
         "structured"
         if supports_structured_output

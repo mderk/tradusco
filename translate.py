@@ -105,6 +105,13 @@ async def async_main():
         action="store_true",
         help="Regenerate all translations, ignoring existing ones and saved progress.",
     )
+    parser.add_argument(
+        "--fallback-model",
+        help=(
+            "Optional fallback model. Retries each failed batch once, then runs a "
+            "gap-filling pass for any still-missing/invalid cells (without --regenerate)."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -177,6 +184,7 @@ async def async_main():
             batch_max_tokens=args.batch_max_tokens,
             translation_method=args.method,
             regenerate=args.regenerate,
+            fallback_model=args.fallback_model,
         )
     except Exception as e:
         print(f"Error: {e}")

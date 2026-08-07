@@ -87,7 +87,7 @@ class GeminiDriver(BaseDriver):
 
         schema: dict = TranslationsResponse.model_json_schema()
         # Gemini-specific: preserve property ordering when possible.
-        schema["propertyOrdering"] = ["translations", "failures"]
+        schema["propertyOrdering"] = ["translations"]
         return schema
 
     async def translate_structured_async(

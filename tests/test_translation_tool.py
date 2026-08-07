@@ -47,6 +47,9 @@ class MockStorageAdapter(StorageAdapter):
             return self.prompts[prompt_type]
         return ""
 
+    async def append_failure(self, project_id, language, record):
+        pass
+
 
 class TestTranslationTool:
     """Test suite for TranslationTool class."""

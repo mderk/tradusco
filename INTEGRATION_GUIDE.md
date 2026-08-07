@@ -246,6 +246,19 @@ Notes:
 - The runner prints per-locale logs prefixed with `[<lang>]`.
 - During parallel runs, Tradusco uses lockfiles like `.translations.csv.lock` and `.<lang>/.progress.json.lock`
   to avoid races. These files are safe to ignore and can be excluded from VCS.
+- Per-locale failure logs live in `<lang>/failures.jsonl` (append-only). Check this file when audit
+  reports missing cells after a run.
+
+### Single-locale fallback (`translate.py`)
+
+For one locale, `--fallback-model` retries failed batches and then runs a gap-filling pass:
+
+```bash
+python translate.py -p .tradusco/myproject -l fr \
+  -m google/gemini-2.5-flash \
+  --fallback-model x-ai/grok-4.3 \
+  --method auto
+```
 
 ### Workflow C: “Bring your own extractor/applier”
 

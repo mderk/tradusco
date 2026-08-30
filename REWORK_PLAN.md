@@ -204,3 +204,37 @@ Document:
 - Keep `progress.json` as a flat mapping; do not mix error records into it.
 - Make SO auto-detected + fallback to standard so existing setups keep working.
 
+### Defects found while reading the code
+
+Small, independent of the phases above. Each one is a place where the current code
+does something quietly wrong rather than failing.
+
+- **A missing or invalid project prompt is silent.** `PromptManager.load_prompt` returns
+  an empty string under `strict_validation`, and `TranslationProject._load_prompt` then
+  falls back to the shipped default. A project whose prompt no longer satisfies the
+  required variables keeps translating, just not with its own prompt. Should raise.
+- **The locale code reaches the model upper-cased.** `TranslationTool.create_prompt`
+  does `dst_language.upper()`, so `uk` arrives as `UK` and gets read as United Kingdom —
+  the reason `booty/uk/context.txt` exists at all. Pass the code together with the
+  language name rather than instead of it.
+- **The input schema in `prompts/translation.txt` does not match the data.** The schema
+  line shows backslash-escaped quotes, `[[\"Phrase to translate\", ...]]`, while the
+  payload below it is ordinary JSON. The model is given an example of a format it is
+  not actually receiving.
+- **`batchMaxTokens` measures the input.** That is the wrong side: the response is what
+  hits the model's output limit, and it grows with the number of target languages.
+- **Key order is thrown away on export.** `scripts/tradusco/export_translation_json.js`
+  sorts with `localeCompare` although the base `.po` files already arrive in reading
+  order, and a `Set` preserves insertion order. Batching by meaning depends on that
+  order surviving.
+
+### Prompt snapshots
+
+`tests/test_prompt_snapshot.py` pins the string `TranslationTool.setup` hands to the
+driver, for both the standard and structured methods. Any change to the template, the
+context assembly or the output-format block shows up as a diff. Refresh deliberately:
+
+```bash
+UPDATE_PROMPT_SNAPSHOTS=1 uv run pytest tests/test_prompt_snapshot.py
+```
+

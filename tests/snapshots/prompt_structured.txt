@@ -1,0 +1,21 @@
+You are a professional translator. Translate the following phrases from EN to RU.
+- Maintain the original meaning, tone, and style.
+- If there are any cultural nuances, adapt them appropriately.
+- Try to maintain the original length of the text.
+- Respect the formatting of the text - preserve newlines, extra spaces and other formatting features whenever possible. *Don't* break multiline strings to pieces!
+- Don't lose placeholders (e.g. `{name}`) or Lingui tags (e.g. `<0>...</0>`).
+
+
+Global Translation Context:
+A fantasy RPG with adult content; the tone is relaxed.
+Every playable hero is a woman; the player character is a man.
+
+
+The input data schema is `[[\"Phrase to translate\", \"context for the phrase\"], ...]`. Translate only the phrases, not the context.
+
+Data to translate:
+[["You gained {count} gems.", "Reward popup after a battle."], ["Read the <0>rules</0> first.", null], ["Line one.\nLine two.", "Two lines of a tooltip."], ["Chest", "A container the player opens, not a body part."]]
+
+Translate each phrase in order, taking into account the global context and the phrase-specific context (if any).
+Do not translate or return the context. Output only the translations in the target language RU, in the same order as the input phrases.
+

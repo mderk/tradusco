@@ -440,3 +440,171 @@ class TestTranslationProject:
         assert first_call["fallback_model"] == "fallback-model"
         assert second_call["model"] == "fallback-model"
         assert second_call["fallback_model"] is None
+
+    @patch("lib.TranslationTool.TranslationTool.translate_standard")
+    @patch("lib.llm.get_driver")
+    @patch("lib.TranslationProject.get_driver")
+    async def test_validation_failures_are_logged_to_failures(
+        self,
+        project_get_driver_mock,
+        llm_get_driver_mock,
+        mock_translate_standard_patch,
+        mock_llm_driver,
+        mock_storage,
+    ):
+        """Placeholder mismatches and JSON artifacts are recorded in failures.jsonl."""
+        mock_storage.translations = [
+            {"en": "Hello {name}", "es": ""},
+            {"en": "Goodbye", "es": ""},
+            {"en": "Thank you", "es": ""},
+        ]
+
+        async def mock_translate_standard(
+            phrases: list[tuple[str, str | None]],
+            model: str,
+            base_language: str,
+            dst_language: str,
+            prompt: str,
+            context: Optional[str] = None,
+            delay_seconds: float = 1.0,
+            max_retries: int = 3,
+            raise_on_error: bool = False,
+        ) -> dict[str, str]:
+            return {
+                "Hello {name}": "Hola",
+                "Goodbye": "{",
+                "Thank you": "Gracias",
+            }
+
+        mock_translate_standard_patch.side_effect = mock_translate_standard
+        llm_get_driver_mock.return_value = mock_llm_driver
+        project_get_driver_mock.return_value = mock_llm_driver
+
+        config = await mock_storage.load_config("test_project")
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_language="es",
+            storage=mock_storage,
+            prompt="Translate from {base_language} to {dst_language}",
+        )
+
+        await project.translate(model="primary-model")
+
+        assert mock_storage.progress["Thank you"] == "Gracias"
+        assert "Hello {name}" not in mock_storage.progress
+        assert "Goodbye" not in mock_storage.progress
+
+        by_phrase = {r["phrase"]: r for r in mock_storage.failures}
+        assert by_phrase["Hello {name}"]["category"] == "placeholder_mismatch"
+        assert by_phrase["Goodbye"]["category"] == "invalid_artifact_rejected"
+
+    @patch("lib.TranslationTool.TranslationTool.translate_standard")
+    @patch("lib.llm.get_driver")
+    @patch("lib.TranslationProject.get_driver")
+    async def test_gap_pass_fills_remaining_cells(
+        self,
+        project_get_driver_mock,
+        llm_get_driver_mock,
+        mock_translate_standard_patch,
+        mock_llm_driver,
+        mock_storage,
+    ):
+        """Gap-filling pass translates phrases the primary model left missing."""
+        mock_storage.translations = [
+            {"en": "Hello", "es": ""},
+            {"en": "Goodbye", "es": ""},
+        ]
+
+        async def mock_translate_standard(
+            phrases: list[tuple[str, str | None]],
+            model: str,
+            base_language: str,
+            dst_language: str,
+            prompt: str,
+            context: Optional[str] = None,
+            delay_seconds: float = 1.0,
+            max_retries: int = 3,
+            raise_on_error: bool = False,
+        ) -> dict[str, str]:
+            if model == "primary-model":
+                return {"Hello": "Hola"}
+            return {phrase: f"{phrase}-fb" for phrase, _ctx in phrases}
+
+        mock_translate_standard_patch.side_effect = mock_translate_standard
+        llm_get_driver_mock.return_value = mock_llm_driver
+        project_get_driver_mock.return_value = mock_llm_driver
+
+        config = await mock_storage.load_config("test_project")
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_language="es",
+            storage=mock_storage,
+            prompt="Translate from {base_language} to {dst_language}",
+        )
+
+        await project.translate(
+            model="primary-model",
+            fallback_model="fallback-model",
+        )
+
+        assert mock_storage.progress["Hello"] == "Hola"
+        assert mock_storage.progress["Goodbye"] == "Goodbye-fb"
+
+    @pytest.mark.asyncio
+    async def test_has_missing_phrases_false_when_all_cells_valid(self, mock_storage):
+        """Gap detection returns false when CSV and progress are complete."""
+        mock_storage.translations = [
+            {"en": "Hello", "es": "Hola"},
+            {"en": "Goodbye", "es": "Adios"},
+        ]
+        config = await mock_storage.load_config("test_project")
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_language="es",
+            storage=mock_storage,
+        )
+
+        assert (
+            project._has_missing_phrases(
+                mock_storage.translations,
+                {"Hello": "Hola", "Goodbye": "Adios"},
+                regenerate=False,
+            )
+            is False
+        )
+
+    @patch("lib.TranslationProject.TranslationProject._has_missing_phrases", return_value=False)
+    @patch("lib.TranslationProject.TranslationProject._translate_pass", new_callable=AsyncMock)
+    @patch("lib.llm.get_driver")
+    @patch("lib.TranslationProject.get_driver")
+    async def test_gap_pass_skipped_when_nothing_missing(
+        self,
+        project_get_driver_mock,
+        llm_get_driver_mock,
+        translate_pass_mock,
+        _has_missing_mock,
+        mock_llm_driver,
+        mock_storage,
+    ):
+        """translate() must not schedule a gap pass when no cells are missing."""
+        llm_get_driver_mock.return_value = mock_llm_driver
+        project_get_driver_mock.return_value = mock_llm_driver
+
+        config = await mock_storage.load_config("test_project")
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_language="es",
+            storage=mock_storage,
+        )
+
+        await project.translate(
+            model="primary-model",
+            fallback_model="fallback-model",
+        )
+
+        assert translate_pass_mock.await_count == 1
+        _has_missing_mock.assert_called_once()

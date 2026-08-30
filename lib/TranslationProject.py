@@ -1,6 +1,10 @@
 from typing import Optional
 
-from lib.failure_reporting import batch_error_kind_to_category, make_failure_record
+from lib.failure_reporting import (
+    batch_error_kind_to_category,
+    FailureCategory,
+    make_failure_record,
+)
 from lib.PromptManager import PromptManager
 from lib.TranslationTool import (
     BatchErrorInfo,
@@ -156,7 +160,7 @@ class TranslationProject:
         *,
         model: str,
         phrase: str,
-        category: str,
+        category: FailureCategory,
         message: str,
         method: str | None = None,
     ) -> None:

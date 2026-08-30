@@ -352,13 +352,28 @@ def main() -> int:
             row[lang] = progress_lookup_by_lang.get(lang, {}).get(phrase, "") or ""
         out_rows.append(row)
 
-    config = {
-        "name": project_dir.name,
-        "sourceFile": "translations.csv",
-        "languages": [base_col, *lang_cols],
-        "baseLanguage": base_col,
-        "keyColumn": base_col,
-    }
+    # Only the five fields below are derived from the CSV; anything else the
+    # project has configured by hand (e.g. `lengthCheck`) is kept, otherwise a
+    # sync would silently drop it.
+    config: dict = {}
+    existing_config_path = project_dir / "config.json"
+    if existing_config_path.exists():
+        try:
+            loaded = json.loads(existing_config_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                config.update(loaded)
+        except Exception:
+            pass
+
+    config.update(
+        {
+            "name": project_dir.name,
+            "sourceFile": "translations.csv",
+            "languages": [base_col, *lang_cols],
+            "baseLanguage": base_col,
+            "keyColumn": base_col,
+        }
+    )
 
     print(f"source_csv: {source_csv}")
     print(f"project_dir: {project_dir}")

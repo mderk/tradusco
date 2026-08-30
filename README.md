@@ -257,6 +257,7 @@ Audit a Tradusco project for:
 - invalid JSON-like artifacts saved as translations (e.g. `{` or `"translations": [`)
 - placeholder / Lingui-tag mismatches (`{name}`, `<0>...</0>`)
 - drift between `translations.csv` and per-locale `<lang>/progress.json`
+- UI labels that grew too long to fit their widget (reported as `long_labels`)
 
 ```bash
 python audit_translations.py --project-dir .tradusco/myproject
@@ -266,6 +267,40 @@ Fail CI/build if issues exist:
 
 ```bash
 python audit_translations.py --project-dir .tradusco/myproject --fail
+```
+
+#### Length control
+
+Short source strings are captions on buttons, tabs and badges, so a translation
+that is much wider than the source overflows or gets clipped. The check compares
+**display width** (CJK and fullwidth characters count as two) after removing
+placeholders and markup, and it deliberately ignores prose: anything that ends a
+sentence, runs past `maxSourceWords` words, or is wider than `maxSourceWidth` is
+exempt. Sources that are abbreviations (`HP`, `EXP`, `Lv.`, plus `abbrevSources`)
+are held to a much tighter absolute limit, because the widget that shows them is
+tiny. As a side effect the check also catches a translation cell that holds a
+completely different string.
+
+Over-long labels are reported but do not fail the run unless you ask:
+
+```bash
+python audit_translations.py --project-dir .tradusco/myproject --fail --fail-on-length
+```
+
+Tune it in the project's `config.json` (all fields optional):
+
+```json
+"lengthCheck": {
+  "enabled": true,
+  "maxRatio": 1.9,
+  "minSlack": 6,
+  "abbrevSlack": 2,
+  "abbrevSources": ["Lvl", "Atk", "Def"],
+  "perLang": {
+    "de": { "maxRatio": 2.2 },
+    "th": { "enabled": false }
+  }
+}
 ```
 
 ### `translate_all.py` (translate all locales)

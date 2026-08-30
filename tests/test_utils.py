@@ -5,7 +5,13 @@ import json
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.utils import Config
+from lib.utils import (
+    Config,
+    display_width,
+    is_abbreviation,
+    length_within_limit,
+    measurable_text,
+)
 from lib.storage.filesystem import FileSystemStorageAdapter
 
 
@@ -184,3 +190,48 @@ class TestUtilsFunctions:
         # Verify the loaded context includes the specific file
         assert len(context_parts) >= 1
         assert specific_context in context_parts
+
+
+class TestLengthCheck:
+    """UI labels must stay short enough for the widget that shows them."""
+
+    def test_prose_is_exempt(self):
+        long_ru = "Я совершенно не понимаю, что здесь происходит."
+        ok, _ = length_within_limit("I’m lost.", long_ru)
+        assert ok
+
+    def test_placeholders_do_not_count(self):
+        # `{level}` renders identically in both languages.
+        assert display_width(measurable_text("Lvl {level}")) == 3
+
+    def test_abbreviation_must_stay_short(self):
+        ok, reason = length_within_limit("Lvl {level}", "Уровень {level}")
+        assert not ok and "abbreviation" in reason
+        ok, _ = length_within_limit("Lvl {level}", "Ур. {level}")
+        assert ok
+
+    def test_ordinary_short_word_is_not_an_abbreviation(self):
+        # "Ash" is a name, not a shortened form: katakana is allowed to be wider.
+        assert not is_abbreviation("Ash")
+        ok, _ = length_within_limit("Ash", "アッシュ")
+        assert ok
+
+    def test_cjk_width_counts_double(self):
+        assert display_width("生命值") == 6
+        ok, reason = length_within_limit("HP", "生命值")
+        assert not ok and "abbreviation" in reason
+
+    def test_label_growth_is_capped(self):
+        ok, reason = length_within_limit("Headshot", "Πυροβολισμός στο Κεφάλι")
+        assert not ok and "label" in reason
+        ok, _ = length_within_limit("Headshot", "Выстрел в голову")
+        assert ok
+
+    def test_substituted_string_is_caught(self):
+        ok, reason = length_within_limit("Charm", "1. 消耗低质量物品以锻造所需物品。")
+        assert not ok and "label" in reason
+
+    def test_per_project_options_apply(self):
+        long_de = "Widerstandsfähigkeit"
+        assert not length_within_limit("Fortitude", long_de)[0]
+        assert length_within_limit("Fortitude", long_de, {"maxRatio": 2.5})[0]

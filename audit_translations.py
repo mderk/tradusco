@@ -9,7 +9,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from lib.utils import (
+    LENGTH_DEFAULTS,
     is_valid_translation as _is_valid_translation,
+    length_within_limit as _length_within_limit,
     looks_like_json_artifact as _looks_like_json_artifact,
     placeholders_match as _placeholders_match,
 )
@@ -41,6 +43,7 @@ class LangReport:
     missing_cells: int = 0
     invalid_cells: int = 0
     placeholder_mismatches: int = 0
+    length_violations: int = 0
 
     progress_entries: int | None = None
     progress_invalid_values: int | None = None
@@ -74,6 +77,37 @@ class ProjectReport:
     duplicate_key_values: int = 0
 
     per_language: list[LangReport] = field(default_factory=list)
+
+
+def _length_options(config: dict, lang: str) -> dict | None:
+    """
+    Per-language length settings from config.json:
+
+        "lengthCheck": {
+          "enabled": true,
+          "maxRatio": 1.9,
+          "perLang": { "de": { "maxRatio": 2.2 } }
+        }
+
+    Returns ``None`` when the check is switched off for this language.
+    """
+    section = config.get("lengthCheck")
+    if section is None:
+        section = {}
+    if not isinstance(section, dict):
+        return None
+    if section.get("enabled") is False:
+        return None
+
+    per_lang = section.get("perLang") or {}
+    override = per_lang.get(lang) if isinstance(per_lang, dict) else None
+    if isinstance(override, dict) and override.get("enabled") is False:
+        return None
+
+    opts = {k: v for k, v in section.items() if k in LENGTH_DEFAULTS}
+    if isinstance(override, dict):
+        opts.update({k: v for k, v in override.items() if k in LENGTH_DEFAULTS})
+    return opts
 
 
 def audit_project(*, project_dir: Path, langs: list[str] | None, max_samples: int) -> ProjectReport:
@@ -139,6 +173,7 @@ def audit_project(*, project_dir: Path, langs: list[str] | None, max_samples: in
 
     for lang in all_langs:
         lr = LangReport(lang=lang, status="OK", base_rows=len(base_rows), unique_phrases=len(phrase_to_idxs))
+        length_opts = _length_options(config, lang)
         if lang not in columns:
             lr.status = "MISSING_COLUMN"
             report.per_language.append(lr)
@@ -189,6 +224,21 @@ def audit_project(*, project_dir: Path, langs: list[str] | None, max_samples: in
                         "reason": reason,
                     }
                     lr.samples.setdefault("placeholder_mismatches", []).append(sample)
+
+            if length_opts is not None:
+                fits, why = _length_within_limit(phrase, cell_s, length_opts)
+                if not fits:
+                    lr.length_violations += 1
+                    if max_samples and len(lr.samples.get("length_violations", [])) < max_samples:
+                        sample = {
+                            "key": (row.get(report.key_col) or "").strip()
+                            if report.key_col
+                            else (row.get("key") or "").strip(),
+                            "phrase": phrase,
+                            "value": cell_s,
+                            "reason": why,
+                        }
+                        lr.samples.setdefault("length_violations", []).append(sample)
 
         # Progress stats
         progress_path = project_dir / lang / "progress.json"
@@ -271,6 +321,7 @@ def _print_report(report: ProjectReport) -> None:
         print(
             f"[{lr.lang}] missing_cells={lr.missing_cells} invalid_cells={lr.invalid_cells} "
             f"placeholder_mismatches={lr.placeholder_mismatches} "
+            f"length_violations={lr.length_violations} "
             f"progress_entries={lr.progress_entries} progress_invalid={lr.progress_invalid_values} "
             f"csv_unique={lr.csv_unique_translated} progress_unique={lr.progress_unique_translated} "
             f"csv_not_in_progress={lr.csv_not_in_progress} progress_not_in_csv={lr.progress_not_in_csv} "
@@ -295,6 +346,14 @@ def _print_report(report: ProjectReport) -> None:
                     f"- {lr.lang}: missing_cells={lr.missing_cells} invalid_cells={lr.invalid_cells} "
                     f"placeholder_mismatches={lr.placeholder_mismatches}"
                 )
+
+    # Reported apart from the hard errors above: an over-long label is a layout
+    # risk to look at, not a broken build.
+    long_langs = [lr for lr in report.per_language if lr.status == "OK" and lr.length_violations]
+    if long_langs:
+        print("\nlong_labels:")
+        for lr in sorted(long_langs, key=lambda x: -int(x.length_violations)):
+            print(f"- {lr.lang}: length_violations={lr.length_violations}")
 
 
 def main() -> int:
@@ -324,6 +383,11 @@ def main() -> int:
         action="store_true",
         help="Exit with non-zero code if issues are found",
     )
+    parser.add_argument(
+        "--fail-on-length",
+        action="store_true",
+        help="With --fail, also treat over-long UI labels as issues",
+    )
     args = parser.parse_args()
 
     project_dir = Path(args.project_dir).resolve()
@@ -345,6 +409,9 @@ def main() -> int:
             issues = True
             break
         if lr.missing_cells or lr.invalid_cells or lr.placeholder_mismatches:
+            issues = True
+            break
+        if args.fail_on_length and lr.length_violations:
             issues = True
             break
 

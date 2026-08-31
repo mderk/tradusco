@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import pytest
 from unittest.mock import patch, AsyncMock
 
@@ -36,7 +37,35 @@ class TestCommandLine:
                 assert model in captured.out
 
             # Check the return code
-            assert result == 0
+        assert result == 0
+
+    def test_parse_languages_deduplicates_and_preserves_order(self):
+        assert translate._parse_languages("pl, ko,pl,ja") == ["pl", "ko", "ja"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_unknown_language_before_translation(
+        self, monkeypatch, tmp_path
+    ):
+        (tmp_path / "config.json").write_text(
+            json.dumps(
+                {
+                    "name": tmp_path.name,
+                    "sourceFile": "translations.csv",
+                    "baseLanguage": "en",
+                    "languages": ["en", "es"],
+                    "keyColumn": "key",
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["translate.py", "--project", str(tmp_path), "--lang", "es,xx"],
+        )
+
+        with pytest.raises(SystemExit):
+            await translate.async_main()
 
     @pytest.mark.asyncio
     async def test_missing_required_args(self, monkeypatch, capsys):

@@ -1,4 +1,4 @@
-You are a professional translator. Translate the following phrases from EN to RU.
+You are a professional translator. Translate the following phrases from EN to every target language: ru (Russian), uk (Ukrainian).
 - Maintain the original meaning, tone, and style.
 - If there are any cultural nuances, adapt them appropriately.
 - Try to maintain the original length of the text.
@@ -17,13 +17,13 @@ Data to translate:
 [["You gained {count} gems.", "Reward popup after a battle."], ["Read the <0>rules</0> first.", null], ["Line one.\nLine two.", "Two lines of a tooltip."], ["Chest", "A container the player opens, not a body part."]]
 
 Translate each phrase in order, taking into account the global context and the phrase-specific context (if any).
-Do not translate or return the context. Output only the translations in the target language RU, in the same order as the input phrases.
-
+Do not translate or return the context. Return one block for every target language, using its language code. Within every block, keep translations in the same order as the input phrases.
 
 
 Output format:
 
-- Return only the translations as plain text.
-- One translation per line, in the same order as the input phrases.
-- Do not include numbering, bullets, JSON, quotes, code fences, or any extra text.
-- The number of non-empty output lines must match the number of input phrases.
+- Return only one JSON object with a `translations` array.
+- Include one object per requested language: `{"language": "<code>", "translations": ["..."]}`.
+- Use each requested language code exactly.
+- Each language's translations must stay in the same order as the input phrases.
+- Do not include code fences or any extra text.

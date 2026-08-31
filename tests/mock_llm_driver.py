@@ -40,10 +40,18 @@ class MockLLMDriver(BaseDriver):
         """Set up default responses for common prompt types."""
         # Default translation response
         translation_response = json.dumps(
-            {"Hello": "Hola", "Goodbye": "Adiós", "Welcome": "Bienvenido"}
+            {
+                "translations": [
+                    {
+                        "language": "es",
+                        "translations": ["Hola", "Adiós", "Bienvenido"],
+                    }
+                ]
+            }
         )
         self.register_response(
-            r"Translate.*English to Spanish", f"```json\n{translation_response}\n```"
+            r"Translate.*EN.*es \(Spanish\)",
+            f"```json\n{translation_response}\n```",
         )
 
         # Default JSON fix response

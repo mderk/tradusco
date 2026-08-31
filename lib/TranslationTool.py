@@ -5,11 +5,10 @@ import ast
 from dataclasses import dataclass
 from typing import Annotated, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from .llm import BaseDriver, get_driver
 from .PromptManager import PromptManager
 from .utils import (
-    looks_like_json_artifact as _looks_like_json_artifact,
     placeholders_match as _placeholders_match,
     validate_translation_text as _validate_translation_text,
 )
@@ -110,13 +109,57 @@ def classify_llm_error(e: Exception) -> BatchErrorInfo:
     return BatchErrorInfo(kind="model_error", message=msg, status_code=status)
 
 
+@dataclass(frozen=True)
+class LanguageRef:
+    code: str
+    name: str
+
+
+LANGUAGE_NAMES = {
+    "cs": "Czech",
+    "de": "German",
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "hu": "Hungarian",
+    "it": "Italian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "pl": "Polish",
+    "pt": "Portuguese",
+    "ro": "Romanian",
+    "ru": "Russian",
+    "th": "Thai",
+    "tr": "Turkish",
+    "uk": "Ukrainian",
+    "vi": "Vietnamese",
+    "zh": "Chinese",
+    "es-ES": "Spanish (Spain)",
+    "es-419": "Spanish (Latin America)",
+    "es-LA": "Spanish (Latin America)",
+    "pt-BR": "Portuguese (Brazil)",
+    "pt-PT": "Portuguese (Portugal)",
+    "zh-CN": "Chinese (Simplified)",
+    "zh-TW": "Chinese (Traditional)",
+}
+
+
+def language_ref(code: str) -> LanguageRef:
+    return LanguageRef(
+        code=code,
+        name=LANGUAGE_NAMES.get(
+            code, LANGUAGE_NAMES.get(code.split("-", 1)[0], code)
+        ),
+    )
+
+
 class Input(BaseModel):
     """
     Input format for the translation prompt.
     """
 
     base_language: str
-    dst_language: str
+    dst_languages: list[LanguageRef]
     context: str
     phrases: Annotated[
         list[tuple[str, str | None]],
@@ -124,6 +167,10 @@ class Input(BaseModel):
             description="List of phrases to translate, each element is a tuple of the phrase and its context (optional)"
         ),
     ]
+
+    @field_serializer("dst_languages")
+    def serialize_dst_languages(self, languages: list[LanguageRef]) -> str:
+        return ", ".join(f"{language.code} ({language.name})" for language in languages)
 
 
 class TranslationTool:
@@ -168,7 +215,7 @@ class TranslationTool:
         self,
         phrases: list[tuple[str, str | None]],
         base_language: str,
-        dst_language: str,
+        dst_languages: list[LanguageRef],
         prompt: str,
         context: Optional[str] = None,
     ) -> str | None:
@@ -181,7 +228,7 @@ class TranslationTool:
         )
         data = Input(
             base_language=base_language.upper(),
-            dst_language=dst_language.upper(),
+            dst_languages=dst_languages,
             context=context_section,
             phrases=phrases,
         )
@@ -214,36 +261,31 @@ class TranslationTool:
 
     def merge_translations(
         self,
-        translations_list: list[str],
+        translations_list: list[object],
         phrases: list[tuple[str, str | None]],
-    ) -> dict[str, str]:
-        """
-        Update translations from a list of translations (in the same order as phrases).
-
-        Args:
-            translations_list: List of translations
-            phrases: List of original phrases
-
-        Returns:
-            mapping of phrases to translations
-        """
-
-        result = {}
-
-        if DEBUG:
-            print("Translated", len(translations_list), translations_list)
-
-        for i, translation in enumerate(translations_list):
+        dst_languages: list[LanguageRef],
+    ) -> dict[str, dict[str, str]]:
+        """Align valid per-language blocks with the input phrases."""
+        requested = {language.code for language in dst_languages}
+        result: dict[str, dict[str, str]] = {}
+        for block in translations_list:
+            if not isinstance(block, dict):
+                continue
+            language = block.get("language")
+            values = block.get("translations")
             if (
-                i < len(phrases) and translation.strip()
-            ):  # Only update if we have a non-empty translation
-                result[phrases[i][0]] = translation
-
-                if DEBUG:
-                    print(f"Translated: {phrases[i]} -> {translation}")
-            elif i < len(phrases) and DEBUG:
-                print(f"Warning: Empty translation for '{phrases[i]}'")
-
+                not isinstance(language, str)
+                or language not in requested
+                or not isinstance(values, list)
+                or len(values) != len(phrases)
+                or not all(isinstance(value, str) for value in values)
+            ):
+                continue
+            result[str(language)] = {
+                phrase[0]: translation
+                for phrase, translation in zip(phrases, values)
+                if translation.strip()
+            }
         return result
 
     async def setup(
@@ -251,7 +293,7 @@ class TranslationTool:
         phrases: list[tuple[str, str | None]],
         model: str,
         base_language: str,
-        dst_language: str,
+        dst_languages: list[LanguageRef],
         prompt: str,
         context: Optional[str] = None,
         method_name: str = "standard",
@@ -264,7 +306,7 @@ class TranslationTool:
             phrases: List of [phrase, context] tuples
             model: LLM model to use
             base_language: Source language
-            dst_language: Target language
+            dst_languages: Target languages
             prompt: Translation prompt
             context: Optional context for translation
             method_name: Name of the translation method being used (for logging)
@@ -288,7 +330,7 @@ class TranslationTool:
         batch_prompt = await self.create_prompt(
             phrases=phrases,
             base_language=base_language,
-            dst_language=dst_language,
+            dst_languages=dst_languages,
             prompt=prompt,
             context=context,
         )
@@ -319,132 +361,22 @@ class TranslationTool:
         self,
         response: Union[str, dict, list],
         phrases: list[tuple[str, str | None]],
-    ) -> dict[str, str] | None:
-        """
-        Handle translation response format and update translations.
-        Expects either a list of translations or a dict with a translations array.
-
-        Args:
-            response: The response from the translation service
-            phrases: List of original phrases
-
-        Returns:
-            Mapping of phrases to translations
-        """
+        dst_languages: list[LanguageRef],
+    ) -> dict[str, dict[str, str]] | None:
+        """Parse the common multilingual response without coupling language failures."""
         if isinstance(response, str):
-            # First extract JSON from code blocks if present
             json_str = self.extract_json_from_response(response)
-            # Then try to parse it as JSON
             try:
-                parsed_response = json.loads(json_str)
-                translations_list = None
-                if isinstance(parsed_response, dict):
-                    if "translations" in parsed_response:  # type: ignore
-                        translations_list = parsed_response["translations"]
-                elif isinstance(parsed_response, list):
-                    translations_list = parsed_response
-
-                if translations_list:
-                    return self.merge_translations(
-                        translations_list=translations_list,
-                        phrases=phrases,
-                    )
-                else:
-                    if DEBUG:
-                        print("Invalid JSON response received")
-                    return None
+                response = json.loads(json_str)
             except json.JSONDecodeError:
-                # Some providers/models occasionally emit “JSON-like” output that isn't
-                # strict JSON (single quotes, trailing commas, etc). Try a safe
-                # Python literal parse, then fall back to line-based parsing.
                 try:
-                    parsed_response = ast.literal_eval(json_str)
+                    response = ast.literal_eval(json_str)
                 except Exception:
-                    parsed_response = None
+                    return None
 
-                translations_list = None
-                if isinstance(parsed_response, dict) and "translations" in parsed_response:
-                    translations_list = parsed_response.get("translations")
-                elif isinstance(parsed_response, list):
-                    translations_list = parsed_response
-
-                if isinstance(translations_list, list):
-                    return self.merge_translations(
-                        translations_list=[str(x) for x in translations_list],
-                        phrases=phrases,
-                    )
-
-                # Last resort: accept plain line output (one translation per line).
-                cleaned = re.sub(r"```(?:json)?|```", "", response)
-                lines: list[str] = []
-                for line in cleaned.splitlines():
-                    s = line.strip()
-                    if not s:
-                        continue
-                    # Strip simple list markers / numbering.
-                    s = re.sub(r"^\s*[-*•]\s+", "", s)
-                    s = re.sub(r"^\s*\d+\s*[\).\:-]\s+", "", s)
-                    s = s.strip()
-                    if not s:
-                        continue
-                    # Skip JSON scaffolding lines (brackets / the translations key).
-                    if _looks_like_json_artifact(s):
-                        continue
-                    # If the model returned the full dict literally, skip it here.
-                    if s.startswith("{") and s.endswith("}"):
-                        continue
-
-                    # If this is a JSON string literal, decode it safely.
-                    if s.startswith('"') and (s.endswith('"') or s.endswith('",')):
-                        try:
-                            decoded = json.loads(s[:-1] if s.endswith('",') else s)
-                            lines.append(str(decoded))
-                            continue
-                        except Exception:
-                            pass
-                    if s.startswith("'") and (s.endswith("'") or s.endswith("',")):
-                        try:
-                            decoded = ast.literal_eval(s[:-1] if s.endswith("',") else s)
-                            lines.append(str(decoded))
-                            continue
-                        except Exception:
-                            pass
-
-                    lines.append(s)
-
-                # Positional merge is only safe when line and phrase counts match.
-                # Drop a leading prelude (more lines than phrases), but if the
-                # counts still disagree, refuse rather than silently misalign and
-                # persist shifted translations — the batch is retried instead.
-                if len(lines) > len(phrases):
-                    lines = lines[-len(phrases) :]
-                if lines and len(lines) == len(phrases):
-                    return self.merge_translations(
-                        translations_list=lines,
-                        phrases=phrases,
-                    )
-
-                if DEBUG:
-                    print("Invalid JSON response received")
-                return None
-
-        # Handle list of translations
-        if isinstance(response, list):
-            return self.merge_translations(
-                translations_list=response,
-                phrases=phrases,
-            )
-
-        # Handle dict with translations array
-        if (
-            isinstance(response, dict)
-            and "translations" in response
-            and isinstance(response["translations"], list)
-        ):
-            return self.merge_translations(
-                translations_list=response["translations"],
-                phrases=phrases,
-            )
+        blocks = response.get("translations") if isinstance(response, dict) else response
+        if isinstance(blocks, list):
+            return self.merge_translations(blocks, phrases, dst_languages)
 
         if DEBUG:
             print(f"Unexpected response format: {response}")
@@ -455,13 +387,13 @@ class TranslationTool:
         phrases: list[tuple[str, str | None]],
         model: str,
         base_language: str,
-        dst_language: str,
+        dst_languages: list[LanguageRef],
         prompt: str,
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
         raise_on_error: bool = False,
-    ) -> dict[str, str] | None:
+    ) -> dict[str, dict[str, str]] | None:
         """Process a batch of phrases for translation"""
         # Get common setup
         try:
@@ -469,7 +401,7 @@ class TranslationTool:
                 phrases=phrases,
                 model=model,
                 base_language=base_language,
-                dst_language=dst_language,
+                dst_languages=dst_languages,
                 prompt=prompt,
                 context=context,
                 method_name="standard",
@@ -511,6 +443,7 @@ class TranslationTool:
             handled = self.handle_response(
                 response,
                 phrases,
+                dst_languages,
             )
             if handled is None and raise_on_error:
                 raise BatchTranslationError(
@@ -533,13 +466,13 @@ class TranslationTool:
         phrases: list[tuple[str, str | None]],
         model: str,
         base_language: str,
-        dst_language: str,
+        dst_languages: list[LanguageRef],
         prompt: str,
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
         raise_on_error: bool = False,
-    ) -> dict[str, str] | None:
+    ) -> dict[str, dict[str, str]] | None:
         """Process a batch of phrases using structured output"""
         # Get common setup
         try:
@@ -547,7 +480,7 @@ class TranslationTool:
                 phrases=phrases,
                 model=model,
                 base_language=base_language,
-                dst_language=dst_language,
+                dst_languages=dst_languages,
                 prompt=prompt,
                 context=context,
                 method_name="structured",
@@ -588,6 +521,7 @@ class TranslationTool:
             handled = self.handle_response(
                 response,
                 phrases,
+                dst_languages,
             )
             if handled is None and raise_on_error:
                 raise BatchTranslationError(
@@ -610,13 +544,13 @@ class TranslationTool:
         phrases: list[tuple[str, str | None]],
         model: str,
         base_language: str,
-        dst_language: str,
+        dst_languages: list[LanguageRef],
         prompt: str,
         context: Optional[str] = None,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
         raise_on_error: bool = False,
-    ) -> dict[str, str] | None:
+    ) -> dict[str, dict[str, str]] | None:
         """Process a batch of phrases using function calling"""
         # Get common setup
         try:
@@ -624,7 +558,7 @@ class TranslationTool:
                 phrases=phrases,
                 model=model,
                 base_language=base_language,
-                dst_language=dst_language,
+                dst_languages=dst_languages,
                 prompt=prompt,
                 context=context,
                 method_name="function",
@@ -668,6 +602,7 @@ class TranslationTool:
                     handled = self.handle_response(
                         args,
                         phrases,
+                        dst_languages,
                     )
                     if handled is None and raise_on_error:
                         raise BatchTranslationError(

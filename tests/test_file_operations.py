@@ -268,3 +268,50 @@ class TestFileOperations:
         # Reload translations and verify updates
         updated_translations = await storage.load_translations("test_project")
         assert updated_translations[0]["es"] == "Hola"
+
+    @pytest.mark.asyncio
+    async def test_regenerate_overwrites_all_active_languages(self, tmp_path):
+        project_dir = tmp_path / "test_project"
+        project_dir.mkdir()
+        (project_dir / "config.json").write_text(
+            json.dumps(
+                {
+                    "name": "test_project",
+                    "sourceFile": "translations.csv",
+                    "baseLanguage": "en",
+                    "languages": ["en", "es", "fr", "de"],
+                    "keyColumn": "key",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (project_dir / "translations.csv").write_text(
+            "key,en,es,fr,de\nhello,Hello,old-es,old-fr,keep-de\n",
+            encoding="utf-8",
+        )
+        storage = FileSystemStorageAdapter(project_dir)
+        storage.set_active_languages(["es", "fr"])
+        storage.set_overwrite_active_language(True)
+
+        await storage.save_translations(
+            "test_project",
+            [
+                {
+                    "key": "hello",
+                    "en": "Hello",
+                    "es": "new-es",
+                    "fr": "new-fr",
+                    "de": "incoming-de",
+                }
+            ],
+        )
+
+        assert await storage.load_translations("test_project") == [
+            {
+                "key": "hello",
+                "en": "Hello",
+                "es": "new-es",
+                "fr": "new-fr",
+                "de": "keep-de",
+            }
+        ]

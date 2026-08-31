@@ -10,6 +10,8 @@ from lib.TranslationTool import (
     BatchErrorInfo,
     BatchTranslationError,
     classify_llm_error,
+    language_ref,
+    LanguageRef,
     TranslationTool,
 )
 from lib.utils import Config
@@ -26,7 +28,7 @@ class TranslationProject:
     Attributes:
         project_id (str): The unique identifier of the project.
         config (Config): The configuration of the project.
-        dst_language (str): The destination language of the project.
+        dst_languages (list[str]): The destination languages of the project.
         prompt (Optional[str]): Direct prompt string if provided.
         context (Optional[str]): Direct context string if provided.
 
@@ -38,7 +40,8 @@ class TranslationProject:
 
     project_id: str
     config: Config
-    dst_language: str
+    dst_languages: list[str]
+    language_refs: list[LanguageRef]
     prompt: Optional[str]
     context: Optional[str]
 
@@ -51,14 +54,17 @@ class TranslationProject:
         self,
         project_id: str,
         config: Config,
-        dst_language: str,
+        dst_languages: list[str],
         storage: StorageAdapter,
         prompt: Optional[str] = None,
         context: Optional[str] = None,
     ):
         self.project_id = project_id
         self.config = config
-        self.dst_language = dst_language
+        if not dst_languages:
+            raise ValueError("At least one destination language is required")
+        self.dst_languages = dst_languages
+        self.language_refs = [language_ref(language) for language in dst_languages]
         self.storage = storage
         self.prompt = prompt
         self.context = context
@@ -67,8 +73,9 @@ class TranslationProject:
         self.prompt_manager = PromptManager(storage, project_id)
         self.translation_tool = TranslationTool(self.prompt_manager)
 
-        if dst_language not in config.languages:
-            raise ValueError(f"Language {dst_language} not found in project config")
+        for language in dst_languages:
+            if language not in config.languages:
+                raise ValueError(f"Language {language} not found in project config")
 
         self.base_language = config.baseLanguage
 
@@ -76,7 +83,7 @@ class TranslationProject:
     async def create(
         cls,
         project_name: str,
-        dst_language: str,
+        dst_languages: list[str],
         storage: StorageAdapter,
         context: str | None = None,
     ):
@@ -87,7 +94,7 @@ class TranslationProject:
         return cls(
             project_id=project_name,
             config=config,
-            dst_language=dst_language,
+            dst_languages=dst_languages,
             storage=storage,
             prompt=None,  # No direct prompt is provided via create
             context=context,
@@ -123,9 +130,11 @@ class TranslationProject:
 
     async def _load_context(self) -> str:
         """Load translation context from various sources"""
-        context_parts = await self.storage.load_context(
-            self.project_id, self.dst_language
-        )
+        context_parts = await self.storage.load_context(self.project_id)
+        for language in self.dst_languages:
+            parts = await self.storage.load_context(self.project_id, language)
+            if parts:
+                context_parts.append(f"[{language}]\n" + "\n\n".join(parts))
 
         # Add direct context string if provided
         if self.context:
@@ -158,6 +167,7 @@ class TranslationProject:
     async def _record_failure(
         self,
         *,
+        language: str,
         model: str,
         phrase: str,
         category: FailureCategory,
@@ -173,13 +183,14 @@ class TranslationProject:
         )
         await self.storage.append_failure(
             self.project_id,
-            self.dst_language,
+            language,
             record,
         )
 
     async def _record_batch_failures(
         self,
         phrases: list[tuple[str, str | None]],
+        phrase_languages: dict[str, set[str]],
         *,
         model: str,
         method: str,
@@ -187,87 +198,104 @@ class TranslationProject:
     ) -> None:
         category = batch_error_kind_to_category(info.kind)
         for phrase, _ctx in phrases:
-            await self._record_failure(
-                model=model,
-                phrase=phrase,
-                category=category,
-                message=info.message,
-                method=method,
-            )
+            for language in phrase_languages[phrase]:
+                await self._record_failure(
+                    language=language,
+                    model=model,
+                    phrase=phrase,
+                    category=category,
+                    message=info.message,
+                    method=method,
+                )
 
     def _has_missing_phrases(
         self,
         translations: list[dict[str, str]],
-        progress: dict[str, str],
+        progress: dict[str, dict[str, str]],
         regenerate: bool,
     ) -> bool:
-        for row in translations:
-            source_phrase = row.get(self.base_language) or ""
-            if not source_phrase:
-                continue
-
-            existing_translation = row.get(self.dst_language) or ""
-            if existing_translation and not regenerate:
-                ok, _ = self.translation_tool.validate_translation_text(
-                    existing_translation
-                )
-                if ok:
+        for language in self.dst_languages:
+            for row in translations:
+                source_phrase = row.get(self.base_language) or ""
+                if not source_phrase:
                     continue
-
-            if (source_phrase in progress) and not regenerate:
-                translation = progress[source_phrase]
-                ok, _ = self.translation_tool.validate_translation_text(translation)
-                if ok:
-                    continue
-
-            return True
+                existing_translation = row.get(language) or ""
+                if existing_translation and not regenerate:
+                    ok, _ = self.translation_tool.validate_translation_text(existing_translation)
+                    if ok:
+                        continue
+                if source_phrase in progress[language] and not regenerate:
+                    translation = progress[language][source_phrase]
+                    ok, _ = self.translation_tool.validate_translation_text(translation)
+                    if ok:
+                        continue
+                return True
         return False
 
     async def _apply_translated_batch(
         self,
-        translated: dict[str, str],
+        translated: dict[str, dict[str, str]],
         *,
         phrase_indices: dict[str, int],
-        progress: dict[str, str],
+        phrase_languages: dict[str, set[str]],
+        progress: dict[str, dict[str, str]],
         translations: list[dict[str, str]],
         model: str,
         method: str,
     ) -> None:
-        for phrase, translation in translated.items():
-            ok, reason = self.translation_tool.validate_placeholders(phrase, translation)
-            if not ok:
-                print(
-                    "Warning: Skipping translation due to placeholder/tag mismatch for: "
-                    f"{phrase}\n{reason}"
-                )
-                await self._record_failure(
-                    model=model,
-                    phrase=phrase,
-                    category="placeholder_mismatch",
-                    message=reason or "placeholder/tag mismatch",
-                    method=method,
-                )
-                continue
-            ok, reason = self.translation_tool.validate_translation_text(translation)
-            if not ok:
-                print(
-                    "Warning: Skipping translation due to invalid translation text for: "
-                    f"{phrase}\n{reason}"
-                )
-                await self._record_failure(
-                    model=model,
-                    phrase=phrase,
-                    category="invalid_artifact_rejected",
-                    message=reason or "invalid translation text",
-                    method=method,
-                )
-                continue
-            progress[phrase] = translation
-            translations[phrase_indices[phrase]][self.dst_language] = translation
+        for language in self.dst_languages:
+            language_translations = translated.get(language)
+            for phrase, needed_languages in phrase_languages.items():
+                if language not in needed_languages:
+                    continue
+                translation = language_translations.get(phrase) if language_translations else None
+                if translation is None:
+                    await self._record_failure(
+                        language=language,
+                        model=model,
+                        phrase=phrase,
+                        category="parse_error",
+                        message="Missing or invalid translation block",
+                        method=method,
+                    )
+                    continue
+                ok, reason = self.translation_tool.validate_placeholders(phrase, translation)
+                if not ok:
+                    print(
+                        "Warning: Skipping translation due to placeholder/tag mismatch for: "
+                        f"{phrase} ({language})\n{reason}"
+                    )
+                    await self._record_failure(
+                        language=language,
+                        model=model,
+                        phrase=phrase,
+                        category="placeholder_mismatch",
+                        message=reason or "placeholder/tag mismatch",
+                        method=method,
+                    )
+                    continue
+                ok, reason = self.translation_tool.validate_translation_text(translation)
+                if not ok:
+                    print(
+                        "Warning: Skipping translation due to invalid translation text for: "
+                        f"{phrase} ({language})\n{reason}"
+                    )
+                    await self._record_failure(
+                        language=language,
+                        model=model,
+                        phrase=phrase,
+                        category="invalid_artifact_rejected",
+                        message=reason or "invalid translation text",
+                        method=method,
+                    )
+                    continue
+                progress[language][phrase] = translation
+                translations[phrase_indices[phrase]][language] = translation
 
     async def _process_translation_batch(
         self,
         phrases_to_translate: list[tuple[str, str | None]],
+        phrase_languages: dict[str, set[str]],
         model: str,
         method: str,
         prompt: str,
@@ -275,7 +303,7 @@ class TranslationProject:
         delay_seconds: float,
         max_retries: int,
         fallback_model: Optional[str] = None,
-    ) -> dict[str, str] | None:
+    ) -> dict[str, dict[str, str]] | None:
         """
         Process a batch of phrases for translation using the appropriate method.
 
@@ -296,13 +324,15 @@ class TranslationProject:
             s = (msg or "").strip().replace("\n", " ")
             return s if len(s) <= limit else (s[: limit - 3] + "...")
 
-        async def _run_once(*, run_model: str, run_method: str) -> dict[str, str] | None:
+        async def _run_once(
+            *, run_model: str, run_method: str
+        ) -> dict[str, dict[str, str]] | None:
             if run_method == "structured":
                 return await self.translation_tool.translate_structured(
                     phrases_to_translate,
                     run_model,
                     self.base_language,
-                    self.dst_language,
+                    self.language_refs,
                     prompt,
                     context,
                     delay_seconds,
@@ -314,7 +344,7 @@ class TranslationProject:
                     phrases_to_translate,
                     run_model,
                     self.base_language,
-                    self.dst_language,
+                    self.language_refs,
                     prompt,
                     context,
                     delay_seconds,
@@ -325,7 +355,7 @@ class TranslationProject:
                 phrases_to_translate,
                 run_model,
                 self.base_language,
-                self.dst_language,
+                self.language_refs,
                 prompt,
                 context,
                 delay_seconds,
@@ -355,6 +385,7 @@ class TranslationProject:
             if primary_info is not None:
                 await self._record_batch_failures(
                     phrases_to_translate,
+                    phrase_languages,
                     model=model,
                     method=method,
                     info=primary_info,
@@ -375,6 +406,7 @@ class TranslationProject:
             if primary_info is not None:
                 await self._record_batch_failures(
                     phrases_to_translate,
+                    phrase_languages,
                     model=model,
                     method=method,
                     info=primary_info,
@@ -393,6 +425,7 @@ class TranslationProject:
             )
             await self._record_batch_failures(
                 phrases_to_translate,
+                phrase_languages,
                 model=fallback_model,
                 method=fb_method,
                 info=info,
@@ -407,6 +440,7 @@ class TranslationProject:
             )
             await self._record_batch_failures(
                 phrases_to_translate,
+                phrase_languages,
                 model=fallback_model,
                 method=fb_method,
                 info=info,
@@ -415,10 +449,10 @@ class TranslationProject:
 
     async def _save_translation_progress(
         self,
-        progress: dict[str, str],
+        progress: dict[str, dict[str, str]],
         translations: list[dict[str, str]],
         is_final: bool = False,
-        csv_corrections: Optional[set[str]] = None,
+        csv_corrections: Optional[dict[str, set[str]]] = None,
     ) -> None:
         """
         Save translation progress and translations to storage.
@@ -430,18 +464,20 @@ class TranslationProject:
             csv_corrections: Keys whose value was taken from a valid CSV cell and
                 must overwrite stale translation memory (manual edits in the CSV).
         """
-        await self.storage.save_progress(
-            self.project_id,
-            self.dst_language,
-            progress,
-            overwrite_keys=csv_corrections,
-        )
+        for language in self.dst_languages:
+            await self.storage.save_progress(
+                self.project_id,
+                language,
+                progress[language],
+                overwrite_keys=(csv_corrections or {}).get(language),
+            )
         await self.storage.save_translations(self.project_id, translations)
 
+        count = sum(len(language_progress) for language_progress in progress.values())
         if is_final:
-            print(f"Final save: {len(progress)} translations saved")
+            print(f"Final save: {count} translations saved")
         else:
-            print(f"Progress saved: {len(progress)} translations saved")
+            print(f"Progress saved: {count} translations saved")
 
     async def _translate_pass(
         self,
@@ -457,13 +493,19 @@ class TranslationProject:
         driver,
     ) -> None:
         translations = await self.storage.load_translations(self.project_id)
-        progress = await self.storage.load_progress(self.project_id, self.dst_language)
+        progress = {
+            language: await self.storage.load_progress(self.project_id, language)
+            for language in self.dst_languages
+        }
         context = await self._load_context()
         prompt = await self._load_prompt()
 
         phrases_to_translate: list[tuple[str, str | None]] = []
         phrase_indices: dict[str, int] = {}
-        csv_corrections: set[str] = set()
+        phrase_languages: dict[str, set[str]] = {}
+        csv_corrections: dict[str, set[str]] = {
+            language: set() for language in self.dst_languages
+        }
         current_batch_tokens = 0
         start_next_batch = False
 
@@ -476,40 +518,46 @@ class TranslationProject:
             if not source_phrase:
                 continue
 
-            existing_translation = row.get(self.dst_language) or ""
-            if existing_translation and not regenerate:
-                ok, _ = self.translation_tool.validate_translation_text(
-                    existing_translation
-                )
-                if ok:
-                    if progress.get(source_phrase) != existing_translation:
-                        progress[source_phrase] = existing_translation
-                        csv_corrections.add(source_phrase)
-                    continue
-                row[self.dst_language] = ""
+            missing_languages: set[str] = set()
+            for language in self.dst_languages:
+                existing_translation = row.get(language) or ""
+                if existing_translation and not regenerate:
+                    ok, _ = self.translation_tool.validate_translation_text(existing_translation)
+                    if ok:
+                        if progress[language].get(source_phrase) != existing_translation:
+                            progress[language][source_phrase] = existing_translation
+                            csv_corrections[language].add(source_phrase)
+                        continue
+                    row[language] = ""
 
-            if (source_phrase in progress) and not regenerate:
-                translation = progress[source_phrase]
-                ok, _ = self.translation_tool.validate_translation_text(translation)
-                if not ok:
-                    del progress[source_phrase]
-                else:
-                    row[self.dst_language] = translation
-                    print(
-                        f"Using cached translation for: {source_phrase} -> {translation}"
-                    )
-                    continue
+                if source_phrase in progress[language] and not regenerate:
+                    translation = progress[language][source_phrase]
+                    ok, _ = self.translation_tool.validate_translation_text(translation)
+                    if not ok:
+                        del progress[language][source_phrase]
+                    else:
+                        row[language] = translation
+                        print(
+                            f"Using cached translation for {language}: "
+                            f"{source_phrase} -> {translation}"
+                        )
+                        continue
+                missing_languages.add(language)
+
+            if not missing_languages:
+                continue
 
             phrase_context = row.get("context") or ""
-            phrase_context_language = row.get(f"context_{self.dst_language}") or ""
-            if phrase_context_language:
-                phrase_context = (
-                    f"{phrase_context}; {phrase_context_language}"
-                    if phrase_context
-                    else phrase_context_language
-                )
+            language_contexts = [
+                f"[{language}] {row.get(f'context_{language}')}"
+                for language in missing_languages
+                if row.get(f"context_{language}")
+            ]
+            if language_contexts:
+                phrase_context = "; ".join(filter(None, [phrase_context, *language_contexts]))
             phrases_to_translate.append((source_phrase, phrase_context))
             phrase_indices[source_phrase] = i
+            phrase_languages[source_phrase] = missing_languages
 
             phrase_tokens = self.count_tokens(
                 source_phrase + " " + phrase_context, model
@@ -522,6 +570,7 @@ class TranslationProject:
             ):
                 translated = await self._process_translation_batch(
                     phrases_to_translate,
+                    phrase_languages,
                     model,
                     method,
                     prompt,
@@ -531,10 +580,11 @@ class TranslationProject:
                     fallback_model=fallback_model,
                 )
 
-                if translated:
+                if translated is not None:
                     await self._apply_translated_batch(
                         translated,
                         phrase_indices=phrase_indices,
+                        phrase_languages=phrase_languages,
                         progress=progress,
                         translations=translations,
                         model=model,
@@ -547,12 +597,14 @@ class TranslationProject:
 
                 phrases_to_translate = []
                 phrase_indices = {}
+                phrase_languages = {}
                 current_batch_tokens = 0
                 start_next_batch = True
 
         if phrases_to_translate:
             translated = await self._process_translation_batch(
                 phrases_to_translate,
+                phrase_languages,
                 model,
                 method,
                 prompt,
@@ -562,10 +614,11 @@ class TranslationProject:
                 fallback_model=fallback_model,
             )
 
-            if translated:
+            if translated is not None:
                 await self._apply_translated_batch(
                     translated,
                     phrase_indices=phrase_indices,
+                    phrase_languages=phrase_languages,
                     progress=progress,
                     translations=translations,
                     model=model,
@@ -637,7 +690,10 @@ class TranslationProject:
             return
 
         translations = await self.storage.load_translations(self.project_id)
-        progress = await self.storage.load_progress(self.project_id, self.dst_language)
+        progress = {
+            language: await self.storage.load_progress(self.project_id, language)
+            for language in self.dst_languages
+        }
         if not self._has_missing_phrases(translations, progress, regenerate):
             return
 

@@ -97,7 +97,7 @@ async def test_e2e_temp_project_gemini25_structured_output(
 
     translator = await TranslationProject.create(
         project_name="tmp_tradusco_project",
-        dst_language="es",
+        dst_languages=["es"],
         storage=storage,
         context=None,
     )

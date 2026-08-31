@@ -10,7 +10,7 @@ from lib.storage.base import StorageAdapter
 # Simple Pydantic model for testing
 class TestData(BaseModel):
     base_language: str = ""
-    dst_language: str = ""
+    dst_languages: str = ""
     phrases_json: str = ""
     variable: str = ""
     wrong_name: str = ""
@@ -71,7 +71,7 @@ def prompt_manager(temp_project_dir, mock_storage):
 @pytest.fixture
 def test_prompt_content():
     """Return test prompt content for testing."""
-    return "You are translating from {base_language} to {dst_language}.\n{phrases_json}"
+    return "You are translating from {base_language} to {dst_languages}.\n{phrases_json}"
 
 
 @pytest.fixture
@@ -83,7 +83,7 @@ def setup_prompt_files(temp_project_dir):
 
     # Create test prompt files
     translation_prompt = (
-        "You are translating from {base_language} to {dst_language}.\n{phrases_json}"
+        "You are translating from {base_language} to {dst_languages}.\n{phrases_json}"
     )
     json_fix_prompt = "Fix this invalid JSON:\n{invalid_json}"
 
@@ -123,7 +123,7 @@ class TestPromptManager:
 
     def test_validate_prompt_missing_vars_non_strict(self, prompt_manager):
         """Test validation with missing variables in non-strict mode."""
-        # Missing dst_language
+        # Missing dst_languages
         is_valid, error = prompt_manager.validate_prompt(
             "translation",
             "From {base_language} translating: {phrases_json}",
@@ -134,7 +134,7 @@ class TestPromptManager:
 
     def test_validate_prompt_missing_vars_strict(self, prompt_manager):
         """Test validation with missing variables in strict mode."""
-        # Missing dst_language
+        # Missing dst_languages
         is_valid, error = prompt_manager.validate_prompt(
             "translation",
             "From {base_language} translating: {phrases_json}",
@@ -142,13 +142,13 @@ class TestPromptManager:
         )
         assert not is_valid  # Should fail in strict mode
         assert "Missing required variables" in error
-        assert "dst_language" in error
+        assert "dst_languages" in error
 
     def test_validate_prompt_valid(self, prompt_manager):
         """Test validation of a valid prompt."""
         is_valid, error = prompt_manager.validate_prompt(
             "translation",
-            "From {base_language} to {dst_language}: {phrases_json}",
+            "From {base_language} to {dst_languages}: {phrases_json}",
             strict=True,
         )
         assert is_valid
@@ -164,11 +164,11 @@ class TestPromptManager:
 
     def test_format_prompt_valid(self, prompt_manager):
         """Test formatting a valid prompt."""
-        template = "Translate from {base_language} to {dst_language}: {phrases_json}"
+        template = "Translate from {base_language} to {dst_languages}: {phrases_json}"
 
         test_data = TestData(
             base_language="English",
-            dst_language="Spanish",
+            dst_languages="Spanish",
             phrases_json='["hello", "goodbye"]',
         )
 
@@ -177,15 +177,15 @@ class TestPromptManager:
 
     def test_format_prompt_missing_vars(self, prompt_manager):
         """Test formatting with missing variables."""
-        template = "Translate from {base_language} to {dst_language}: {phrases_json}"
-        # Missing dst_language, but present with empty string from TestData default
+        template = "Translate from {base_language} to {dst_languages}: {phrases_json}"
+        # Missing dst_languages, but present with empty string from TestData default
         test_data = TestData(
             base_language="English",
             phrases_json='["hello", "goodbye"]',
         )
 
         formatted = prompt_manager.format_prompt(template, test_data)
-        # Empty string is used for dst_language
+        # Empty string is used for dst_languages
         assert formatted == 'Translate from English to : ["hello", "goodbye"]'
 
     @patch("builtins.print")
@@ -298,11 +298,20 @@ class TestPromptManager:
         with patch.object(
             prompt_manager, "validate_prompt", return_value=(False, "Test error")
         ):
-            # Should return empty string when validation fails in strict mode
-            result = await prompt_manager.load_prompt(
-                "translation", strict_validation=True
-            )
-            assert result == ""
+            with pytest.raises(ValueError, match="Invalid translation prompt"):
+                await prompt_manager.load_prompt(
+                    "translation", strict_validation=True
+                )
+
+    @pytest.mark.asyncio
+    async def test_strict_validation_rechecks_cached_prompt(
+        self, prompt_manager, mock_storage
+    ):
+        mock_storage.prompts["translation"] = "Missing required placeholders"
+        await prompt_manager.load_prompt("translation", strict_validation=False)
+
+        with pytest.raises(ValueError, match="Invalid translation prompt"):
+            await prompt_manager.load_prompt("translation", strict_validation=True)
 
     @pytest.mark.asyncio
     async def test_load_prompt_fallback_to_default(self, prompt_manager, mock_storage):

@@ -21,6 +21,12 @@ from lib.storage.filesystem import FileSystemStorageAdapter
 DEBUG = os.environ.get("TRADUSCO_DEBUG")
 
 
+def _parse_languages(raw: str) -> list[str]:
+    return list(
+        dict.fromkeys(language.strip() for language in raw.split(",") if language.strip())
+    )
+
+
 async def async_main():
     parser = argparse.ArgumentParser(
         description="Tradusco - Translation Utility using LLMs"
@@ -33,7 +39,9 @@ async def async_main():
 
     # Project and language arguments
     parser.add_argument("-p", "--project", help="Path to the project directory")
-    parser.add_argument("-l", "--lang", help="Destination language code")
+    parser.add_argument(
+        "-l", "--lang", help="Comma-separated destination language codes"
+    )
     parser.add_argument(
         "-m",
         "--model",
@@ -163,7 +171,19 @@ async def async_main():
                 prompt_file=args.prompt,
                 context_file=args.context_file,
             )
-            storage.set_active_language(args.lang)
+            dst_languages = _parse_languages(args.lang)
+            if not dst_languages:
+                parser.error("--lang must contain at least one language code")
+            config = await storage.load_config(project_name)
+            invalid_languages = [
+                language for language in dst_languages if language not in config.languages
+            ]
+            if invalid_languages:
+                parser.error(
+                    f"Invalid language(s): {', '.join(invalid_languages)}. "
+                    f"Available languages: {', '.join(config.languages)}"
+                )
+            storage.set_active_languages(dst_languages)
             storage.set_overwrite_active_language(bool(args.regenerate))
         else:
             parser.error(f"Invalid storage adapter: {args.storage}")
@@ -171,7 +191,7 @@ async def async_main():
         # Create and initialize the translator asynchronously
         translator = await TranslationProject.create(
             project_name=project_name,
-            dst_language=args.lang,
+            dst_languages=dst_languages,
             context=args.context,
             storage=storage,
         )

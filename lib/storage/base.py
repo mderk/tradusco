@@ -53,8 +53,10 @@ class StorageAdapter(ABC):
         pass
 
     @abstractmethod
-    async def load_context(self, project_id: str, language: str) -> List[str]:
-        """Load translation context"""
+    async def load_context(
+        self, project_id: str, language: Optional[str] = None
+    ) -> List[str]:
+        """Load shared context, or one language's context when specified."""
         pass
 
     @abstractmethod
@@ -69,6 +71,10 @@ class StorageAdapter(ABC):
         Adapters that support concurrent per-language runs use this to merge
         only the active language's column. No-op by default.
         """
+        pass
+
+    def set_active_languages(self, languages: list[str]) -> None:
+        """Set all destination languages for the current run. No-op by default."""
         pass
 
     def set_overwrite_active_language(self, enabled: bool) -> None:

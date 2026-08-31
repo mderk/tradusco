@@ -1,4 +1,4 @@
-You are a professional translator. Translate the following phrases from {base_language} to {dst_language}.
+You are a professional translator. Translate the following phrases from {base_language} to every target language: {dst_languages}.
 - Maintain the original meaning, tone, and style.
 - If there are any cultural nuances, adapt them appropriately.
 - Try to maintain the original length of the text.
@@ -13,5 +13,4 @@ Data to translate:
 {phrases_json}
 
 Translate each phrase in order, taking into account the global context and the phrase-specific context (if any).
-Do not translate or return the context. Output only the translations in the target language {dst_language}, in the same order as the input phrases.
-
+Do not translate or return the context. Return one block for every target language, using its language code. Within every block, keep translations in the same order as the input phrases.

@@ -169,7 +169,7 @@ class TestUtilsFunctions:
         storage = FileSystemStorageAdapter(project_dir)
 
         # Test without specific context file (uses default in project dir)
-        context_parts = await storage.load_context("test_project", "es")
+        context_parts = await storage.load_context("test_project")
 
         # Verify the loaded context
         assert len(context_parts) == 1
@@ -185,11 +185,17 @@ class TestUtilsFunctions:
         storage.set_context_file(str(specific_file))
 
         # Load context with specified file
-        context_parts = await storage.load_context("test_project", "es")
+        context_parts = await storage.load_context("test_project")
 
         # Verify the loaded context includes the specific file
         assert len(context_parts) >= 1
         assert specific_context in context_parts
+
+        language_dir = project_dir / "es"
+        language_dir.mkdir()
+        (language_dir / "context.txt").write_text("Spanish rules", encoding="utf-8")
+
+        assert await storage.load_context("test_project", "es") == ["Spanish rules"]
 
 
 class TestLengthCheck:

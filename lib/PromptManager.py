@@ -25,7 +25,7 @@ class PromptManager:
         self.project_id = project_id
         self._cache: dict[str, str] = {}
         self._required_vars: dict[str, set[str]] = {
-            "translation": {"base_language", "dst_language", "phrases_json"},
+            "translation": {"base_language", "dst_languages", "phrases_json"},
         }
 
     def validate_prompt(
@@ -87,7 +87,13 @@ class PromptManager:
         """
         # Check cache first if enabled
         if use_cache and prompt_type in self._cache:
-            return self._cache[prompt_type]
+            prompt = self._cache[prompt_type]
+            is_valid, error = self.validate_prompt(
+                prompt_type, prompt, strict_validation
+            )
+            if strict_validation and not is_valid:
+                raise ValueError(f"Invalid {prompt_type} prompt: {error}")
+            return prompt
 
         # Load prompt from storage adapter
         try:
@@ -104,7 +110,7 @@ class PromptManager:
                         )
 
                     if not is_valid and strict_validation:
-                        return ""
+                        raise ValueError(f"Invalid {prompt_type} prompt: {error}")
                     elif use_cache:
                         # Cache prompt if not in strict mode or if valid
                         self._cache[prompt_type] = prompt
@@ -113,6 +119,8 @@ class PromptManager:
                     self._cache[prompt_type] = prompt
 
                 return prompt
+        except ValueError:
+            raise
         except Exception as e:
             print(f"Warning: Error loading prompt '{prompt_type}': {e}")
 

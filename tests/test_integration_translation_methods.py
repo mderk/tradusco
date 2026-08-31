@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.TranslationTool import TranslationTool
+from lib.TranslationTool import language_ref, TranslationTool
 from lib.PromptManager import PromptManager
 from lib.storage.base import StorageAdapter
 from lib.llm import get_driver, get_available_models
@@ -114,7 +114,7 @@ class TestIntegrationTranslationMethods:
             ],
             "progress": {},
             "base_language": "en",
-            "dst_language": "es",
+            "dst_languages": [language_ref("es")],
         }
 
     @pytest.fixture
@@ -138,13 +138,13 @@ class TestIntegrationTranslationMethods:
     async def test_load_prompt(self, translation_tool, prompt_manager, mock_storage):
         """Test that we can load a valid prompt for translation."""
         # Set a specific test prompt
-        test_prompt = "You are translating from {base_language} to {dst_language}:\n{phrases_json}"
+        test_prompt = "You are translating from {base_language} to {dst_languages}:\n{phrases_json}"
         mock_storage.prompts["translation"] = test_prompt
 
         # Load the prompt using the prompt manager
         prompt = await prompt_manager.load_prompt("translation")
         assert "base_language" in prompt
-        assert "dst_language" in prompt
+        assert "dst_languages" in prompt
         assert "phrases_json" in prompt
 
     @pytest.mark.asyncio
@@ -169,7 +169,7 @@ class TestIntegrationTranslationMethods:
             test_data["phrases"],
             model,
             test_data["base_language"],
-            test_data["dst_language"],
+            test_data["dst_languages"],
             prompt,
             None,
             translation_params["delay_seconds"],
@@ -182,7 +182,7 @@ class TestIntegrationTranslationMethods:
         # Update translations and progress with results
         for i, phrase_data in enumerate(test_data["phrases"]):
             phrase = phrase_data[0]
-            translation = translated.get(phrase)
+            translation = translated["es"].get(phrase)
             if translation:
                 translations[i]["es"] = translation
                 progress[phrase] = translation
@@ -225,7 +225,7 @@ class TestIntegrationTranslationMethods:
             test_data["phrases"],
             model,
             test_data["base_language"],
-            test_data["dst_language"],
+            test_data["dst_languages"],
             prompt,
             None,  # context
             translation_params["delay_seconds"],
@@ -237,7 +237,7 @@ class TestIntegrationTranslationMethods:
 
         # Update translations and progress with results
         translation_count = 0
-        for phrase, translation in translated.items():
+        for phrase, translation in translated["es"].items():
             for i, phrase_data in enumerate(test_data["phrases"]):
                 if phrase_data[0] == phrase:
                     translations[i]["es"] = translation
@@ -290,7 +290,7 @@ class TestIntegrationTranslationMethods:
             test_data["phrases"],
             model,
             test_data["base_language"],
-            test_data["dst_language"],
+            test_data["dst_languages"],
             prompt,
             None,  # context
             translation_params["delay_seconds"],
@@ -302,7 +302,7 @@ class TestIntegrationTranslationMethods:
 
         # Update translations and progress with results
         translation_count = 0
-        for phrase, translation in translated.items():
+        for phrase, translation in translated["es"].items():
             for i, phrase_data in enumerate(test_data["phrases"]):
                 if phrase_data[0] == phrase:
                     translations[i]["es"] = translation
@@ -354,7 +354,7 @@ class TestIntegrationTranslationMethods:
             phrases,
             model,
             base_language="en",
-            dst_language="es",
+            dst_languages=[language_ref("es")],
             prompt=prompt,
             context=None,
             delay_seconds=translation_params["delay_seconds"],
@@ -362,11 +362,11 @@ class TestIntegrationTranslationMethods:
         )
 
         assert translated, "No translations were produced"
-        assert translated.get("Hello world"), "Missing translation for 'Hello world'"
-        assert translated.get("Goodbye"), "Missing translation for 'Goodbye'"
+        assert translated["es"].get("Hello world"), "Missing translation for 'Hello world'"
+        assert translated["es"].get("Goodbye"), "Missing translation for 'Goodbye'"
 
         # Ensure we don't persist JSON scaffolding as a "translation".
-        for value in translated.values():
+        for value in translated["es"].values():
             ok, reason = translation_tool.validate_translation_text(value)
             assert ok, reason
 

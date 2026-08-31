@@ -1,5 +1,7 @@
 import os
 import sys
+import csv
+import json
 import pytest
 from unittest.mock import patch, AsyncMock
 from typing import Optional, List, Dict, Any
@@ -7,9 +9,10 @@ from typing import Optional, List, Dict, Any
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.TranslationProject import TranslationProject
-from lib.TranslationTool import BatchErrorInfo, BatchTranslationError
+from lib.TranslationTool import BatchErrorInfo, BatchTranslationError, LanguageRef
 from lib.utils import Config
 from lib.storage.base import StorageAdapter
+from lib.storage.filesystem import FileSystemStorageAdapter
 from tests.mock_llm_driver import MockLLMDriver
 
 
@@ -20,28 +23,30 @@ class MockStorageAdapter(StorageAdapter):
             name="test_project",
             sourceFile="source.csv",
             baseLanguage="en",
-            languages=["en", "es", "fr"],
+            languages=["en", "es", "fr", "ko"],
             keyColumn="key",
         )
         self.translations = []
         self.context_strings = []
+        self.language_contexts: Dict[str, List[str]] = {}
         self.prompts = {}
         self.context_file = None
         self.prompt_file = None
         self.progress: Dict[str, str] = {}
+        self.progresses: Dict[str, Dict[str, str]] = {}
         self.progress_overwrite_keys: set = set()
         self.failures: List[Dict[str, Any]] = []
 
     async def append_failure(
         self, project_id: str, language: str, record: dict[str, str | None]
     ) -> None:
-        self.failures.append(record)
+        self.failures.append({**record, "language": language})
 
     async def load_config(self, project_id: str) -> Config:
         return self.config
 
     async def load_progress(self, project_id: str, language: str) -> Dict[str, str]:
-        return dict(self.progress)
+        return dict(self.progresses.get(language, self.progress))
 
     async def save_progress(
         self,
@@ -50,7 +55,9 @@ class MockStorageAdapter(StorageAdapter):
         progress: Dict[str, str],
         overwrite_keys=None,
     ) -> None:
-        self.progress = dict(progress)
+        self.progresses[language] = dict(progress)
+        if language == "es":
+            self.progress = dict(progress)
         self.progress_overwrite_keys = set(overwrite_keys or set())
 
     async def load_translations(self, project_id: str) -> List[Dict[str, Any]]:
@@ -61,8 +68,14 @@ class MockStorageAdapter(StorageAdapter):
     ) -> None:
         self.translations = translations
 
-    async def load_context(self, project_id: str, language: str) -> List[str]:
-        return self.context_strings
+    async def load_context(
+        self, project_id: str, language: Optional[str] = None
+    ) -> List[str]:
+        return (
+            self.context_strings
+            if language is None
+            else self.language_contexts.get(language, [])
+        )
 
     async def load_prompt(self, project_id: str, prompt_type: str) -> str:
         if prompt_type in self.prompts:
@@ -92,7 +105,7 @@ class TestTranslationProject:
 
         # Add default prompts
         storage.prompts = {
-            "translation": "Translate from {base_language} to {dst_language}: {phrases_json}",
+            "translation": "Translate from {base_language} to {dst_languages}: {phrases_json}",
             "output_format": "Valid JSON format",
             "json_fix": "Fix this JSON: {broken_json}",
         }
@@ -112,13 +125,13 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
         )
 
         assert project.project_id == "test_project"
         assert project.base_language == "en"
-        assert project.dst_language == "es"
+        assert project.dst_languages == ["es"]
         assert project.storage is mock_storage
         assert project.config == config
 
@@ -138,7 +151,7 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
         )
 
@@ -161,7 +174,7 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
         )
 
@@ -178,7 +191,7 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
         )
 
@@ -189,6 +202,25 @@ class TestTranslationProject:
         assert len(context) > 0
         assert "Context 1" in context
         assert "Context 2" in context
+
+    @pytest.mark.asyncio
+    async def test_load_context_keeps_shared_context_single(self, mock_storage):
+        config = await mock_storage.load_config("test_project")
+        mock_storage.context_strings = ["Shared rules"]
+        mock_storage.language_contexts = {
+            "es": ["Spanish rules"],
+            "fr": ["French rules"],
+        }
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_languages=["es", "fr"],
+            storage=mock_storage,
+        )
+
+        assert await project._load_context() == (
+            "Shared rules\n\n[es]\nSpanish rules\n\n[fr]\nFrench rules"
+        )
 
     @patch("lib.TranslationTool.TranslationTool.translate_standard")
     @patch("lib.llm.get_driver")
@@ -208,20 +240,18 @@ class TestTranslationProject:
             phrases: list[tuple[str, str | None]],
             model: str,
             base_language: str,
-            dst_language: str,
+            dst_languages: list[LanguageRef],
             prompt: str,
             context: Optional[str] = None,
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
-        ) -> dict[str, str]:
+        ) -> dict[str, dict[str, str]]:
             # Simulate translation
-            translations = {}
             progress = {}
             for i, (phrase, context) in enumerate(phrases):
-                translations[phrase] = f"{phrase} (translated)"
                 progress[phrase] = f"{phrase} (translated)"
-            return progress
+            return {"es": progress}
 
         # Set up the mocks
         mock_translate_standard_patch.side_effect = mock_translate_standard
@@ -235,9 +265,9 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
-            prompt="Translate from {base_language} to {dst_language}",
+            prompt="Translate from {base_language} to {dst_languages}",
         )
 
         # Run translation with mock driver
@@ -286,9 +316,9 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
-            prompt="Translate from {base_language} to {dst_language}: {phrases_json}",
+            prompt="Translate from {base_language} to {dst_languages}: {phrases_json}",
         )
 
         await project.translate(model="test_model")
@@ -320,19 +350,19 @@ class TestTranslationProject:
             phrases: list[tuple[str, str | None]],
             model: str,
             base_language: str,
-            dst_language: str,
+            dst_languages: list[LanguageRef],
             prompt: str,
             context: Optional[str] = None,
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
-        ) -> dict[str, str]:
+        ) -> dict[str, dict[str, str]]:
             calls.append(model)
             if model == "primary-model":
                 raise BatchTranslationError(
                     BatchErrorInfo(kind="rate_limit", message="429 too many requests")
                 )
-            return {phrase: f"{phrase} (fb)" for phrase, _ctx in phrases}
+            return {"es": {phrase: f"{phrase} (fb)" for phrase, _ctx in phrases}}
 
         mock_translate_standard_patch.side_effect = mock_translate_standard
         llm_get_driver_mock.return_value = mock_llm_driver
@@ -342,9 +372,9 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
-            prompt="Translate from {base_language} to {dst_language}",
+            prompt="Translate from {base_language} to {dst_languages}",
         )
 
         await project.translate(
@@ -371,13 +401,13 @@ class TestTranslationProject:
             phrases: list[tuple[str, str | None]],
             model: str,
             base_language: str,
-            dst_language: str,
+            dst_languages: list[LanguageRef],
             prompt: str,
             context: Optional[str] = None,
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
-        ) -> dict[str, str]:
+        ) -> dict[str, dict[str, str]]:
             raise BatchTranslationError(
                 BatchErrorInfo(kind="blocked", message="content policy")
             )
@@ -390,9 +420,9 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
-            prompt="Translate from {base_language} to {dst_language}",
+            prompt="Translate from {base_language} to {dst_languages}",
         )
 
         await project.translate(
@@ -427,7 +457,7 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
         )
 
@@ -463,17 +493,19 @@ class TestTranslationProject:
             phrases: list[tuple[str, str | None]],
             model: str,
             base_language: str,
-            dst_language: str,
+            dst_languages: list[LanguageRef],
             prompt: str,
             context: Optional[str] = None,
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
-        ) -> dict[str, str]:
+        ) -> dict[str, dict[str, str]]:
             return {
-                "Hello {name}": "Hola",
-                "Goodbye": "{",
-                "Thank you": "Gracias",
+                "es": {
+                    "Hello {name}": "Hola",
+                    "Goodbye": "{",
+                    "Thank you": "Gracias",
+                }
             }
 
         mock_translate_standard_patch.side_effect = mock_translate_standard
@@ -484,9 +516,9 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
-            prompt="Translate from {base_language} to {dst_language}",
+            prompt="Translate from {base_language} to {dst_languages}",
         )
 
         await project.translate(model="primary-model")
@@ -520,16 +552,16 @@ class TestTranslationProject:
             phrases: list[tuple[str, str | None]],
             model: str,
             base_language: str,
-            dst_language: str,
+            dst_languages: list[LanguageRef],
             prompt: str,
             context: Optional[str] = None,
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
-        ) -> dict[str, str]:
+        ) -> dict[str, dict[str, str]]:
             if model == "primary-model":
-                return {"Hello": "Hola"}
-            return {phrase: f"{phrase}-fb" for phrase, _ctx in phrases}
+                return {"es": {"Hello": "Hola"}}
+            return {"es": {phrase: f"{phrase}-fb" for phrase, _ctx in phrases}}
 
         mock_translate_standard_patch.side_effect = mock_translate_standard
         llm_get_driver_mock.return_value = mock_llm_driver
@@ -539,9 +571,9 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
-            prompt="Translate from {base_language} to {dst_language}",
+            prompt="Translate from {base_language} to {dst_languages}",
         )
 
         await project.translate(
@@ -551,6 +583,115 @@ class TestTranslationProject:
 
         assert mock_storage.progress["Hello"] == "Hola"
         assert mock_storage.progress["Goodbye"] == "Goodbye-fb"
+
+    @patch("lib.TranslationTool.TranslationTool.translate_standard")
+    @patch("lib.llm.get_driver")
+    @patch("lib.TranslationProject.get_driver")
+    async def test_one_request_updates_three_languages_and_isolates_failure(
+        self,
+        project_get_driver_mock,
+        llm_get_driver_mock,
+        mock_translate_standard_patch,
+        mock_llm_driver,
+        mock_storage,
+    ):
+        mock_storage.translations = [
+            {"en": "Hello", "es": "", "fr": "Déjà relu", "ko": ""},
+            {"en": "Goodbye", "es": "", "fr": "", "ko": ""},
+        ]
+
+        mock_translate_standard_patch.return_value = {
+            "es": {"Hello": "Hola", "Goodbye": "Adiós"},
+            "ko": {"Hello": "안녕하세요", "Goodbye": "안녕히 가세요"},
+        }
+        llm_get_driver_mock.return_value = mock_llm_driver
+        project_get_driver_mock.return_value = mock_llm_driver
+        config = await mock_storage.load_config("test_project")
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_languages=["es", "fr", "ko"],
+            storage=mock_storage,
+            prompt="Translate from {base_language} to {dst_languages}: {phrases_json}",
+        )
+
+        await project.translate(model="test_model")
+
+        mock_translate_standard_patch.assert_awaited_once()
+        assert mock_storage.progresses["es"] == {
+            "Hello": "Hola",
+            "Goodbye": "Adiós",
+        }
+        assert mock_storage.progresses["ko"] == {
+            "Hello": "안녕하세요",
+            "Goodbye": "안녕히 가세요",
+        }
+        assert mock_storage.progresses["fr"] == {"Hello": "Déjà relu"}
+        assert mock_storage.translations[0]["fr"] == "Déjà relu"
+        assert mock_storage.translations[1]["fr"] == ""
+        assert {failure["language"] for failure in mock_storage.failures} == {"fr"}
+
+    @patch("lib.TranslationTool.TranslationTool.translate_standard")
+    @patch("lib.TranslationProject.get_driver")
+    async def test_multilanguage_run_writes_progress_per_language(
+        self,
+        project_get_driver_mock,
+        mock_translate_standard_patch,
+        mock_llm_driver,
+        tmp_path,
+    ):
+        project_path = tmp_path / "multilang_project"
+        project_path.mkdir()
+        (project_path / "config.json").write_text(
+            json.dumps(
+                {
+                    "name": project_path.name,
+                    "sourceFile": "translations.csv",
+                    "baseLanguage": "en",
+                    "languages": ["en", "es", "fr", "ko"],
+                    "keyColumn": "key",
+                }
+            ),
+            encoding="utf-8",
+        )
+        with (project_path / "translations.csv").open(
+            "w", encoding="utf-8", newline=""
+        ) as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=["key", "en", "es", "fr", "ko"])
+            writer.writeheader()
+            writer.writerow({"key": "hello", "en": "Hello", "es": "", "fr": "", "ko": ""})
+
+        storage = FileSystemStorageAdapter(project_path)
+        storage.set_active_languages(["es", "fr", "ko"])
+        project_get_driver_mock.return_value = mock_llm_driver
+        mock_translate_standard_patch.return_value = {
+            "es": {"Hello": "Hola"},
+            "ko": {"Hello": "안녕하세요"},
+        }
+        project = await TranslationProject.create(
+            project_name=project_path.name,
+            dst_languages=["es", "fr", "ko"],
+            storage=storage,
+        )
+
+        await project.translate(model="test_model")
+
+        mock_translate_standard_patch.assert_awaited_once()
+        assert json.loads((project_path / "es" / "progress.json").read_text()) == {
+            "Hello": "Hola"
+        }
+        assert json.loads((project_path / "fr" / "progress.json").read_text()) == {}
+        assert json.loads((project_path / "ko" / "progress.json").read_text()) == {
+            "Hello": "안녕하세요"
+        }
+        rows = await storage.load_translations(project_path.name)
+        assert rows[0] | {"fr": ""} == {
+            "key": "hello",
+            "en": "Hello",
+            "es": "Hola",
+            "fr": "",
+            "ko": "안녕하세요",
+        }
 
     @pytest.mark.asyncio
     async def test_has_missing_phrases_false_when_all_cells_valid(self, mock_storage):
@@ -563,14 +704,14 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
         )
 
         assert (
             project._has_missing_phrases(
                 mock_storage.translations,
-                {"Hello": "Hola", "Goodbye": "Adios"},
+                {"es": {"Hello": "Hola", "Goodbye": "Adios"}},
                 regenerate=False,
             )
             is False
@@ -597,7 +738,7 @@ class TestTranslationProject:
         project = TranslationProject(
             project_id="test_project",
             config=config,
-            dst_language="es",
+            dst_languages=["es"],
             storage=mock_storage,
         )
 

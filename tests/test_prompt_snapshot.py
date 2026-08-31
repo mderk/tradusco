@@ -25,7 +25,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.PromptManager import PromptManager
 from lib.storage.base import StorageAdapter
-from lib.TranslationTool import TranslationTool
+from lib.TranslationTool import language_ref, TranslationTool
 from lib.utils import Config
 from tests.mock_llm_driver import MockLLMDriver
 
@@ -139,7 +139,7 @@ async def _assemble(tool: TranslationTool, method_name: str) -> str:
             phrases=PHRASES,
             model="mock-model",
             base_language="en",
-            dst_language="ru",
+            dst_languages=[language_ref("ru"), language_ref("uk")],
             prompt=prompt,
             context=GLOBAL_CONTEXT,
             method_name=method_name,

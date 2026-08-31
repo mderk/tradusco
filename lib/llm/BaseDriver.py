@@ -69,21 +69,8 @@ class BaseDriver(ABC):
         """
         return {
             "name": "translations",
-            "description": "Translated phrases from source language to target language",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "translations": {
-                        "type": "array",
-                        "description": "Array of translations from source language to target language in the same order as input phrases",
-                        "items": {
-                            "type": "string",
-                            "description": "Translated text in target language",
-                        },
-                    }
-                },
-                "required": ["translations"],
-            },
+            "description": "Translated phrases grouped by target language",
+            "parameters": self.get_structured_output_schema(),
         }
 
     async def wait(self, delay_seconds: float = 1.0):

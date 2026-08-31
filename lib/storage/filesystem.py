@@ -39,7 +39,7 @@ class FileSystemStorageAdapter(StorageAdapter):
         self.project_path = project_path
         self.context_file = context_file
         self.prompt_file = prompt_file
-        self.active_language: Optional[str] = None
+        self.active_languages: list[str] = []
         self.overwrite_active_language: bool = False
 
     def set_context_file(self, context_file: Optional[str]) -> None:
@@ -52,7 +52,11 @@ class FileSystemStorageAdapter(StorageAdapter):
 
     def set_active_language(self, language: Optional[str]) -> None:
         """Set the destination language for the current translation run (optional)."""
-        self.active_language = language
+        self.set_active_languages([language] if language else [])
+
+    def set_active_languages(self, languages: list[str]) -> None:
+        """Set destination languages for the current translation run."""
+        self.active_languages = list(languages)
 
     def set_overwrite_active_language(self, enabled: bool) -> None:
         """Allow overwriting non-empty cells for the active language (e.g. --regenerate)."""
@@ -201,8 +205,8 @@ class FileSystemStorageAdapter(StorageAdapter):
 
         Multiple translation runs (one per destination locale) may execute in parallel.
         To prevent overwriting each other's work, we take an exclusive lock and merge
-        updates into the latest on-disk CSV. When `active_language` is set, we preserve
-        other locales' columns from disk and apply updates only for the active language.
+        updates into the latest on-disk CSV. When active languages are set, we preserve
+        other locales' columns from disk and apply updates only for those languages.
         """
         if not translations:
             return
@@ -269,9 +273,9 @@ class FileSystemStorageAdapter(StorageAdapter):
                     if k not in fieldnames:
                         fieldnames.append(k)
 
-                # When active_language is set, keep other columns from disk to avoid
+                # When active languages are set, keep other columns from disk to avoid
                 # losing updates from other concurrent language processes.
-                if current_rows and self.active_language:
+                if current_rows and self.active_languages:
                     merged_rows: list[dict[str, str]] = []
                     common_len = min(len(current_rows), len(translations))
 
@@ -290,12 +294,11 @@ class FileSystemStorageAdapter(StorageAdapter):
 
                         # If regenerating, allow overwriting non-empty cells for the
                         # active language, but never overwrite with an empty value.
-                        if self.active_language and self.overwrite_active_language:
-                            incoming_lang_val = incoming_row.get(self.active_language)
-                            if not _is_empty_cell(incoming_lang_val):
-                                merged[self.active_language] = str(
-                                    incoming_lang_val or ""
-                                )
+                        if self.overwrite_active_language:
+                            for language in self.active_languages:
+                                incoming_lang_val = incoming_row.get(language)
+                                if not _is_empty_cell(incoming_lang_val):
+                                    merged[language] = str(incoming_lang_val or "")
 
                         merged_rows.append(merged)
 
@@ -319,13 +322,15 @@ class FileSystemStorageAdapter(StorageAdapter):
                 if fcntl is not None:
                     fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
 
-    async def load_context(self, project_id: str, language: str) -> List[str]:
-        """Load translation context from various sources"""
+    async def load_context(
+        self, project_id: str, language: Optional[str] = None
+    ) -> List[str]:
+        """Load shared context, or one language's context when specified."""
         context_parts = []
 
-        # 1. Check for context.md or context.txt in project directory
+        context_dir = self.project_path / language if language else self.project_path
         for ext in [".md", ".txt"]:
-            context_path = self.project_path / f"context{ext}"
+            context_path = context_dir / f"context{ext}"
             try:
                 if os.path.exists(context_path):
                     async with aiofiles.open(context_path, "r", encoding="utf-8") as f:
@@ -334,19 +339,7 @@ class FileSystemStorageAdapter(StorageAdapter):
             except Exception as e:
                 print(f"Warning: Error reading context file {context_path}: {e}")
 
-        # 2. Check for context.md or context.txt in language directory
-        for ext in [".md", ".txt"]:
-            context_path = self.project_path / language / f"context{ext}"
-            try:
-                if os.path.exists(context_path):
-                    async with aiofiles.open(context_path, "r", encoding="utf-8") as f:
-                        content = await f.read()
-                        context_parts.append(content.strip())
-            except Exception as e:
-                print(f"Warning: Error reading context file {context_path}: {e}")
-
-        # 3. Check for context from command line file
-        if self.context_file:
+        if language is None and self.context_file:
             try:
                 if os.path.exists(self.context_file):
                     async with aiofiles.open(

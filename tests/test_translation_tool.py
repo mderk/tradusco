@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.TranslationTool import TranslationTool
+from lib.TranslationTool import language_ref, TranslationTool
 from lib.PromptManager import PromptManager
 from lib.storage.base import StorageAdapter
 from tests.mock_llm_driver import MockLLMDriver
@@ -59,7 +59,7 @@ class TestTranslationTool:
         """Create a mock storage adapter for testing."""
         storage = MockStorageAdapter()
         storage.prompts = {
-            "translation": "Translate from {base_language} to {dst_language}: {phrases_json}",
+            "translation": "Translate from {base_language} to {dst_languages}: {phrases_json}",
             "json_fix": "Fix this invalid JSON: {invalid_json}",
             "output_format": "Return a JSON array of translations.",
         }
@@ -90,23 +90,23 @@ class TestTranslationTool:
             ("Welcome", "Greeting someone arriving"),
         ]
         base_language = "en"
-        dst_language = "es"
+        dst_languages = [language_ref("es")]
         # Use template with correct placeholders
-        prompt = "Translate the following phrases from {base_language} to {dst_language}.\n\nPhrases to translate:\n{phrases_json}\n{context}"
+        prompt = "Translate the following phrases from {base_language} to {dst_languages}.\n\nPhrases to translate:\n{phrases_json}\n{context}"
         context = "These are common greetings."
 
         # Call the method with updated parameters
         result = await translation_tool.create_prompt(
             phrases=phrases,
             base_language=base_language,
-            dst_language=dst_language,
+            dst_languages=dst_languages,
             prompt=prompt,
             context=context,
         )
 
         # Verify the result contains expected content
         assert isinstance(result, str)
-        assert f"from {base_language.upper()} to {dst_language.upper()}" in result
+        assert "from EN to es (Spanish)" in result
         assert "Hello" in result
         assert "Goodbye" in result
         assert "Welcome" in result
@@ -119,8 +119,8 @@ class TestTranslationTool:
         # Prepare test data using the new format
         phrases = [("Hello", None), ("Goodbye", None), ("Welcome", None)]
         base_language = "en"
-        dst_language = "es"
-        prompt = "Translate the following phrases from {base_language} to {dst_language}.\n\nPhrases to translate:\n{phrases_json}"
+        dst_languages = [language_ref("es")]
+        prompt = "Translate the following phrases from {base_language} to {dst_languages}.\n\nPhrases to translate:\n{phrases_json}"
 
         # Ensure mock_llm_driver is properly registered
         with patch(
@@ -129,16 +129,16 @@ class TestTranslationTool:
 
             # Set up a specific response pattern for this test
             mock_llm_driver.register_response(
-                r"Translate.*from EN to ES",
+                r"Translate.*from EN to es",
                 """```json
-                ["Hola", "Adiós", "Bienvenido"]
+                {"translations": [{"language": "es", "translations": ["Hola", "Adiós", "Bienvenido"]}]}
                 ```""",
             )
 
             # Set up mock translate_async method
             mock_llm_driver.translate_async = AsyncMock(
                 return_value="""```json
-                ["Hola", "Adiós", "Bienvenido"]
+                {"translations": [{"language": "es", "translations": ["Hola", "Adiós", "Bienvenido"]}]}
                 ```"""
             )
 
@@ -147,13 +147,83 @@ class TestTranslationTool:
                 phrases=phrases,
                 model="mock-model",
                 base_language=base_language,
-                dst_language=dst_language,
+                dst_languages=dst_languages,
                 prompt=prompt,
             )
 
             # Verify the result is a dictionary mapping phrases to translations
             assert isinstance(result, dict)
-            assert result.get("Hello") == "Hola"
-            assert result.get("Goodbye") == "Adiós"
-            assert result.get("Welcome") == "Bienvenido"
-            assert len(result) == 3
+            assert result["es"]["Hello"] == "Hola"
+            assert result["es"]["Goodbye"] == "Adiós"
+            assert result["es"]["Welcome"] == "Bienvenido"
+
+    def test_handle_multilanguage_response(self, translation_tool):
+        phrases = [("Hello", None), ("Goodbye", None)]
+        languages = [language_ref(code) for code in ("es", "fr", "ko")]
+        response = {
+            "translations": [
+                {"language": "es", "translations": ["Hola", "Adiós"]},
+                {"language": "fr", "translations": ["Bonjour", "Au revoir"]},
+                {"language": "ko", "translations": ["안녕하세요", "안녕히 가세요"]},
+            ]
+        }
+
+        assert translation_tool.handle_response(response, phrases, languages) == {
+            "es": {"Hello": "Hola", "Goodbye": "Adiós"},
+            "fr": {"Hello": "Bonjour", "Goodbye": "Au revoir"},
+            "ko": {"Hello": "안녕하세요", "Goodbye": "안녕히 가세요"},
+        }
+
+    @pytest.mark.parametrize(
+        "bad_block",
+        [
+            {"language": "fr", "translations": ["Bonjour"]},
+            {"language": "xx", "translations": ["Hello", "Goodbye"]},
+        ],
+    )
+    def test_bad_language_block_does_not_drop_others(
+        self, translation_tool, bad_block
+    ):
+        phrases = [("Hello", None), ("Goodbye", None)]
+        languages = [language_ref(code) for code in ("es", "fr", "ko")]
+        response = {
+            "translations": [
+                {"language": "es", "translations": ["Hola", "Adiós"]},
+                bad_block,
+                {"language": "ko", "translations": ["안녕하세요", "안녕히 가세요"]},
+            ]
+        }
+
+        assert translation_tool.handle_response(response, phrases, languages) == {
+            "es": {"Hello": "Hola", "Goodbye": "Adiós"},
+            "ko": {"Hello": "안녕하세요", "Goodbye": "안녕히 가세요"},
+        }
+
+    def test_missing_language_block_does_not_drop_others(self, translation_tool):
+        phrases = [("Hello", None)]
+        languages = [language_ref(code) for code in ("es", "fr", "ko")]
+
+        assert translation_tool.handle_response(
+            {
+                "translations": [
+                    {"language": "es", "translations": ["Hola"]},
+                    {"language": "ko", "translations": ["안녕하세요"]},
+                ]
+            },
+            phrases,
+            languages,
+        ) == {"es": {"Hello": "Hola"}, "ko": {"Hello": "안녕하세요"}}
+
+    @pytest.mark.parametrize(
+        ("code", "name"),
+        [
+            ("es-ES", "Spanish (Spain)"),
+            ("es-419", "Spanish (Latin America)"),
+            ("pt-BR", "Portuguese (Brazil)"),
+            ("pt-PT", "Portuguese (Portugal)"),
+            ("zh-CN", "Chinese (Simplified)"),
+            ("zh-TW", "Chinese (Traditional)"),
+        ],
+    )
+    def test_language_ref_preserves_region(self, code, name):
+        assert language_ref(code).name == name

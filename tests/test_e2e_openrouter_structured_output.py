@@ -103,7 +103,7 @@ async def test_e2e_temp_project_openrouter_gemini25_structured_output(
 
     translator = await TranslationProject.create(
         project_name=project_dir.name,
-        dst_language="es",
+        dst_languages=["es"],
         storage=storage,
         context=None,
     )

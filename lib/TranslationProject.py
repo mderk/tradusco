@@ -21,6 +21,33 @@ from lib.storage.base import StorageAdapter
 from .llm import get_driver, get_available_models
 
 
+OUTPUT_TOKEN_RATIOS = {
+    "fr": 2.00,
+    "ru": 3.34,
+    "it": 2.00,
+    "de": 2.00,
+    "es": 2.00,
+    "es-la": 2.00,
+    "ja": 3.34,
+    "ko": 3.25,
+    "pl": 2.80,
+    "pt-br": 2.00,
+    "pt-pt": 2.09,
+    "zh-cn": 2.67,
+}
+DEFAULT_OUTPUT_TOKEN_RATIO = max(OUTPUT_TOKEN_RATIOS.values())
+
+
+def output_token_ratio(languages: list[str]) -> float:
+    return max(
+        (
+            OUTPUT_TOKEN_RATIOS.get(language, DEFAULT_OUTPUT_TOKEN_RATIO)
+            for language in languages
+        ),
+        default=DEFAULT_OUTPUT_TOKEN_RATIO,
+    )
+
+
 class TranslationProject:
     """
     A class for managing translation projects.
@@ -487,7 +514,7 @@ class TranslationProject:
         delay_seconds: float,
         max_retries: int,
         batch_size: int,
-        batch_max_tokens: int,
+        batch_max_output_tokens: int,
         regenerate: bool,
         fallback_model: Optional[str],
         driver,
@@ -507,13 +534,54 @@ class TranslationProject:
             language: set() for language in self.dst_languages
         }
         current_batch_tokens = 0
-        start_next_batch = False
+        sent_batch = False
+
+        def estimated_output_tokens(input_tokens: int) -> float:
+            return (
+                input_tokens
+                * len(self.dst_languages)
+                * output_token_ratio(self.dst_languages)
+            )
+
+        async def flush_batch() -> None:
+            nonlocal phrases_to_translate, phrase_indices, phrase_languages
+            nonlocal current_batch_tokens, sent_batch
+            if sent_batch:
+                await driver.wait(delay_seconds)
+            sent_batch = True
+
+            translated = await self._process_translation_batch(
+                phrases_to_translate,
+                phrase_languages,
+                model,
+                method,
+                prompt,
+                context,
+                delay_seconds,
+                max_retries,
+                fallback_model=fallback_model,
+            )
+
+            if translated is not None:
+                await self._apply_translated_batch(
+                    translated,
+                    phrase_indices=phrase_indices,
+                    phrase_languages=phrase_languages,
+                    progress=progress,
+                    translations=translations,
+                    model=model,
+                    method=method,
+                )
+
+            await self._save_translation_progress(
+                progress, translations, csv_corrections=csv_corrections
+            )
+            phrases_to_translate = []
+            phrase_indices = {}
+            phrase_languages = {}
+            current_batch_tokens = 0
 
         for i, row in enumerate(translations):
-            if start_next_batch:
-                await driver.wait(delay_seconds)
-                start_next_batch = False
-
             source_phrase = row[self.base_language]
             if not source_phrase:
                 continue
@@ -555,79 +623,29 @@ class TranslationProject:
             ]
             if language_contexts:
                 phrase_context = "; ".join(filter(None, [phrase_context, *language_contexts]))
-            phrases_to_translate.append((source_phrase, phrase_context))
-            phrase_indices[source_phrase] = i
-            phrase_languages[source_phrase] = missing_languages
 
             phrase_tokens = self.count_tokens(
                 source_phrase + " " + phrase_context, model
             )
+            if phrases_to_translate and estimated_output_tokens(
+                current_batch_tokens + phrase_tokens
+            ) > batch_max_output_tokens:
+                await flush_batch()
+
+            phrases_to_translate.append((source_phrase, phrase_context))
+            phrase_indices[source_phrase] = i
+            phrase_languages[source_phrase] = missing_languages
             current_batch_tokens += phrase_tokens
 
             if (
                 len(phrases_to_translate) >= batch_size
-                or current_batch_tokens >= batch_max_tokens
+                or estimated_output_tokens(current_batch_tokens)
+                >= batch_max_output_tokens
             ):
-                translated = await self._process_translation_batch(
-                    phrases_to_translate,
-                    phrase_languages,
-                    model,
-                    method,
-                    prompt,
-                    context,
-                    delay_seconds,
-                    max_retries,
-                    fallback_model=fallback_model,
-                )
-
-                if translated is not None:
-                    await self._apply_translated_batch(
-                        translated,
-                        phrase_indices=phrase_indices,
-                        phrase_languages=phrase_languages,
-                        progress=progress,
-                        translations=translations,
-                        model=model,
-                        method=method,
-                    )
-
-                await self._save_translation_progress(
-                    progress, translations, csv_corrections=csv_corrections
-                )
-
-                phrases_to_translate = []
-                phrase_indices = {}
-                phrase_languages = {}
-                current_batch_tokens = 0
-                start_next_batch = True
+                await flush_batch()
 
         if phrases_to_translate:
-            translated = await self._process_translation_batch(
-                phrases_to_translate,
-                phrase_languages,
-                model,
-                method,
-                prompt,
-                context,
-                delay_seconds,
-                max_retries,
-                fallback_model=fallback_model,
-            )
-
-            if translated is not None:
-                await self._apply_translated_batch(
-                    translated,
-                    phrase_indices=phrase_indices,
-                    phrase_languages=phrase_languages,
-                    progress=progress,
-                    translations=translations,
-                    model=model,
-                    method=method,
-                )
-
-            await self._save_translation_progress(
-                progress, translations, csv_corrections=csv_corrections
-            )
+            await flush_batch()
 
         await self._save_translation_progress(
             progress,
@@ -642,7 +660,7 @@ class TranslationProject:
         max_retries: int = 3,
         batch_size: int = 50,
         model: str = "gemini",
-        batch_max_tokens: int = 2048,
+        batch_max_output_tokens: int = 8192,
         translation_method: str = "standard",
         regenerate: bool = False,
         fallback_model: Optional[str] = None,
@@ -654,7 +672,7 @@ class TranslationProject:
             max_retries: Maximum number of retries for failed API calls
             batch_size: Number of phrases to translate in a single API call
             model: The LLM model to use for translation
-            batch_max_tokens: Maximum number of tokens for a translation batch
+            batch_max_output_tokens: Maximum estimated output tokens for a batch
             translation_method: Method to use for translation ('auto', 'standard', 'structured', or 'function')
             regenerate: If True, ignore existing translations and progress, and re-translate all phrases.
         """
@@ -680,7 +698,7 @@ class TranslationProject:
             delay_seconds=delay_seconds,
             max_retries=max_retries,
             batch_size=batch_size,
-            batch_max_tokens=batch_max_tokens,
+            batch_max_output_tokens=batch_max_output_tokens,
             regenerate=regenerate,
             fallback_model=fallback_model,
             driver=driver,
@@ -709,7 +727,7 @@ class TranslationProject:
             delay_seconds=delay_seconds,
             max_retries=max_retries,
             batch_size=batch_size,
-            batch_max_tokens=batch_max_tokens,
+            batch_max_output_tokens=batch_max_output_tokens,
             regenerate=regenerate,
             fallback_model=None,
             driver=fb_driver,

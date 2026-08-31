@@ -70,10 +70,10 @@ async def async_main():
         help="Number of phrases to translate in one batch (default: 50)",
     )
     parser.add_argument(
-        "--batch-max-tokens",
+        "--batch-max-output-tokens",
         type=int,
-        default=2048,  # 2048 tokens is a reasonable default for most LLMs
-        help="Maximum number of tokens for a translation batch (default: 2048)",
+        default=8192,
+        help="Maximum estimated output tokens for a translation batch (default: 8192)",
     )
     parser.add_argument(
         "--prompt",
@@ -201,7 +201,7 @@ async def async_main():
             max_retries=args.retries,
             batch_size=args.batch_size,
             model=args.model,
-            batch_max_tokens=args.batch_max_tokens,
+            batch_max_output_tokens=args.batch_max_output_tokens,
             translation_method=args.method,
             regenerate=args.regenerate,
             fallback_model=args.fallback_model,

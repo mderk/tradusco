@@ -100,7 +100,7 @@ def main() -> int:
     parser.add_argument("--fallback-model", default="")
     parser.add_argument("--parallel", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=50)
-    parser.add_argument("--batch-max-tokens", type=int, default=2048)
+    parser.add_argument("--batch-max-output-tokens", type=int, default=8192)
     parser.add_argument("--method", default="auto")
     parser.add_argument("--langs", help="Comma-separated subset of locales to run")
     parser.add_argument(
@@ -146,8 +146,8 @@ def main() -> int:
                 str(args.method),
                 "-b",
                 str(args.batch_size),
-                "--batch-max-tokens",
-                str(args.batch_max_tokens),
+                "--batch-max-output-tokens",
+                str(args.batch_max_output_tokens),
             ]
             jobs.append(Job(lang=lang, cmd=cmd))
         return jobs
@@ -185,4 +185,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

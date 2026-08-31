@@ -8,7 +8,11 @@ from typing import Optional, List, Dict, Any
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.TranslationProject import TranslationProject
+from lib.TranslationProject import (
+    DEFAULT_OUTPUT_TOKEN_RATIO,
+    TranslationProject,
+    output_token_ratio,
+)
 from lib.TranslationTool import BatchErrorInfo, BatchTranslationError, LanguageRef
 from lib.utils import Config
 from lib.storage.base import StorageAdapter
@@ -182,6 +186,103 @@ class TestTranslationProject:
         token_count = project.count_tokens("This is a test")
         assert token_count > 0
         assert isinstance(token_count, int)
+
+    @patch("lib.TranslationProject.TranslationProject._process_translation_batch")
+    async def test_output_budget_isolates_long_phrase_but_keeps_short_labels_together(
+        self, process_batch_mock, mock_storage, mock_llm_driver
+    ):
+        languages = [
+            "fr",
+            "ru",
+            "it",
+            "de",
+            "es",
+            "es-la",
+            "ja",
+            "ko",
+            "pl",
+            "pt-br",
+            "pt-pt",
+            "zh-cn",
+            "tr",
+            "uk",
+            "th",
+            "cs",
+            "hu",
+            "vi",
+            "ro",
+            "ar",
+        ]
+        mock_storage.config.languages = ["en", *languages]
+        short_phrases = [f"Label {index}" for index in range(100)]
+        long_phrase = "Long dialogue"
+        tail_phrase = "Tail"
+        mock_storage.translations = [
+            {"en": phrase, **dict.fromkeys(languages, "")}
+            for phrase in [*short_phrases, long_phrase, tail_phrase]
+        ]
+        project = TranslationProject(
+            project_id="test_project",
+            config=mock_storage.config,
+            dst_languages=languages,
+            storage=mock_storage,
+        )
+        project.count_tokens = lambda text, model="gemini": (
+            200 if text.startswith(long_phrase) else 1
+        )
+        process_batch_mock.return_value = None
+
+        await project._translate_pass(
+            model="test-model",
+            method="standard",
+            delay_seconds=0,
+            max_retries=0,
+            batch_size=200,
+            batch_max_output_tokens=8192,
+            regenerate=False,
+            fallback_model=None,
+            driver=mock_llm_driver,
+        )
+
+        batches = [
+            [phrase for phrase, _context in call.args[0]]
+            for call in process_batch_mock.await_args_list
+        ]
+        assert batches == [short_phrases, [long_phrase], [tail_phrase]]
+
+    @patch("lib.TranslationProject.TranslationProject._process_translation_batch")
+    async def test_one_language_keeps_input_equivalent_batch_boundary(
+        self, process_batch_mock, mock_storage, mock_llm_driver
+    ):
+        phrases = [f"Phrase {index}" for index in range(6)]
+        mock_storage.translations = [{"en": phrase, "es": ""} for phrase in phrases]
+        project = TranslationProject(
+            project_id="test_project",
+            config=mock_storage.config,
+            dst_languages=["es"],
+            storage=mock_storage,
+        )
+        project.count_tokens = lambda text, model="gemini": 1
+        process_batch_mock.return_value = None
+
+        await project._translate_pass(
+            model="test-model",
+            method="standard",
+            delay_seconds=0,
+            max_retries=0,
+            batch_size=50,
+            batch_max_output_tokens=10,
+            regenerate=False,
+            fallback_model=None,
+            driver=mock_llm_driver,
+        )
+
+        assert [
+            len(call.args[0]) for call in process_batch_mock.await_args_list
+        ] == [5, 1]
+
+    async def test_unknown_language_uses_largest_measured_ratio(self):
+        assert output_token_ratio(["unknown"]) == DEFAULT_OUTPUT_TOKEN_RATIO
 
     @pytest.mark.asyncio
     async def test_load_context(self, mock_storage):

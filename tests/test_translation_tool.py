@@ -215,6 +215,30 @@ class TestTranslationTool:
         ) == {"es": {"Hello": "Hola"}, "ko": {"Hello": "안녕하세요"}}
 
     @pytest.mark.parametrize(
+        "response",
+        [
+            {"translations": []},
+            {
+                "translations": [
+                    {"language": "de", "translations": ["Hallo", "Tschüss"]}
+                ]
+            },
+            {
+                "translations": [
+                    {"language": "fr", "translations": ["Bonjour"]}
+                ]
+            },
+        ],
+    )
+    def test_response_without_valid_language_is_batch_failure(
+        self, translation_tool, response
+    ):
+        phrases = [("Hello", None), ("Goodbye", None)]
+        languages = [language_ref("es"), language_ref("fr")]
+
+        assert translation_tool.handle_response(response, phrases, languages) is None
+
+    @pytest.mark.parametrize(
         ("code", "name"),
         [
             ("es-ES", "Spanish (Spain)"),

@@ -203,6 +203,9 @@ Document:
 - Keep `translations.csv` format unchanged.
 - Keep `progress.json` as a flat mapping; do not mix error records into it.
 - Make SO auto-detected + fallback to standard so existing setups keep working.
+- Standard responses no longer accept positional plain-text lines. With several target
+  languages that format cannot identify which line belongs to which locale, so standard,
+  structured and function methods now share the same language-block JSON contract.
 
 ### Defects found while reading the code
 
@@ -237,4 +240,3 @@ context assembly or the output-format block shows up as a diff. Refresh delibera
 ```bash
 UPDATE_PROMPT_SNAPSHOTS=1 uv run pytest tests/test_prompt_snapshot.py
 ```
-

@@ -264,7 +264,7 @@ class TranslationTool:
         translations_list: list[object],
         phrases: list[tuple[str, str | None]],
         dst_languages: list[LanguageRef],
-    ) -> dict[str, dict[str, str]]:
+    ) -> dict[str, dict[str, str]] | None:
         """Align valid per-language blocks with the input phrases."""
         requested = {language.code for language in dst_languages}
         result: dict[str, dict[str, str]] = {}
@@ -286,7 +286,7 @@ class TranslationTool:
                 for phrase, translation in zip(phrases, values)
                 if translation.strip()
             }
-        return result
+        return result or None
 
     async def setup(
         self,

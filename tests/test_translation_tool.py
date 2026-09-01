@@ -113,6 +113,12 @@ class TestTranslationTool:
         # The context should be included
         assert "common greetings" in result
 
+        batch_prompt = await translation_tool.create_batch_prompt(
+            phrases, base_language, dst_languages, prompt, context
+        )
+        assert batch_prompt is not None
+        assert batch_prompt.endswith("Return a JSON array of translations.")
+
     @pytest.mark.asyncio
     async def test_translate_standard(self, translation_tool, mock_llm_driver):
         """Test processing a batch of translations with the mock LLM driver."""

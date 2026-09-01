@@ -333,13 +333,13 @@ class TranslationTool:
                 print(f"Warning: Could not get driver for model {model}")
             return None, ""
 
-        # Create the batch prompt
-        batch_prompt = await self.create_prompt(
+        batch_prompt = await self.create_batch_prompt(
             phrases=phrases,
             base_language=base_language,
             dst_languages=dst_languages,
             prompt=prompt,
             context=context,
+            method_name=method_name,
             batch_input=batch_input,
         )
         if not batch_prompt:
@@ -350,7 +350,30 @@ class TranslationTool:
         if DEBUG:
             print(batch_prompt)
 
-        # Load the output format instructions
+        return driver, batch_prompt
+
+    async def create_batch_prompt(
+        self,
+        phrases: list[tuple[str, str | None]],
+        base_language: str,
+        dst_languages: list[LanguageRef],
+        prompt: str,
+        context: Optional[str] = None,
+        method_name: str = "standard",
+        batch_input: BatchEnvelope | None = None,
+    ) -> str | None:
+        """Build exactly the prompt passed to the driver."""
+        batch_prompt = await self.create_prompt(
+            phrases=phrases,
+            base_language=base_language,
+            dst_languages=dst_languages,
+            prompt=prompt,
+            context=context,
+            batch_input=batch_input,
+        )
+        if not batch_prompt:
+            return None
+
         if method_name == "standard":
             try:
                 output_format = await self.prompt_manager.load_prompt("output_format")
@@ -359,11 +382,10 @@ class TranslationTool:
                     print(f"Warning: Could not load output format instructions: {e}")
                 output_format = ""
 
-            # Add output format instructions if available
             if output_format:
                 batch_prompt += f"\n\n{output_format}"
 
-        return driver, batch_prompt
+        return batch_prompt
 
     def handle_response(
         self,

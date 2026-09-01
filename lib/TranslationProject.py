@@ -22,33 +22,6 @@ from lib.storage.base import StorageAdapter
 from .llm import get_driver, get_available_models
 
 
-OUTPUT_TOKEN_RATIOS = {
-    "fr": 2.00,
-    "ru": 3.34,
-    "it": 2.00,
-    "de": 2.00,
-    "es": 2.00,
-    "es-la": 2.00,
-    "ja": 3.34,
-    "ko": 3.25,
-    "pl": 2.80,
-    "pt-br": 2.00,
-    "pt-pt": 2.09,
-    "zh-cn": 2.67,
-}
-DEFAULT_OUTPUT_TOKEN_RATIO = max(OUTPUT_TOKEN_RATIOS.values())
-
-
-def output_token_ratio(languages: list[str]) -> float:
-    return max(
-        (
-            OUTPUT_TOKEN_RATIOS.get(language, DEFAULT_OUTPUT_TOKEN_RATIO)
-            for language in languages
-        ),
-        default=DEFAULT_OUTPUT_TOKEN_RATIO,
-    )
-
-
 class TranslationProject:
     """
     A class for managing translation projects.
@@ -346,6 +319,7 @@ class TranslationProject:
         max_retries: int,
         batch_input: BatchEnvelope,
         fallback_model: Optional[str] = None,
+        raise_on_error: bool = False,
     ) -> dict[str, dict[str, str]] | None:
         """
         Process a batch of phrases for translation using the appropriate method.
@@ -366,6 +340,19 @@ class TranslationProject:
         def _summarize_error(msg: str, limit: int = 220) -> str:
             s = (msg or "").strip().replace("\n", " ")
             return s if len(s) <= limit else (s[: limit - 3] + "...")
+
+        async def _finish_failure(
+            info: BatchErrorInfo, *, failed_model: str, failed_method: str
+        ) -> None:
+            if raise_on_error:
+                raise BatchTranslationError(info)
+            await self._record_batch_failures(
+                phrases_to_translate,
+                phrase_languages,
+                model=failed_model,
+                method=failed_method,
+                info=info,
+            )
 
         async def _run_once(
             *, run_model: str, run_method: str
@@ -429,12 +416,8 @@ class TranslationProject:
 
         if not fallback_model:
             if primary_info is not None:
-                await self._record_batch_failures(
-                    phrases_to_translate,
-                    phrase_languages,
-                    model=model,
-                    method=method,
-                    info=primary_info,
+                await _finish_failure(
+                    primary_info, failed_model=model, failed_method=method
                 )
             return None
 
@@ -449,14 +432,9 @@ class TranslationProject:
                 f"(kind={info.kind}, status={info.status_code}) "
                 f"fallback_model={fallback_model}: {_summarize_error(info.message)}"
             )
-            if primary_info is not None:
-                await self._record_batch_failures(
-                    phrases_to_translate,
-                    phrase_languages,
-                    model=model,
-                    method=method,
-                    info=primary_info,
-                )
+            await _finish_failure(
+                info, failed_model=fallback_model, failed_method="auto"
+            )
             return None
 
         print(f"Retrying batch with fallback model={fallback_model} method={fb_method}")
@@ -469,12 +447,8 @@ class TranslationProject:
                 f"(kind={info.kind}, status={info.status_code}) "
                 f"model={fallback_model} method={fb_method}: {_summarize_error(info.message)}"
             )
-            await self._record_batch_failures(
-                phrases_to_translate,
-                phrase_languages,
-                model=fallback_model,
-                method=fb_method,
-                info=info,
+            await _finish_failure(
+                info, failed_model=fallback_model, failed_method=fb_method
             )
             return None
         except Exception as e:
@@ -484,12 +458,8 @@ class TranslationProject:
                 f"(kind={info.kind}, status={info.status_code}) "
                 f"model={fallback_model} method={fb_method}: {_summarize_error(info.message)}"
             )
-            await self._record_batch_failures(
-                phrases_to_translate,
-                phrase_languages,
-                model=fallback_model,
-                method=fb_method,
-                info=info,
+            await _finish_failure(
+                info, failed_model=fallback_model, failed_method=fb_method
             )
             return None
 
@@ -533,7 +503,7 @@ class TranslationProject:
         delay_seconds: float,
         max_retries: int,
         batch_size: int,
-        batch_max_output_tokens: int,
+        batch_max_input_tokens: int,
         regenerate: bool,
         fallback_model: Optional[str],
         driver,
@@ -559,46 +529,109 @@ class TranslationProject:
         csv_corrections: dict[str, set[str]] = {
             language: set() for language in self.dst_languages
         }
-        current_batch_tokens = 0
         sent_batch = False
 
-        def estimated_output_tokens(input_tokens: int) -> float:
-            return (
-                input_tokens
-                * len(self.dst_languages)
-                * output_token_ratio(self.dst_languages)
-            )
+        def split_batch(
+            phrases: list[tuple[str, str | None]],
+            indices: dict[str, int],
+            languages: dict[str, set[str]],
+        ) -> tuple[
+            tuple[
+                list[tuple[str, str | None]], dict[str, int], dict[str, set[str]]
+            ],
+            tuple[
+                list[tuple[str, str | None]], dict[str, int], dict[str, set[str]]
+            ],
+        ]:
+            midpoint = len(phrases) // 2
 
-        async def flush_batch() -> None:
-            nonlocal phrases_to_translate, phrase_indices, phrase_languages
-            nonlocal current_batch_tokens, sent_batch
+            def part(items: list[tuple[str, str | None]]):
+                keys = {phrase for phrase, _context in items}
+                return (
+                    items,
+                    {key: value for key, value in indices.items() if key in keys},
+                    {key: value for key, value in languages.items() if key in keys},
+                )
+
+            return part(phrases[:midpoint]), part(phrases[midpoint:])
+
+        async def run_batch(
+            phrases: list[tuple[str, str | None]],
+            indices: dict[str, int],
+            languages: dict[str, set[str]],
+        ) -> None:
+            nonlocal sent_batch
+            batch_input = envelope_builder.build(phrases, indices)
+            batch_prompt = await self.translation_tool.create_batch_prompt(
+                phrases,
+                self.base_language,
+                self.language_refs,
+                prompt,
+                context,
+                method,
+                batch_input,
+            )
+            if (
+                batch_prompt
+                and len(phrases) > 1
+                and self.count_tokens(batch_prompt, model) > batch_max_input_tokens
+            ):
+                left, right = split_batch(phrases, indices, languages)
+                await run_batch(*left)
+                await run_batch(*right)
+                return
+
             if sent_batch:
                 await driver.wait(delay_seconds)
             sent_batch = True
 
-            translated = await self._process_translation_batch(
-                phrases_to_translate,
-                phrase_languages,
-                model,
-                method,
-                prompt,
-                context,
-                delay_seconds,
-                max_retries,
-                envelope_builder.build(phrases_to_translate, phrase_indices),
-                fallback_model=fallback_model,
-            )
+            try:
+                translated = await self._process_translation_batch(
+                    phrases,
+                    languages,
+                    model,
+                    method,
+                    prompt,
+                    context,
+                    delay_seconds,
+                    max_retries,
+                    batch_input,
+                    fallback_model=fallback_model,
+                    raise_on_error=True,
+                )
+            except BatchTranslationError as error:
+                if error.info.kind == "model_error" and len(phrases) > 1:
+                    left, right = split_batch(phrases, indices, languages)
+                    await run_batch(*left)
+                    await run_batch(*right)
+                    return
+                await self._record_batch_failures(
+                    phrases,
+                    languages,
+                    model=model,
+                    method=method,
+                    info=error.info,
+                )
+                return
 
             if translated is not None:
                 await self._apply_translated_batch(
                     translated,
-                    phrase_indices=phrase_indices,
-                    phrase_languages=phrase_languages,
+                    phrase_indices=indices,
+                    phrase_languages=languages,
                     progress=progress,
                     translations=translations,
                     model=model,
                     method=method,
                 )
+
+        async def flush_batch() -> None:
+            nonlocal phrases_to_translate, phrase_indices, phrase_languages
+            await run_batch(
+                phrases_to_translate,
+                phrase_indices,
+                phrase_languages,
+            )
 
             await self._save_translation_progress(
                 progress, translations, csv_corrections=csv_corrections
@@ -606,7 +639,6 @@ class TranslationProject:
             phrases_to_translate = []
             phrase_indices = {}
             phrase_languages = {}
-            current_batch_tokens = 0
 
         for i, row in enumerate(translations):
             source_phrase = row[self.base_language]
@@ -651,24 +683,11 @@ class TranslationProject:
             if language_contexts:
                 phrase_context = "; ".join(filter(None, [phrase_context, *language_contexts]))
 
-            phrase_tokens = self.count_tokens(
-                source_phrase + " " + phrase_context, model
-            )
-            if phrases_to_translate and estimated_output_tokens(
-                current_batch_tokens + phrase_tokens
-            ) > batch_max_output_tokens:
-                await flush_batch()
-
             phrases_to_translate.append((source_phrase, phrase_context))
             phrase_indices[source_phrase] = i
             phrase_languages[source_phrase] = missing_languages
-            current_batch_tokens += phrase_tokens
 
-            if (
-                len(phrases_to_translate) >= batch_size
-                or estimated_output_tokens(current_batch_tokens)
-                >= batch_max_output_tokens
-            ):
+            if len(phrases_to_translate) >= batch_size:
                 await flush_batch()
 
         if phrases_to_translate:
@@ -687,7 +706,7 @@ class TranslationProject:
         max_retries: int = 3,
         batch_size: int = 50,
         model: str = "gemini",
-        batch_max_output_tokens: int = 8192,
+        batch_max_input_tokens: int = 65536,
         translation_method: str = "standard",
         regenerate: bool = False,
         fallback_model: Optional[str] = None,
@@ -699,7 +718,7 @@ class TranslationProject:
             max_retries: Maximum number of retries for failed API calls
             batch_size: Number of phrases to translate in a single API call
             model: The LLM model to use for translation
-            batch_max_output_tokens: Maximum estimated output tokens for a batch
+            batch_max_input_tokens: Maximum assembled prompt tokens for a batch
             translation_method: Method to use for translation ('auto', 'standard', 'structured', or 'function')
             regenerate: If True, ignore existing translations and progress, and re-translate all phrases.
         """
@@ -725,7 +744,7 @@ class TranslationProject:
             delay_seconds=delay_seconds,
             max_retries=max_retries,
             batch_size=batch_size,
-            batch_max_output_tokens=batch_max_output_tokens,
+            batch_max_input_tokens=batch_max_input_tokens,
             regenerate=regenerate,
             fallback_model=fallback_model,
             driver=driver,
@@ -754,7 +773,7 @@ class TranslationProject:
             delay_seconds=delay_seconds,
             max_retries=max_retries,
             batch_size=batch_size,
-            batch_max_output_tokens=batch_max_output_tokens,
+            batch_max_input_tokens=batch_max_input_tokens,
             regenerate=regenerate,
             fallback_model=None,
             driver=fb_driver,

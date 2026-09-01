@@ -112,7 +112,7 @@ async def test_e2e_temp_project_openrouter_gemini25_structured_output(
         model=model,
         translation_method="auto",
         batch_size=25,
-        batch_max_output_tokens=1500,
+        batch_max_input_tokens=65536,
         max_retries=2,
         delay_seconds=1.0,
         regenerate=False,

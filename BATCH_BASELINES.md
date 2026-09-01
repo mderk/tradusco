@@ -4,8 +4,8 @@ Measured on 2026-08-31 from
 `/Users/max/Documents/projects/t3/client/.tradusco/booty/translations.csv`.
 The twelve reviewed locale columns contain 4,369 non-empty rows each. Tokenizer:
 `tiktoken` `cl100k_base`. Ratios are translation tokens divided by English source
-tokens and rounded upward to two decimal places. Runtime batching uses p90; an
-unknown locale uses the largest measured p90 (`3.34`).
+tokens and rounded upward to two decimal places. These measurements document
+expected output growth; runtime batching no longer tries to predict output size.
 
 Recalculate the table and the local 150-row batching benchmark with:
 
@@ -34,10 +34,9 @@ uv run python measure_batch_baselines.py \
 |---:|---:|---:|---:|---:|---:|---:|
 | 50 | 20 | 52,995 | 24,983 | 20 | 50 | 75 |
 
-The assembled input is about three times the default 8,192-token estimated-output
-budget, so it is materially comparable to the output. A separate batching change
-must restore an explicit input limit before production use; A2–A5 only records
-the measurement and does not silently change A6 slicing.
+The assembled input is below the runtime default of 65,536 input tokens. The
+limit is applied to this complete prompt, including context, glossary, references,
+examples, and standard-method output instructions.
 
 | Language | Rows | Median | p90 |
 |---|---:|---:|---:|
@@ -56,11 +55,10 @@ the measurement and does not silently change A6 slicing.
 
 ## Batch parameters
 
-The fixed set is the first 150 non-empty English rows. The benchmark runs the
-same output-budget rule 10,000 times with an 8,192-token output budget. Three
-languages use the maximum p90 of `es`, `ru`, and `ja`. `Planner ms/run` excludes
-model latency; `Wait at 1s` is the deterministic inter-request delay used by the
-translator.
+The fixed set is the first 150 non-empty English rows. This historical benchmark
+runs the former output-estimation rule 10,000 times with an 8,192-token budget.
+It is retained so the rejected heuristic can be reproduced. `Planner ms/run`
+excludes model latency; `Wait at 1s` is the deterministic inter-request delay.
 
 | Languages | batch_size | Requests | Planner ms/run | Wait at 1s |
 |---:|---:|---:|---:|---:|
@@ -72,8 +70,17 @@ translator.
 | 3 | 50 | 4 | 0.048 | 3s |
 
 Keep `batch_size=50` and the one-second delay: planner cost is negligible and 50
-minimizes calls on this set. The old 2,048-token input limit is removed; output is
-now capped at 8,192 estimated tokens.
+minimizes calls on this set.
+
+## Runtime policy
+
+- `batch_size=50` remains the first, cheap boundary.
+- `batch_max_input_tokens=65536` measures the fully assembled request and halves
+  an oversized batch until it fits. A single oversized phrase is still sent.
+- Output size is not estimated or capped locally; the model/provider owns its
+  completion limits.
+- A final `model_error` halves and retries the batch. Authentication, rate-limit,
+  and content-policy failures are recorded without splitting.
 
 ## Refusal cost
 

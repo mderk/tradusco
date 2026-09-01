@@ -10,13 +10,25 @@ Global Translation Context:
 A fantasy RPG with adult content; the tone is relaxed.
 Every playable hero is a woman; the player character is a man.
 
+[ru]
+Use established Russian fantasy terminology.
 
-The input data schema is `[[\"Phrase to translate\", \"context for the phrase\"], ...]`. Translate only the phrases, not the context.
+[uk]
+Use Ukrainian, never interpret uk as the United Kingdom.
+
+
+- A global context subsection labeled `[code]` applies only to that target language.
+The input data is an object with a `phrases` array and an optional batch-level `glossary` array. Each phrase object has `phrase` and may have `context`, `reference`, and `examples` fields.
+- Apply matching glossary entries consistently. A glossary entry with mode `keep` must remain unchanged.
+- For glossary matching, `cs: true` means case-sensitive and `near` is a regular expression that must match the same phrase.
+- The base-language `phrase` is always the translation source. `reference` contains reviewed translations that only disambiguate meaning; never translate from them instead.
+- `examples` are reviewed neighboring phrases. Use them for terminology and pattern consistency, but translate the current base-language phrase.
+- Translate only `phrase`. Do not translate or return context, glossary, reference, or examples.
 
 Data to translate:
-[["You gained {count} gems.", "Reward popup after a battle."], ["Read the <0>rules</0> first.", null], ["Line one.\nLine two.", "Two lines of a tooltip."], ["Chest", "A container the player opens, not a body part."]]
+{"glossary": [{"term": "gems", "mode": "stem", "t": {"ru": "самоцветы", "uk": "самоцвіти"}}], "phrases": [{"phrase": "You gained {count} gems.", "context": "Reward popup after a battle.", "reference": {"ja": "ジェムを{count}個獲得した。"}, "examples": [{"phrase": "You gained {count} coins.", "t": {"ru": "Вы получили {count} монет."}}]}, {"phrase": "Read the <0>rules</0> first."}, {"phrase": "Line one.\nLine two.", "context": "Two lines of a tooltip."}, {"phrase": "Chest", "context": "A container the player opens, not a body part."}]}
 
-Translate each phrase in order, taking into account the global context and the phrase-specific context (if any).
+Translate each phrase in order, taking into account the global context and its envelope fields (if any).
 Do not translate or return the context. Return one block for every target language, using its language code. Within every block, keep translations in the same order as the input phrases.
 
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Annotated, Optional, Union
 
 from pydantic import BaseModel, Field, field_serializer
+from .envelope import BatchEnvelope, PhraseEnvelope
 from .llm import BaseDriver, get_driver
 from .PromptManager import PromptManager
 from .utils import (
@@ -162,10 +163,8 @@ class Input(BaseModel):
     dst_languages: list[LanguageRef]
     context: str
     phrases: Annotated[
-        list[tuple[str, str | None]],
-        Field(
-            description="List of phrases to translate, each element is a tuple of the phrase and its context (optional)"
-        ),
+        BatchEnvelope,
+        Field(description="Batch glossary and phrase translation envelopes"),
     ]
 
     @field_serializer("dst_languages")
@@ -218,6 +217,7 @@ class TranslationTool:
         dst_languages: list[LanguageRef],
         prompt: str,
         context: Optional[str] = None,
+        batch_input: BatchEnvelope | None = None,
     ) -> str | None:
         """Create a prompt for translation using JSON format"""
         # Create a list of phrases and a separate context mapping
@@ -230,7 +230,13 @@ class TranslationTool:
             base_language=base_language.upper(),
             dst_languages=dst_languages,
             context=context_section,
-            phrases=phrases,
+            phrases=batch_input
+            or BatchEnvelope(
+                phrases=[
+                    PhraseEnvelope(phrase=phrase, context=phrase_context)
+                    for phrase, phrase_context in phrases
+                ]
+            ),
         )
 
         # Format the prompt template with the required variables
@@ -297,6 +303,7 @@ class TranslationTool:
         prompt: str,
         context: Optional[str] = None,
         method_name: str = "standard",
+        batch_input: BatchEnvelope | None = None,
     ) -> tuple[Optional[BaseDriver], str]:
         """
         Base method for processing batches of translations.
@@ -333,6 +340,7 @@ class TranslationTool:
             dst_languages=dst_languages,
             prompt=prompt,
             context=context,
+            batch_input=batch_input,
         )
         if not batch_prompt:
             if DEBUG:
@@ -393,6 +401,7 @@ class TranslationTool:
         delay_seconds: float = 1.0,
         max_retries: int = 3,
         raise_on_error: bool = False,
+        batch_input: BatchEnvelope | None = None,
     ) -> dict[str, dict[str, str]] | None:
         """Process a batch of phrases for translation"""
         # Get common setup
@@ -405,6 +414,7 @@ class TranslationTool:
                 prompt=prompt,
                 context=context,
                 method_name="standard",
+                batch_input=batch_input,
             )
         except Exception as e:
             if raise_on_error:
@@ -472,6 +482,7 @@ class TranslationTool:
         delay_seconds: float = 1.0,
         max_retries: int = 3,
         raise_on_error: bool = False,
+        batch_input: BatchEnvelope | None = None,
     ) -> dict[str, dict[str, str]] | None:
         """Process a batch of phrases using structured output"""
         # Get common setup
@@ -484,6 +495,7 @@ class TranslationTool:
                 prompt=prompt,
                 context=context,
                 method_name="structured",
+                batch_input=batch_input,
             )
         except Exception as e:
             if raise_on_error:
@@ -550,6 +562,7 @@ class TranslationTool:
         delay_seconds: float = 1.0,
         max_retries: int = 3,
         raise_on_error: bool = False,
+        batch_input: BatchEnvelope | None = None,
     ) -> dict[str, dict[str, str]] | None:
         """Process a batch of phrases using function calling"""
         # Get common setup
@@ -562,6 +575,7 @@ class TranslationTool:
                 prompt=prompt,
                 context=context,
                 method_name="function",
+                batch_input=batch_input,
             )
         except Exception as e:
             if raise_on_error:

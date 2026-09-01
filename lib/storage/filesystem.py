@@ -352,6 +352,17 @@ class FileSystemStorageAdapter(StorageAdapter):
 
         return context_parts
 
+    async def load_glossary(self, project_id: str) -> dict[str, object]:
+        """Load optional ``<project>/glossary.json``."""
+        path = self.project_path / "glossary.json"
+        if not path.exists():
+            return {}
+        async with aiofiles.open(path, "r", encoding="utf-8") as glossary_file:
+            data = json.loads(await glossary_file.read())
+        if not isinstance(data, dict):
+            raise ValueError(f"Glossary must contain a JSON object: {path}")
+        return data
+
     async def append_failure(
         self,
         project_id: str,

@@ -142,12 +142,14 @@ class PromptManager:
             The formatted prompt string
         """
         try:
-            data_dump = data.model_dump()
+            data_dump = data.model_dump(exclude_none=True)
             # First check if all required variables are provided
             required_vars = set(re.findall(r"\{([^}]+)\}", template))
             for key in list(data_dump.keys()):
                 if f"{key}_json" in required_vars:
-                    data_dump[f"{key}_json"] = json.dumps(data_dump[key])
+                    data_dump[f"{key}_json"] = json.dumps(
+                        data_dump[key], ensure_ascii=False
+                    )
 
             return template.format(**data_dump)
         except KeyError as e:

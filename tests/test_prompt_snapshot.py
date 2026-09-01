@@ -24,6 +24,7 @@ import pytest
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.PromptManager import PromptManager
+from lib.envelope import BatchEnvelope, Example, PhraseEnvelope
 from lib.storage.base import StorageAdapter
 from lib.TranslationTool import language_ref, TranslationTool
 from lib.utils import Config
@@ -93,7 +94,36 @@ PHRASES = [
 
 GLOBAL_CONTEXT = (
     "A fantasy RPG with adult content; the tone is relaxed.\n"
-    "Every playable hero is a woman; the player character is a man."
+    "Every playable hero is a woman; the player character is a man.\n\n"
+    "[ru]\nUse established Russian fantasy terminology.\n\n"
+    "[uk]\nUse Ukrainian, never interpret uk as the United Kingdom."
+)
+
+BATCH_INPUT = BatchEnvelope(
+    glossary=[
+        {
+            "term": "gems",
+            "mode": "stem",
+            "t": {"ru": "самоцветы", "uk": "самоцвіти"},
+        }
+    ],
+    phrases=[
+        PhraseEnvelope(
+            phrase=PHRASES[0][0],
+            context=PHRASES[0][1],
+            reference={"ja": "ジェムを{count}個獲得した。"},
+            examples=[
+                Example(
+                    phrase="You gained {count} coins.",
+                    t={"ru": "Вы получили {count} монет."},
+                )
+            ],
+        ),
+        *[
+            PhraseEnvelope(phrase=phrase, context=context)
+            for phrase, context in PHRASES[1:]
+        ],
+    ],
 )
 
 
@@ -143,6 +173,7 @@ async def _assemble(tool: TranslationTool, method_name: str) -> str:
             prompt=prompt,
             context=GLOBAL_CONTEXT,
             method_name=method_name,
+            batch_input=BATCH_INPUT,
         )
     return batch_prompt
 

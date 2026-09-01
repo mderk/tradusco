@@ -43,6 +43,11 @@ async def async_main():
         "-l", "--lang", help="Comma-separated destination language codes"
     )
     parser.add_argument(
+        "--reference-langs",
+        default="",
+        help="Comma-separated reviewed translation columns used only for disambiguation",
+    )
+    parser.add_argument(
         "-m",
         "--model",
         default="gemini",
@@ -172,6 +177,7 @@ async def async_main():
                 context_file=args.context_file,
             )
             dst_languages = _parse_languages(args.lang)
+            reference_languages = _parse_languages(args.reference_langs)
             if not dst_languages:
                 parser.error("--lang must contain at least one language code")
             config = await storage.load_config(project_name)
@@ -182,6 +188,22 @@ async def async_main():
                 parser.error(
                     f"Invalid language(s): {', '.join(invalid_languages)}. "
                     f"Available languages: {', '.join(config.languages)}"
+                )
+            invalid_references = [
+                language
+                for language in reference_languages
+                if language not in config.languages
+            ]
+            if invalid_references:
+                parser.error(
+                    f"Invalid reference language(s): {', '.join(invalid_references)}. "
+                    f"Available languages: {', '.join(config.languages)}"
+                )
+            overlap = set(dst_languages) & set(reference_languages)
+            if overlap:
+                parser.error(
+                    "Reference languages cannot be target languages: "
+                    + ", ".join(sorted(overlap))
                 )
             storage.set_active_languages(dst_languages)
             storage.set_overwrite_active_language(bool(args.regenerate))
@@ -194,6 +216,7 @@ async def async_main():
             dst_languages=dst_languages,
             context=args.context,
             storage=storage,
+            reference_languages=reference_languages,
         )
 
         await translator.translate(

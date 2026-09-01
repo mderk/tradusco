@@ -64,6 +64,10 @@ class StorageAdapter(ABC):
         """Load translation prompt"""
         pass
 
+    async def load_glossary(self, project_id: str) -> dict[str, object]:
+        """Load the optional project glossary."""
+        return {}
+
     def set_active_language(self, language: Optional[str]) -> None:
         """
         Set the destination language for the current run.

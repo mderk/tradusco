@@ -5,6 +5,7 @@ from lib.failure_reporting import (
     FailureCategory,
     make_failure_record,
 )
+from lib.envelope import BatchEnvelope, EnvelopeBuilder
 from lib.PromptManager import PromptManager
 from lib.TranslationTool import (
     BatchErrorInfo,
@@ -69,6 +70,7 @@ class TranslationProject:
     config: Config
     dst_languages: list[str]
     language_refs: list[LanguageRef]
+    reference_languages: list[str]
     prompt: Optional[str]
     context: Optional[str]
 
@@ -85,6 +87,7 @@ class TranslationProject:
         storage: StorageAdapter,
         prompt: Optional[str] = None,
         context: Optional[str] = None,
+        reference_languages: list[str] | None = None,
     ):
         self.project_id = project_id
         self.config = config
@@ -92,6 +95,7 @@ class TranslationProject:
             raise ValueError("At least one destination language is required")
         self.dst_languages = dst_languages
         self.language_refs = [language_ref(language) for language in dst_languages]
+        self.reference_languages = list(reference_languages or [])
         self.storage = storage
         self.prompt = prompt
         self.context = context
@@ -103,6 +107,15 @@ class TranslationProject:
         for language in dst_languages:
             if language not in config.languages:
                 raise ValueError(f"Language {language} not found in project config")
+        for language in self.reference_languages:
+            if language not in config.languages:
+                raise ValueError(f"Reference language {language} not found in project config")
+        overlap = set(dst_languages) & set(self.reference_languages)
+        if overlap:
+            raise ValueError(
+                "Reference languages cannot be target languages: "
+                + ", ".join(sorted(overlap))
+            )
 
         self.base_language = config.baseLanguage
 
@@ -113,6 +126,7 @@ class TranslationProject:
         dst_languages: list[str],
         storage: StorageAdapter,
         context: str | None = None,
+        reference_languages: list[str] | None = None,
     ):
         # Load config using storage adapter
         config = await storage.load_config(project_name)
@@ -125,6 +139,7 @@ class TranslationProject:
             storage=storage,
             prompt=None,  # No direct prompt is provided via create
             context=context,
+            reference_languages=reference_languages,
         )
 
     @staticmethod
@@ -329,6 +344,7 @@ class TranslationProject:
         context: str,
         delay_seconds: float,
         max_retries: int,
+        batch_input: BatchEnvelope,
         fallback_model: Optional[str] = None,
     ) -> dict[str, dict[str, str]] | None:
         """
@@ -365,6 +381,7 @@ class TranslationProject:
                     delay_seconds,
                     max_retries,
                     raise_on_error=True,
+                    batch_input=batch_input,
                 )
             if run_method == "function":
                 return await self.translation_tool.translate_function(
@@ -377,6 +394,7 @@ class TranslationProject:
                     delay_seconds,
                     max_retries,
                     raise_on_error=True,
+                    batch_input=batch_input,
                 )
             return await self.translation_tool.translate_standard(
                 phrases_to_translate,
@@ -388,6 +406,7 @@ class TranslationProject:
                 delay_seconds,
                 max_retries,
                 raise_on_error=True,
+                batch_input=batch_input,
             )
 
         primary_info: BatchErrorInfo | None = None
@@ -520,6 +539,13 @@ class TranslationProject:
         driver,
     ) -> None:
         translations = await self.storage.load_translations(self.project_id)
+        envelope_builder = EnvelopeBuilder(
+            await self.storage.load_glossary(self.project_id),
+            translations,
+            self.base_language,
+            self.dst_languages,
+            self.reference_languages,
+        )
         progress = {
             language: await self.storage.load_progress(self.project_id, language)
             for language in self.dst_languages
@@ -559,6 +585,7 @@ class TranslationProject:
                 context,
                 delay_seconds,
                 max_retries,
+                envelope_builder.build(phrases_to_translate, phrase_indices),
                 fallback_model=fallback_model,
             )
 

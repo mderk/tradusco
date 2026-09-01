@@ -7,10 +7,16 @@ You are a professional translator. Translate the following phrases from {base_la
 
 {context}
 
-The input data schema is `[[\"Phrase to translate\", \"context for the phrase\"], ...]`. Translate only the phrases, not the context.
+- A global context subsection labeled `[code]` applies only to that target language.
+The input data is an object with a `phrases` array and an optional batch-level `glossary` array. Each phrase object has `phrase` and may have `context`, `reference`, and `examples` fields.
+- Apply matching glossary entries consistently. A glossary entry with mode `keep` must remain unchanged.
+- For glossary matching, `cs: true` means case-sensitive and `near` is a regular expression that must match the same phrase.
+- The base-language `phrase` is always the translation source. `reference` contains reviewed translations that only disambiguate meaning; never translate from them instead.
+- `examples` are reviewed neighboring phrases. Use them for terminology and pattern consistency, but translate the current base-language phrase.
+- Translate only `phrase`. Do not translate or return context, glossary, reference, or examples.
 
 Data to translate:
 {phrases_json}
 
-Translate each phrase in order, taking into account the global context and the phrase-specific context (if any).
+Translate each phrase in order, taking into account the global context and its envelope fields (if any).
 Do not translate or return the context. Return one block for every target language, using its language code. Within every block, keep translations in the same order as the input phrases.

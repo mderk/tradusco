@@ -15,6 +15,30 @@ uv run python measure_batch_baselines.py \
   --benchmark-rows 150 --benchmark-iterations 10000
 ```
 
+## Envelope input size
+
+Measured on 2026-09-01 with the shipped structured prompt, the first 50 non-empty
+rows of the same t3 corpus, 20 target languages, `ru,ja` reference columns, the
+real 1,071-entry t3 glossary, and all available neighbor examples. Tokenizer:
+`cl100k_base`.
+
+```bash
+uv run python measure_batch_baselines.py \
+  /Users/max/Documents/projects/t3/client/.tradusco/booty/translations.csv \
+  --prompt-project /Users/max/Documents/projects/t3/client/.tradusco/booty \
+  --glossary /Users/max/Documents/projects/t3/client/translation_glossary.json \
+  --prompt-rows 50
+```
+
+| Rows | Languages | Characters | Input tokens | Glossary entries | Rows with references | Examples |
+|---:|---:|---:|---:|---:|---:|---:|
+| 50 | 20 | 52,995 | 24,983 | 20 | 50 | 75 |
+
+The assembled input is about three times the default 8,192-token estimated-output
+budget, so it is materially comparable to the output. A separate batching change
+must restore an explicit input limit before production use; A2–A5 only records
+the measurement and does not silently change A6 slicing.
+
 | Language | Rows | Median | p90 |
 |---|---:|---:|---:|
 | `fr` | 4369 | 1.48 | 2.00 |

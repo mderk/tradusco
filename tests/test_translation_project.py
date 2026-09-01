@@ -147,6 +147,20 @@ class TestTranslationProject:
         # Test translation tool creation
         assert project.translation_tool is not None
 
+    async def test_reference_language_cannot_be_target(self, mock_storage):
+        config = await mock_storage.load_config("test_project")
+
+        with pytest.raises(
+            ValueError, match="Reference languages cannot be target languages: es"
+        ):
+            TranslationProject(
+                project_id="test_project",
+                config=config,
+                dst_languages=["es"],
+                reference_languages=["fr", "es"],
+                storage=mock_storage,
+            )
+
     @pytest.mark.asyncio
     async def test_get_available_models(self, mock_storage):
         """Test getting available models."""
@@ -347,6 +361,7 @@ class TestTranslationProject:
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
+            batch_input=None,
         ) -> dict[str, dict[str, str]]:
             # Simulate translation
             progress = {}
@@ -457,6 +472,7 @@ class TestTranslationProject:
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
+            batch_input=None,
         ) -> dict[str, dict[str, str]]:
             calls.append(model)
             if model == "primary-model":
@@ -508,6 +524,7 @@ class TestTranslationProject:
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
+            batch_input=None,
         ) -> dict[str, dict[str, str]]:
             raise BatchTranslationError(
                 BatchErrorInfo(kind="blocked", message="content policy")
@@ -600,6 +617,7 @@ class TestTranslationProject:
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
+            batch_input=None,
         ) -> dict[str, dict[str, str]]:
             return {
                 "es": {
@@ -659,6 +677,7 @@ class TestTranslationProject:
             delay_seconds: float = 1.0,
             max_retries: int = 3,
             raise_on_error: bool = False,
+            batch_input=None,
         ) -> dict[str, dict[str, str]]:
             if model == "primary-model":
                 return {"es": {"Hello": "Hola"}}

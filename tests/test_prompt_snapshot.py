@@ -104,7 +104,9 @@ BATCH_INPUT = BatchEnvelope(
         {
             "term": "gems",
             "mode": "stem",
-            "t": {"ru": "самоцветы", "uk": "самоцвіти"},
+            "note": "Use the inventory currency term.",
+            "except": "abilities.po",
+            "t": {"ru": ["самоцветы", "самоцветов"], "uk": "самоцвіти"},
         }
     ],
     phrases=[

@@ -2,10 +2,12 @@
 
 Measured on 2026-08-31 from
 `/Users/max/Documents/projects/t3/client/.tradusco/booty/translations.csv`.
-The twelve reviewed locale columns contain 4,369 non-empty rows each. Tokenizer:
-`tiktoken` `cl100k_base`. Ratios are translation tokens divided by English source
-tokens and rounded upward to two decimal places. These measurements document
-expected output growth; runtime batching no longer tries to predict output size.
+The twelve human-reviewed locale columns contain 4,369 non-empty rows each:
+`ru`, `fr`, `de`, `es`, `da`, `sv`, `no`, `fi`, `nl`, `ja`, `zh-cn`, and
+`zh-tw`. These are protected source/reference data, not regeneration targets.
+Tokenizer: `tiktoken` `cl100k_base`. Ratios are translation tokens divided by
+English source tokens and rounded upward to two decimal places. These measurements
+document expected output growth; runtime batching no longer predicts output size.
 
 Recalculate the table and the local 150-row batching benchmark with:
 
@@ -18,9 +20,9 @@ uv run python measure_batch_baselines.py \
 ## Envelope input size
 
 Measured on 2026-09-01 with the shipped structured prompt, the first 50 non-empty
-rows of the same t3 corpus, 20 target languages, `ru,ja` reference columns, the
-real 1,071-entry t3 glossary, and all available neighbor examples. Tokenizer:
-`cl100k_base`.
+rows of the same t3 corpus, the 17 regeneration targets, `ru,ja` reference
+columns, the real 1,071-entry t3 glossary, and all available neighbor examples.
+Tokenizer: `cl100k_base`.
 
 ```bash
 uv run python measure_batch_baselines.py \
@@ -32,7 +34,7 @@ uv run python measure_batch_baselines.py \
 
 | Rows | Languages | Characters | Input tokens | Glossary entries | Rows with references | Examples |
 |---:|---:|---:|---:|---:|---:|---:|
-| 50 | 20 | 52,995 | 24,983 | 20 | 50 | 75 |
+| 50 | 17 | 47,412 | 22,666 | 20 | 50 | 75 |
 
 The assembled input is below the runtime default of 65,536 input tokens. The
 limit is applied to this complete prompt, including context, glossary, references,
@@ -42,16 +44,16 @@ examples, and standard-method output instructions.
 |---|---:|---:|---:|
 | `fr` | 4369 | 1.48 | 2.00 |
 | `ru` | 4369 | 2.10 | 3.34 |
-| `it` | 4369 | 1.48 | 2.00 |
 | `de` | 4369 | 1.48 | 2.00 |
 | `es` | 4369 | 1.42 | 2.00 |
-| `es-la` | 4369 | 1.40 | 2.00 |
+| `da` | 4369 | 1.50 | 2.25 |
+| `sv` | 4369 | 1.50 | 2.34 |
+| `no` | 4369 | 1.45 | 2.00 |
+| `fi` | 4369 | 1.78 | 2.67 |
+| `nl` | 4369 | 1.48 | 2.00 |
 | `ja` | 4369 | 2.10 | 3.34 |
-| `ko` | 4369 | 2.17 | 3.25 |
-| `pl` | 4369 | 1.74 | 2.80 |
-| `pt-br` | 4369 | 1.40 | 2.00 |
-| `pt-pt` | 4369 | 1.42 | 2.09 |
 | `zh-cn` | 4369 | 1.73 | 2.67 |
+| `zh-tw` | 4369 | 2.00 | 3.00 |
 
 ## Batch parameters
 
@@ -103,5 +105,4 @@ For this 150-row set, always using batches of 10 costs 15 requests. Starting wit
 three batches of 50 and splitting one failed batch into five batches of 10 costs
 eight requests total; splitting two failures costs 13, while splitting all three
 costs 18. Split retry therefore wins while fewer than all three large batches
-fail. It is not enabled here because no content-filter failure was observed and
-retry policy is outside output-aware slicing.
+fail. Runtime adaptive splitting now implements this policy for `model_error`.

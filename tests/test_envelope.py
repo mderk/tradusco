@@ -5,7 +5,12 @@ def test_glossary_modes_override_near_case_and_language_filtering():
     glossary = {
         "terms": {
             "Exact": {"mode": "exact", "t": {"es": "Exacto", "fr": "Exact"}},
-            "Chest": {"mode": "stem", "t": {"es": "Cofre", "fr": "Coffre"}},
+            "Chest": {
+                "mode": "stem",
+                "note": "Use the container sense.",
+                "except": ["abilities.po"],
+                "t": {"es": ["Cofre", "Cofres"], "fr": "Coffre"},
+            },
             "Chaos": {
                 "mode": "stem",
                 "cs": True,
@@ -32,15 +37,25 @@ def test_glossary_modes_override_near_case_and_language_filtering():
         "Heroic",
     ]
     rows = [{"en": phrase, "es": ""} for phrase in phrases]
-    builder = EnvelopeBuilder(glossary, rows, "en", ["es"], [])
+    builder = EnvelopeBuilder(glossary, rows, "en", ["es"], ["fr"])
     batch = builder.build(
         [(phrase, None) for phrase in phrases],
         {phrase: index for index, phrase in enumerate(phrases)},
     ).model_dump(exclude_none=True)
 
     assert batch["glossary"] == [
-        {"term": "Exact", "mode": "exact", "t": {"es": "Exacto"}},
-        {"term": "Chest", "mode": "stem", "t": {"es": "Cofre"}},
+        {
+            "term": "Exact",
+            "mode": "exact",
+            "t": {"es": "Exacto", "fr": "Exact"},
+        },
+        {
+            "term": "Chest",
+            "mode": "stem",
+            "note": "Use the container sense.",
+            "except": ["abilities.po"],
+            "t": {"es": ["Cofre", "Cofres"], "fr": "Coffre"},
+        },
         {
             "term": "Chaos",
             "mode": "stem",
@@ -49,9 +64,13 @@ def test_glossary_modes_override_near_case_and_language_filtering():
             "t": {"es": "Caos"},
         },
         {"term": "Brand", "mode": "keep"},
-        {"term": "Hero", "mode": "stem", "t": {"es": "Héroe"}},
+        {
+            "term": "Hero",
+            "mode": "stem",
+            "t": {"es": "Héroe", "fr": "Héros"},
+        },
     ]
-    assert all(set(entry.get("t", {})) <= {"es"} for entry in batch["glossary"])
+    assert all(set(entry.get("t", {})) <= {"es", "fr"} for entry in batch["glossary"])
 
 
 def test_references_and_neighbor_examples_are_optional():

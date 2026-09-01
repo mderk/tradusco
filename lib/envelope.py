@@ -83,6 +83,9 @@ class EnvelopeBuilder:
         self.base_language = base_language
         self.dst_languages = dst_languages
         self.reference_languages = reference_languages
+        self.glossary_languages = list(
+            dict.fromkeys([*dst_languages, *reference_languages])
+        )
         self.matches = [
             self._matches(row.get(base_language, "")) for row in translations
         ]
@@ -137,8 +140,19 @@ class EnvelopeBuilder:
             filtered = (
                 {
                     language: translations[language]
-                    for language in self.dst_languages
-                    if isinstance(translations, dict) and language in translations
+                    for language in self.glossary_languages
+                    if isinstance(translations, dict)
+                    and language in translations
+                    and (
+                        isinstance(translations[language], str)
+                        or (
+                            isinstance(translations[language], list)
+                            and all(
+                                isinstance(form, str)
+                                for form in translations[language]
+                            )
+                        )
+                    )
                 }
                 if isinstance(translations, dict)
                 else {}
@@ -152,6 +166,12 @@ class EnvelopeBuilder:
             near = rule.data.get("near")
             if isinstance(near, str) and near:
                 entry["near"] = near
+            note = rule.data.get("note")
+            if isinstance(note, str) and note:
+                entry["note"] = note
+            excluded = rule.data.get("except")
+            if isinstance(excluded, (str, list)) and excluded:
+                entry["except"] = excluded
             if filtered:
                 entry["t"] = filtered
             selected.append(entry)

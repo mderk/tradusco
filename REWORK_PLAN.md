@@ -1,5 +1,12 @@
 ## Tradusco rework plan (OpenRouter Structured Outputs + Pydantic contracts)
 
+> **Status: closed (2026-09-04).** Phases 0–3 shipped. Kept as the record of the
+> decisions behind the structured-output path, the contracts and failure
+> reporting — not as work to pick up. Note that it predates multi-language runs
+> and describes one target language per run; `translate.py --lang` now takes a
+> comma-separated list. Later plans: `REWORK_PLAN_MULTILANG.md` (closed) and
+> `REWORK_PLAN_TOOLING.md` (open).
+
 ### Goal
 
 Make Tradusco’s OpenRouter path as reliable as the “direct provider” drivers by:

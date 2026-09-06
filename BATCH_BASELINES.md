@@ -1,5 +1,14 @@
 # Batch baselines
 
+> **Corpus note (2026-09-04).** The absolute counts below describe the t3 corpus
+> as it was on 31 August: 4,369 rows and a 1,071-entry glossary. That phrase list
+> has since been rebuilt and now holds 3,556 rows with 1,133 glossary entries, so
+> row counts, the entry count and the "glossary entries: 20" figure are stale as
+> measurements even where they remain true as conclusions. The per-language
+> expansion ratios and the batch-parameter conclusions do not depend on corpus
+> size. Recompute with the commands given below before citing any number here as
+> current.
+
 Measured on 2026-08-31 from
 `/Users/max/Documents/projects/t3/client/.tradusco/booty/translations.csv`.
 The twelve human-reviewed locale columns contain 4,369 non-empty rows each:

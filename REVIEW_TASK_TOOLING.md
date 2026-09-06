@@ -45,11 +45,15 @@ the code.
    items are accepted or rejected.
 2. `WORKFLOW_NOTES.md` and `BATCH_BASELINES.md` — what is already decided and
    why.
-3. A dry run of one language, to see the steps live. It costs no money:
+3. A dry run of one language, to see the steps live. It costs no money, but the
+   skipped steps are not the only ones that write: this still regenerates the
+   glossary and context artefacts, so point it at a throwaway project directory
+   rather than the real one:
 
        cd /Users/max/Documents/projects/t3/client
-       node scripts/tradusco/run.js --lang ru --skip-extract --skip-sync \
-         --skip-translate --skip-apply --skip-build --skip-export-json
+       node scripts/tradusco/run.js --lang ru --project-dir /tmp/tradusco-review \
+         --skip-extract --skip-sync --skip-translate --skip-apply --skip-build \
+         --skip-export-json
 
 4. `lib/envelope.py` — request assembly: context, glossary, reference
    languages, slicing. Most of the plan's items pass through it.

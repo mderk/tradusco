@@ -144,6 +144,11 @@ python translate.py \
   --method auto
 ```
 
+`--lang` takes a comma-separated list, and passing several targets at once is the
+cheaper path: the phrases, the context and the glossary are assembled and sent
+once for all of them rather than repeated per language. The steps that follow
+(apply, validate) are per-locale, so the loop below still applies to them.
+
 **Step 4 — apply progress into PO files**
 
 ```bash
@@ -236,7 +241,7 @@ python translate_all.py \
   --fallback-model x-ai/grok-4.3 \
   --parallel 3 \
   --batch-size 50 \
-  --batch-max-tokens 2048 \
+  --batch-max-input-tokens 65536 \
   --method auto \
   --only-missing
 ```

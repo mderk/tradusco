@@ -174,18 +174,19 @@ Each project should have a `config.json` file with the following structure:
 Run the translator with the following command:
 
 ```bash
-python translate.py -p PROJECT_PATH -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-max-tokens MAX_TOKENS] [--prompt PROMPT_FILE] [--context CONTEXT] [--context-file CONTEXT_FILE] [--method METHOD] [--list-models]
+python translate.py -p PROJECT_PATH -l LANGUAGE_CODE [-m MODEL] [-d DELAY] [-r RETRIES] [-b BATCH_SIZE] [--batch-max-input-tokens MAX_INPUT_TOKENS] [--prompt PROMPT_FILE] [--context CONTEXT] [--context-file CONTEXT_FILE] [--method METHOD] [--list-models]
 ```
 
 ### Arguments
 
 -   `-p, --project`: Path to the project directory (either absolute or relative path)
--   `-l, --lang`: Destination language code (must be defined in the project's config.json)
+-   `-l, --lang`: Destination language codes, comma-separated (each must be defined in the project's config.json). Several targets in one run share the phrases, context and glossary of each request instead of repeating them per language
+-   `--reference-langs`: Comma-separated reviewed columns sent alongside the source to disambiguate it. They are never translation targets, and a cell that is empty for a phrase is simply omitted from that phrase
 -   `-m, --model`: Model to use for translation (default: "gemini")
 -   `-d, --delay`: Delay between API calls in seconds (default: 1.0)
 -   `-r, --retries`: Maximum number of retries for failed API calls (default: 3)
 -   `-b, --batch-size`: Number of phrases to translate in a single API call (default: 50)
--   `--batch-max-tokens`: Maximum number of tokens in a translation batch (default: 2048)
+-   `--batch-max-input-tokens`: Maximum assembled input tokens for one request, counted over the complete prompt including context, glossary, references and examples (default: 65536). An oversized batch is halved until it fits. Output size is not estimated locally — see `BATCH_BASELINES.md`
 -   `--prompt`: Path to a custom translation prompt file
 -   `--context`: Translation context as a text string to guide the translation style and tone
 -   `--context-file`: Path to a file containing translation context
@@ -210,8 +211,11 @@ python translate.py -p ./custom_projects/myproject -l de -b 30
 # Use a specific model with custom delay and batch size
 python translate.py -p projects/myproject -l fr -m openai -d 2.0 -b 20
 
-# Set both batch size and maximum batch tokens
-python translate.py -p projects/myproject -l de -b 30 --batch-max-tokens 16384
+# Set both batch size and the assembled-input ceiling
+python translate.py -p projects/myproject -l de -b 30 --batch-max-input-tokens 16384
+
+# Several target languages in one run, with two reviewed reference columns
+python translate.py -p projects/myproject -l it,pl,uk,ro -b 20 --reference-langs ru,ja
 
 # Use a custom prompt file
 python translate.py -p projects/myproject -l de --prompt custom_prompts/my_prompt.txt
@@ -316,7 +320,7 @@ python translate_all.py \
   --fallback-model x-ai/grok-4.3 \
   --parallel 3 \
   --batch-size 50 \
-  --batch-max-tokens 2048 \
+  --batch-max-input-tokens 65536 \
   --method auto \
   --only-missing
 ```

@@ -60,26 +60,28 @@ gettext, a specific agent host or Node in every project.
 
 ### Reading the t3 evidence
 
-The t3 working checkout is not a stable evidence location. At this review it is
-`master` at `14ad97c538c6cc25833b94ba830d4c6b936e02c2`; local `common/main`
-at `5778c5dca93ad9dcb210f9c78e4a4509d0e98af8` also lacks `scripts/tradusco`.
-Read historical integration files without switching branches, for example:
+The t3 working checkout is not a stable evidence location: it is often on
+`master`, which lacks `scripts/tradusco`, and so does `common/main`. The
+integration lives at the tip of `steam/dev` (`143113d59d` at this review),
+54 files including both agent skills, `translation_glossary.json` and
+`translation_contexts.json`. Read it without switching branches:
 
 ```sh
-git -C /Users/max/Documents/projects/t3/client show 5761518e630f332d00f4b9805bbb2aabe50d3daf:scripts/tradusco/run.js
-git -C /Users/max/Documents/projects/t3/client show 64dc89117127e23b5efeca5070aa6be1cddfd1e1:scripts/translation-apply.js
+git -C /Users/max/Documents/projects/t3/client show steam/dev:scripts/tradusco/run.js
+git -C /Users/max/Documents/projects/t3/client show steam/dev:.claude/skills/t3-translation-context/sources.js
 ```
 
-These are reproducible evidence anchors for the runner and guarded corrections,
-not a claim that every earlier file/line citation matches the same revision.
-Resolve other missing paths in Git history and record the revision when checking.
+A live branch tip is the anchor because it gives a coherent state; individual
+historical commits do not. Earlier file/line citations in this document may
+predate it, so record the revision when checking one.
 
 ### Ordinary path
 
 | Step | Inputs and Tradusco action | Project responsibility | Output and next step |
 | --- | --- | --- | --- |
-| P0. Connect | Read configuration and declared corpora/formats; validate the integration. Reuse existing supported project state. Inspect legacy ambiguity only where an import could erase or misattribute existing work. | Supply source/catalogue access, locales and identity convention per corpus, format support and providers. A plain phrase table is valid; one project may contain several corpora. | Continue to P1 for configured and unambiguous data. Legacy migration is a separate bounded path, not a universal gate for every run or the whole design. |
-| P1. Reconcile and select | Compare source and guidance revisions, explicit editorial records, host changes and available automatic-write evidence. Classify new, changed, unchanged, retired and unmanaged records. Include selected regeneration after canon/context/style changes, not only source changes. | Identify complete versus partial extraction per corpus; supply identities and affected scope, plus regeneration policy. | Explicit work selection. Editorial values remain protected for the same source. No source/guidance change or explicit regeneration request means no model work; pending delivery may remain. |
+| P0. Connect | Read configuration and declared sources/formats; validate the integration. Reuse existing supported project state. Inspect legacy ambiguity only where an import could erase or misattribute existing work. | Supply source/catalogue access, locales and identity convention, format support and providers. A plain phrase table is valid. Records may differ in domain and identity
+convention; that is a row property, not a separate corpus object. | Continue to P1 for configured and unambiguous data. Legacy migration is a separate bounded path, not a universal gate for every run or the whole design. |
+| P1. Reconcile and select | Compare source and guidance revisions, explicit editorial records, host changes and available automatic-write evidence. Classify new, changed, unchanged, retired and unmanaged records. Include selected regeneration after canon/context/style changes, not only source changes. | Identify complete versus partial extraction for the run; supply identities and affected scope, plus regeneration policy. | Explicit work selection. Editorial values remain protected for the same source. No source/guidance change or explicit regeneration request means no model work; pending delivery may remain. |
 | P2. Prepare and decide inputs | Gather candidates/evidence through deterministic providers and optional glossary/context skills. Resolve existing decisions; where needed, prepare and accept new naming/context decisions before translation, within granted authority. Maintain accepted/deferred/rejected decisions. Then assemble guidance, references and diagnostics. | Supply product facts, canonical/style decisions, decision authority and required/optional input policy. | Ready inputs for P3 or specifically deferred preparation. Missing optional guidance alone does not force approval. Read-only inspection shows existing inputs and pending decisions without running inference or persisting changes. |
 | P3. Translate | Translate eligible selected cells from the source, sharing requests across target locales where applicable. Use current batching policy and declared models, fallback and bounded retry settings. References guide meaning and carry honest provenance. | Select models, permitted fallback, targets, optional reference-first ordering and resource limits. | Candidate results and attempt outcomes to P4. No automatic regeneration of editorial text for the same source; changed source is translated without mandatory review. |
 | P4. Validate and persist | Check response/format, repair technical failures within budget and report heuristics. Include cross-locale discrepancies where a supported check can detect them; semantic comparison is a separate inference operation, never an assumed free deterministic check. Reconcile intervening changes and record persisted outcomes. | Supply format/check policy and authorised quality-comparison scope. | Ready cells to P5 and unresolved work. Build on existing ensure-complete and placeholder quarantine, closing their outcome/selection gaps rather than replacing them. Majority agreement is not semantic proof. |
@@ -93,14 +95,66 @@ between every translation and export. Already persisted work can go from P1
 directly to P5; approved corrections enter P4 without P3. These paths expose the
 same deterministic operations to CLI users and agent skills.
 
-P2 contains a preparation loop, not just provider execution: gather evidence →
-present candidates → record accept/defer/reject → resolve inputs. Glossary and
-context decisions can occur here before the first translation, as they did in t3;
-P6 can later feed new candidates back into the same loop. Recorded rejection
-(including “not a term”) prevents repeated proposals on unchanged evidence;
-deferred items remain visible without being asked again on every run. Evidence
-changes or an explicit request may reopen them. This restores an observed
-workflow; the persisted queue representation remains to be specified.
+P2 contains a preparation loop, not just provider execution: gather candidates
+through deterministic providers and inference → write every value that can be
+derived → ask about what remains → turn an answer into a rule and apply it to
+the whole class it covers → return to the remainder. Glossary and context
+decisions can occur here before the first translation, as they did in t3; P6 can
+later feed new candidates back into the same loop. Recorded rejection (including
+“not a term”) prevents repeated proposals on unchanged evidence; deferred items
+remain visible without being asked again on every run. Evidence changes or an
+explicit request may reopen them. This restores an observed workflow; the
+persisted queue representation remains to be specified.
+
+The loop has three tiers, and the t3 measurements set their relative size.
+
+- **Derived from data.** 1032 of the 1156 glossary entries, carrying 29 928 of
+  the 32 720 language values, are copied from already localised config columns
+  by `scripts/translation-glossary.js`; the eleven-row source table at its
+  `:46-56` supplies the selector, group and match mode. Neither a human nor an
+  agent is in this path, and a rerun reproduces it exactly.
+- **Written by the agent, reviewed by sample.** All context is this tier: the
+  857 per-string formulations produced through `context-ui`, and the 18 domain
+  functions plus one pattern rule in `sources.js` that cover roughly 2655 further
+  rows. A human wrote none of the text. What is reviewed is not the row but the
+  finite set of formulations, each shown with the number of rows it covers and
+  one example row.
+- **Asked of a person.** Only records whose meaning cannot be established from
+  configs or usage sites in code. In t3 that is the residue of context coverage,
+  about 62 of 3556 rows.
+
+So a rule is not a third escalation level between computing and asking. It is
+how the second tier stays reviewable: one accepted formulation replaces
+thousands of individual approvals. A rule is a repository record with a selector
+over a class of records, a computable value function, the right to return “no
+statement”, and reproducibility over the whole class. A per-record answer meets
+none of these and never becomes one implicitly.
+
+Tradusco owns the protocol around rules, never the rules themselves, which
+depend on the host's config structure and stay in the project layer. Four
+obligations follow.
+
+- A coverage report per class, showing where records attach and how many are
+  unexplained, so an unexplained group is visible before per-record work starts.
+- A dry run by default, printing the resulting set of formulations with row
+  counts and one example each, not a list of rows.
+- Writing as a separate explicit step.
+- Editing rules as an action outside the ordinary run, on demand rather than as
+  a side effect of processing records.
+
+Answers must be looked up before they are asked for, and the order between
+providers is part of that. The glossary is prepared before context and serves as
+its lookup: in t3 a context formulation called Leila an in-game item while the
+glossary already held her as `hero`/`stem` from `heroes/heroes.csv`, and a
+hero-name predicate existed and was used by another rule. Glossary candidates
+arise from two triggers, corpus-wide frequency mining and the selection at hand,
+and both consult the recorded accept/defer/reject decisions first.
+
+Context has four levels and merges from general to specific: project-wide
+context, language context (`load_context`, `lib/storage/filesystem.py:325`), the
+per-record `context` column, and per-record per-language `context_{language}`
+columns (`lib/TranslationProject.py:679`). A rule fills the record-level column;
+it does not overwrite a more specific level.
 
 An accepted canon/context change can select affected unreviewed cells for
 regeneration even when source text is unchanged. Scope may initially be explicit;
@@ -126,7 +180,7 @@ and recomputing export after progress changes does not prove what was last expor
 | P1 | Source changes under a stable ID, or source-as-key changes | Translate the new source automatically after normal checks; preserve old source/key, translation and editorial history. Do not demand reapproval just because the source changed. |
 | P1 | Only identity/format spelling changes, with unchanged source meaning | **Proposed:** reuse only with an unambiguous declared mapping. Whitespace removal is not proof. A changed source follows the preceding row unless a separately agreed migration rule applies. |
 | P1 | Record disappears or later returns | Preserve history. A filtered selection is not evidence of retirement; only a complete source snapshot can establish absence. **Open:** archive/reactivation mechanics and treatment of unknown legacy provenance. |
-| P1/P5 | Host key was never managed by the selected corpus | Classify as unmanaged, not retired. Preserve it during export. A complete snapshot establishes retirement only within that corpus's previously managed identities. |
+| P1/P5 | Host key was never managed by the selected extraction | Classify as unmanaged, not retired. Preserve it during export. A complete snapshot establishes retirement only within the identities that extraction previously managed. |
 | P1/P2 | Canon or context changes with unchanged source | Select affected eligible cells for regeneration under existing locale policy; retain editorial values. Explain selection and return through preparation before model execution. |
 | P2 | Candidate was rejected or deferred previously | Reuse the decision for unchanged evidence. Do not repeatedly request the same naming decision; deferred work can be resumed explicitly. |
 | P1/P5 | Value differs from the known automatic value, unexplained by recorded automatic operations | Treat as presumed editorial, retain that distinction from confirmed review, and prefer it over automatic text for the same source. **Open:** accounting for automatic writers and competing editorial edits. |
@@ -212,8 +266,9 @@ before the rework provides it.
 ### Existing decisions and mechanisms to retain
 
 - Identity direction is already recorded in `WORKFLOW_NOTES.md`: stable ID plus
-  source-text hash where IDs exist, source-as-key where appropriate, selected per
-  corpus. One project can contain both. The remaining task is representation,
+  source-text hash where IDs exist, source-as-key where appropriate, chosen per
+  record and recorded on it. One project can contain both. The remaining task is
+  representation,
   disambiguation and migration, not choosing the principle again.
 - `regenerateLangs` already gates regeneration in the t3 runner (historical
   `run.js:343` at the revision above). Preserve that protection. It is not a
@@ -234,7 +289,7 @@ before the rework provides it.
 
 The earlier U1–U6 list is now subordinate to this process:
 
-- **P0/P1:** specify installation/config ownership and per-corpus identity
+- **P0/P1:** specify installation/config ownership and record identity
   representation (U1/U3). Check existing provenance evidence before adding storage;
   legacy first-import reconciliation (U2) is a migration case, not a universal gate.
 - **P3/P4/P7:** specify retry-limit semantics and recovery across write boundaries,
@@ -904,7 +959,7 @@ one thing impossible outright: two identical source phrases that must translate
 differently in different places cannot be represented at all, no matter how good
 the glossary or the context is. `WORKFLOW_NOTES.md` works the general problem
 through and lands on stable id plus a hash of the source text stored beside the
-translation — gettext's fuzzy flag, computed explicitly — decided per corpus
+translation — gettext's fuzzy flag, computed explicitly — decided per project
 rather than per project, because config-derived strings usually have ids and UI
 strings usually do not. That is the largest open design item in this repository,
 it is prerequisite to any honest answer on R5 and on rekeying, and it should be

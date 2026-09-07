@@ -1,5 +1,79 @@
 # Response to the tooling-plan review (2026-09-07)
 
+## Current checkpoint: document agreement, not implementation
+
+The owner clarified the method: construct one coherent end-to-end workflow with
+ordinary and edge cases, then reconcile the accumulated records into a consistent
+rework task. Start with **End-to-end workflow: the organising specification** in
+`REWORK_PLAN_TOOLING.md`. The earlier U1–U6 remainder is now attached to steps of
+that workflow, not a separate agenda to approve before understanding the process.
+
+The original author's subsequent review restored pre-translation glossary/context
+decisions, persistent decision queues, guidance-triggered regeneration and unmanaged
+keys to that workflow. Explicit editorial records precede inference; existing
+per-corpus identity direction, locale regeneration guards and repair mechanisms
+are retained. `REVIEW_ROUND2_TOOLING.md` records N1–N12 dispositions and limits.
+Historical t3 evidence now has pinned Git references because the working checkout
+and local common/main do not contain the reviewed tooling paths.
+
+The second review is in `REVIEW_ROUND2_TOOLING.md`: factual corrections have been
+applied to the plan, but its product-direction and process recommendations are
+discussion proposals. They have not been approved as implementation scope.
+
+The owner subsequently confirmed the product goal: standalone Tradusco usable
+across projects, enriched with common deterministic and agent-assisted workflows
+learned in t3, while retaining necessary project-dependent tools. That goal is
+now recorded in the plan and the second review. Delivery boundaries, contracts
+and implementation remain subject to document agreement.
+
+The owner has since agreed source-change and editorial-priority behaviour,
+recorded in the plan's R section: new source is translated automatically;
+unexplained changes from a known automatic value are presumed editorial;
+editorial text wins over glossary rules without a review gate. The second review
+distinguishes these decisions from remaining proposals, including the next
+completion/recovery block. The owner subsequently agreed its presented scenarios:
+preserve completed cells, retry unresolved work within budget, resume delivery
+without retranslating saved results, and export the ready subset with a partial
+outcome. The owner also agreed automatic deterministic input preparation,
+nonblocking missing guidance, honestly labelled machine references, optional
+reference-first ordering and technical repair versus heuristic warnings. These
+are reflected in the plan's W2/W5/W7 and L sections. No
+implementation is authorised by these agreements.
+
+On 7 September an agent started implementing O4 before the user had approved
+the design. The user clarified that the next phase is repeated document reviews
+until agreement, including discussion of the agent's own proposals. Implementation
+requires a separate explicit instruction. Do not resume it merely because O4 is
+first in the work order below.
+
+The unfinished experiment was removed from the working tree and preserved outside
+this repository:
+
+- Patch: `/Users/max/Documents/projects/t3/artifacts/tradusco-review/O4-unapproved-20260907.patch`
+- Base commit: `9ff879c99fb4cc0e8f1421c0be36ef3ca1f9e0cd`
+- SHA-256: `2ea6ff5d0bcfc28f39643e450c46d2da12e95e1326aeda8e6834c6672c509170`
+- Recovery was checked against an archive of that commit: applying the patch
+  reproduced all ten edited or added files byte for byte. After later changes,
+  run `git apply --check <patch>` and review compatibility before restoring it.
+
+It explores per-request and per-batch timeouts, a shared attempt counter across
+retries and fallback models, disabled OpenAI/xAI SDK retries, and counting
+Gemini generation calls beneath LangChain's hardcoded retries. It also adds
+offline tests. The 600/1800-second ceilings, six-attempt cap, `requestLimits`
+configuration schema, and Gemini client wrapping are **unapproved choices**, not
+accepted requirements. No production data was edited and no paid calls were made.
+
+The last offline test run reported 96 passed, 2 failed and 7 deselected. The two
+failures were prompt snapshots; they were not investigated or updated in this
+experiment. Do not treat the patch as a finished or fully validated O4 change.
+Nothing was committed or pushed for this experiment; history was not rewritten.
+
+The handoff below predates this checkpoint. Also correct its R2 measurement when
+reviewing it: 1206 is the number of rows receiving examples, 3564 is the number
+of example pairs, and the measured corpus contains 3559 rows.
+
+## Review handoff
+
 What was done with the review of `REWORK_PLAN_TOOLING.md`, what changed in the
 plan as a result, and what the next person picks up. Read this before
 `REWORK_PLAN_TOOLING.md`: it says which parts of that document are new and which
@@ -82,8 +156,8 @@ Items folded into others rather than kept separate:
   one set of fixtures for both languages comes before L5's feedback loop.
 - **L7**, **C3** demoted to proposals — neither the inflection detector's error
   rate nor the cache saving has been measured.
-- **R2** — the mechanism is confirmed and sized (1206 of 3564 phrases get such
-  examples for `uk`); the harm is not, and that comparison decides between the
+- **R2** — the mechanism is confirmed and sized (1206 of 3559 rows receive examples for `uk`,
+  with 3564 example pairs); the harm is not, and that comparison decides between the
   two cures.
 
 New items:
@@ -161,11 +235,10 @@ first three things it now says to do:
    the timeout value comes from. Everything below is measured on runs, and a run
    that hangs cannot currently be told from one that works.
 2. **O3**, the run log, then O1, O2, O2a on top of it.
-3. **Measure R2**, which does not wait on either. `EnvelopeBuilder` is pure, so
-   building an envelope from the current CSV with `--regenerate` semantics and
-   reading what comes out answers it without calling a model. If examples really
-   do anchor regeneration to the text it replaces, that changes the quality of
-   everything translated from scratch.
+3. **Separate the two R2 checks.** Offline envelope inspection is already
+   confirmed and does not wait on either. It establishes which text is sent,
+   not its effect on quality. Any new paid quality comparison needs an approved
+   experiment and budget.
 
 Also open and unscheduled: sixteen quote-check findings in t3 left unfixed by a
 release-time decision (`Find Match` in ten locales, `Settings` in es-la and uk,

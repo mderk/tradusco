@@ -10,10 +10,20 @@
 Written 2026-09-04 from a review of the Tradusco integration in the t3 project:
 23 scripts in `client/scripts/translation-*.js`, 8 in `client/scripts/tradusco/`,
 3 shared libraries in `client/scripts/lib/`, and two agent skills that drive the
-glossary and context pipelines.
+glossary and context pipelines. These are the original inventory counts, not a
+current recount.
 
 Two questions at once: which parts of that integration are generic and belong in
 Tradusco, and what Tradusco itself needs so they can land there.
+
+**Product goal (confirmed by the owner, 2026-09-07).** Tradusco is to be a
+standalone tool usable in other projects. Recent t3 translation work supplies
+new reusable patterns and workflows, including deterministic operations, that
+should enrich the tool itself. Project-dependent tools remain a supported and
+necessary layer: the goal is to transfer common behaviour while retaining that
+boundary, not to absorb the host project's knowledge or to keep Tradusco a
+t3-only utility. This goal does not approve individual design proposals or
+authorise implementation; the current phase is document agreement.
 
 Every item with a `file:line` reference was verified against the code. Items
 without one are proposals, not findings, and are labelled as such.
@@ -32,7 +42,220 @@ t3 measurement second, and where a t3 convention leaked into the requirement it
 is called out as a project adapter rather than built in. Nothing in this plan
 should assume gettext, lingui, a particular placeholder syntax, or a game.
 
+## End-to-end workflow: the organising specification
+
+**Status: assembled for whole-process review, not implementation.** This section
+organises the agreed behaviour into one process. The ordinary translation,
+editorial-priority, partial-export and input-readiness rules were agreed with the
+owner; connecting details and explicitly open cases below remain proposals.
+Review this process first. The O/C/R/L/F/T/W/G inventory afterwards supplies
+evidence and implementation concerns, not a second independent workflow.
+
+The objective is a reusable round trip: connect a project, recognise its changes,
+prepare translation inputs, translate the selected cells, validate and persist
+them, deliver them to the host, and incorporate subsequent editorial work.
+Tradusco owns common operations and their outcomes. The project supplies source
+meaning, identity conventions and host integration. No step assumes a game,
+gettext, a specific agent host or Node in every project.
+
+### Reading the t3 evidence
+
+The t3 working checkout is not a stable evidence location. At this review it is
+`master` at `14ad97c538c6cc25833b94ba830d4c6b936e02c2`; local `common/main`
+at `5778c5dca93ad9dcb210f9c78e4a4509d0e98af8` also lacks `scripts/tradusco`.
+Read historical integration files without switching branches, for example:
+
+```sh
+git -C /Users/max/Documents/projects/t3/client show 5761518e630f332d00f4b9805bbb2aabe50d3daf:scripts/tradusco/run.js
+git -C /Users/max/Documents/projects/t3/client show 64dc89117127e23b5efeca5070aa6be1cddfd1e1:scripts/translation-apply.js
+```
+
+These are reproducible evidence anchors for the runner and guarded corrections,
+not a claim that every earlier file/line citation matches the same revision.
+Resolve other missing paths in Git history and record the revision when checking.
+
+### Ordinary path
+
+| Step | Inputs and Tradusco action | Project responsibility | Output and next step |
+| --- | --- | --- | --- |
+| P0. Connect | Read configuration and declared corpora/formats; validate the integration. Reuse existing supported project state. Inspect legacy ambiguity only where an import could erase or misattribute existing work. | Supply source/catalogue access, locales and identity convention per corpus, format support and providers. A plain phrase table is valid; one project may contain several corpora. | Continue to P1 for configured and unambiguous data. Legacy migration is a separate bounded path, not a universal gate for every run or the whole design. |
+| P1. Reconcile and select | Compare source and guidance revisions, explicit editorial records, host changes and available automatic-write evidence. Classify new, changed, unchanged, retired and unmanaged records. Include selected regeneration after canon/context/style changes, not only source changes. | Identify complete versus partial extraction per corpus; supply identities and affected scope, plus regeneration policy. | Explicit work selection. Editorial values remain protected for the same source. No source/guidance change or explicit regeneration request means no model work; pending delivery may remain. |
+| P2. Prepare and decide inputs | Gather candidates/evidence through deterministic providers and optional glossary/context skills. Resolve existing decisions; where needed, prepare and accept new naming/context decisions before translation, within granted authority. Maintain accepted/deferred/rejected decisions. Then assemble guidance, references and diagnostics. | Supply product facts, canonical/style decisions, decision authority and required/optional input policy. | Ready inputs for P3 or specifically deferred preparation. Missing optional guidance alone does not force approval. Read-only inspection shows existing inputs and pending decisions without running inference or persisting changes. |
+| P3. Translate | Translate eligible selected cells from the source, sharing requests across target locales where applicable. Use current batching policy and declared models, fallback and bounded retry settings. References guide meaning and carry honest provenance. | Select models, permitted fallback, targets, optional reference-first ordering and resource limits. | Candidate results and attempt outcomes to P4. No automatic regeneration of editorial text for the same source; changed source is translated without mandatory review. |
+| P4. Validate and persist | Check response/format, repair technical failures within budget and report heuristics. Include cross-locale discrepancies where a supported check can detect them; semantic comparison is a separate inference operation, never an assumed free deterministic check. Reconcile intervening changes and record persisted outcomes. | Supply format/check policy and authorised quality-comparison scope. | Ready cells to P5 and unresolved work. Build on existing ensure-complete and placeholder quarantine, closing their outcome/selection gaps rather than replacing them. Majority agreement is not semantic proof. |
+| P5. Deliver | Reconcile pending host edits, export ready valid cells without erasing unrelated/unresolved values, invoke requested build steps and compare expected identities with output artefacts. Record translation completion separately from delivery. | Supply writer, compiler/build command, artefact reader and identity normalisation; own fallback and release policy. | Complete or partial delivery report. Retry failed delivery from persisted translations, without retranslating them. Export to project files does not itself publish a release. |
+| P6. Review and improve, when requested | Present related records in project order across locales with source/context. Accept scoped editorial decisions, apply guarded corrections through the common write operation and preserve review provenance. Suggest reusable glossary/context/check improvements separately from individual corrections. | Supply grouping/order, usage or speaker facts, reviewer authority and editorial decisions. | Corrected cells return through P4's validation/persistence and P5's delivery, without a translation call merely to apply a decision. Accepted reusable guidance becomes input for P2 in a later cycle. |
+| P7. Continue | On a later invocation, reconcile current state and resume unresolved translation or undelivered persisted results. New source/host changes return to P1; optional review returns to P6. | Choose the next scope or resume operation. | A new bounded invocation with preserved history; completed work is not repeated merely because another cell or stage failed. |
+
+The automatic path is P1 → P2 → P3 → P4 → P5. P0 is initial setup or an
+integration change. P6 is an independently invoked editorial path, not a gate
+between every translation and export. Already persisted work can go from P1
+directly to P5; approved corrections enter P4 without P3. These paths expose the
+same deterministic operations to CLI users and agent skills.
+
+P2 contains a preparation loop, not just provider execution: gather evidence →
+present candidates → record accept/defer/reject → resolve inputs. Glossary and
+context decisions can occur here before the first translation, as they did in t3;
+P6 can later feed new candidates back into the same loop. Recorded rejection
+(including “not a term”) prevents repeated proposals on unchanged evidence;
+deferred items remain visible without being asked again on every run. Evidence
+changes or an explicit request may reopen them. This restores an observed
+workflow; the persisted queue representation remains to be specified.
+
+An accepted canon/context change can select affected unreviewed cells for
+regeneration even when source text is unchanged. Scope may initially be explicit;
+automatic dependency selection must explain its basis. Preserve editorial values
+and the existing locale regeneration allow-list. Preparation that changes the
+scope returns to P1 before dispatching requests. Optional inference work and
+translation are distinct from read-only inspection and require appropriate run
+authority; deterministic preparation does not invent terminology decisions.
+
+Prefer explicit editorial recording at the moment of a supported correction.
+`translation_fixes.json` already demonstrates that path. Infer presumed editorial
+origin only for changes arriving outside it. Before adding baseline storage,
+check whether existing progress, fixes and export state suffice. Progress is not
+automatically a pure model-output log: back-sync writes imported values into it,
+and recomputing export after progress changes does not prove what was last exported.
+
+### Branches and edge cases at their point of occurrence
+
+| At | Case | Required behaviour / explicit open boundary |
+| --- | --- | --- |
+| P0 | Existing catalogue and progress disagree, with no trustworthy baseline | Preserve both; do not invent authorship from timestamps. **Open:** first-import selection and reconciliation procedure. Subsequent editorial inference requires recorded automatic values. |
+| P0/P1 | Identical source text appears under different identities | Do not collapse distinct meanings. **Open:** representation and legacy migration. Domain labels alone are not identity. Reject an unsupported ambiguous import rather than silently merge. |
+| P1 | Source changes under a stable ID, or source-as-key changes | Translate the new source automatically after normal checks; preserve old source/key, translation and editorial history. Do not demand reapproval just because the source changed. |
+| P1 | Only identity/format spelling changes, with unchanged source meaning | **Proposed:** reuse only with an unambiguous declared mapping. Whitespace removal is not proof. A changed source follows the preceding row unless a separately agreed migration rule applies. |
+| P1 | Record disappears or later returns | Preserve history. A filtered selection is not evidence of retirement; only a complete source snapshot can establish absence. **Open:** archive/reactivation mechanics and treatment of unknown legacy provenance. |
+| P1/P5 | Host key was never managed by the selected corpus | Classify as unmanaged, not retired. Preserve it during export. A complete snapshot establishes retirement only within that corpus's previously managed identities. |
+| P1/P2 | Canon or context changes with unchanged source | Select affected eligible cells for regeneration under existing locale policy; retain editorial values. Explain selection and return through preparation before model execution. |
+| P2 | Candidate was rejected or deferred previously | Reuse the decision for unchanged evidence. Do not repeatedly request the same naming decision; deferred work can be resumed explicitly. |
+| P1/P5 | Value differs from the known automatic value, unexplained by recorded automatic operations | Treat as presumed editorial, retain that distinction from confirmed review, and prefer it over automatic text for the same source. **Open:** accounting for automatic writers and competing editorial edits. |
+| P2 | No context, applicable term or reference exists | Continue with available guidance and report omissions. Do not manufacture product facts, require canon for every word or force reference-first translation. |
+| P2 | Configured provider fails or guidance is structurally invalid | Report the failure distinctly from zero coverage; stop dependent work unless the provider was declared optional. Do not silently substitute partial generated output. |
+| P2/P3 | Reference was machine-translated or its source changed | Machine origin is permitted and labelled honestly. Material for an outdated source is not presented as a current translation. Reference selection never changes which base text is translated. |
+| P3 | One locale is missing from a multi-locale response | Preserve valid other locales; retry only unresolved eligible cells within budget. Outcome is partial if they remain unresolved. |
+| P3 | Timeout, transient failure, refusal or request cannot fit | Keep distinct failure reasons and bounded continuation. Retain current input-aware/split policy pending evidence. **Open:** initial limits, nested retry accounting, handling one oversized phrase and refusal isolation. No invented fallback model or content rewriting to force completion. |
+| P4 | Required placeholder is lost | The candidate is technically invalid; attempt bounded repair of automatic output, preserving successful cells. Exhaustion leaves unresolved work. |
+| P4/P6 | Unusual script, length, source-equal text or glossary disagreement with editorial text | Report an applicable warning; no paid repair from a heuristic alone. Editorial text wins over glossary rules without a mandatory resolution step. Technical validation still applies. |
+| P4 | Source or editorial text changes while the model is working | Old-source output cannot satisfy the new revision; editorial changes for the same revision win. Report superseded work and reconcile the next selection. |
+| P4/P5 | Crash occurs between writes, or another writer starts | Preserve completed work and recover a coherent state. **Open:** common writer coordination and recoverable persistence mechanism; per-file atomicity alone is insufficient. |
+| P5 | 97 of 100 cells are ready | Export the ready subset now; preserve unresolved host values and report partial completion. Stale values are not counted as fresh success. An adapter unable to export partially reports that limitation, without losing saved translations. |
+| P5 | Compiler exits zero but drops a key | Report incomplete delivery from artefact comparison. Correct the delivery problem and retry P5, without another model call for saved valid translations. |
+| P6 | Review proposal was prepared against a value that has since changed | Keep the original expected value; do not replace it with the live value when converting the proposal. Report the conflict and retain both editorial decisions when neither has established precedence. |
+| P6 | A correction suggests a reusable rule | Record the candidate and evidence separately. Project-authorised decisions can accept it; an isolated correction does not automatically become a global rule. Cross-locale agreement is a clue, not proof against the source. |
+| P7 | Interrupted request has no recoverable result | Resume from known persistence. A replacement request may be needed; do not promise zero duplicate provider charges. Never retranslate a known persisted result solely to retry export. |
+
+### Worked round trip for review
+
+This is an acceptance scenario, not a claim that it has been executed.
+
+1. Connect an existing project; import known state and resolve first-import
+   ambiguity according to the eventual P0 contract.
+2. Add three strings and change one source string that previously had editorial
+   text. P1 selects four new translations per requested locale and retains history.
+3. P2 refreshes available deterministic guidance. One new string lacks context;
+   it is reported, but translation proceeds. Available machine references are
+   labelled as such.
+4. One locale fails for one cell. Persist other valid results, retry only that
+   cell within budget and export ready work. Report partial completion if needed.
+5. A later resume completes the remaining cell. If the build fails, another
+   delivery attempt uses persisted results and does not call a model.
+6. An editor changes one exported value. At the next reconciliation the
+   unexplained departure from its known automatic value is presumed editorial;
+   it survives regeneration and export for that source revision, even if the
+   glossary disagrees.
+7. Optional review records a correction and a context suggestion. Apply the
+   authorised correction through guarded persistence; only an accepted context
+   change enters future input preparation.
+8. Another source change starts the next cycle automatically. The old editorial
+   translation remains in history; it does not block the new translation.
+9. Change canon without changing source: select affected unreviewed cells in
+   allowed locales, prepare inputs and regenerate. Preserve editorial cells and
+   host keys that were never managed by the corpus.
+
+Repeat the same round trip in t3 and a small independent integration with
+different catalogue/identity conventions, changing only configuration/providers.
+Offline model substitutes can verify control flow and persistence; they cannot
+establish translation quality. Paid quality experiments remain separate.
+
+### Reconciliation with the existing records
+
+| Process responsibility | Existing plan coverage | Required reconciliation |
+| --- | --- | --- |
+| Connection, sources and identity (P0/P1) | G7, G11; F1–F5; R4–R6; init | Identity/config/migration must support the selected process before dependent writes ship. Sampling syntax is not proof of format support. |
+| Selection and input preparation (P1/P2) | G1, G8; R1–R3; W1/W2/W5–W7; L6/L10; glossary/context skills | Selection feeds the same operations in preview and execution. Machine guidance is permitted with provenance; optional input gaps do not become gates. |
+| Model execution and observation (P3/P4) | G3; O1–O4 including O2a; C1–C5; W3/W4 | Define bounded outcomes; expose omissions, costs and failures. C3/C5 remain experiments, and R2 quality comparison does not block the agreed reference policy. |
+| Validation and editorial preservation (P4/P6) | G4–G6; L1–L10; R4/R6; F2/F4 | Shared applicability; technical repair versus warnings. L7 remains an experiment. Glossary is not an authority to overwrite editorial text. |
+| Persistence, export and recovery (P4/P5/P7) | G2/G5/G10/G11; O2/O3; R5; T1/T2; W3/W8 | One preservation protocol across writers; partial export and delivery verification; retirement separate from missing selected rows. |
+| Reading and learning from review (P6) | G8/G9; L3/L4/L8/L10; context/glossary/review skills | Generic ordered reading and decision tracking, with project meaning outside Tradusco. No compulsory semantic review on the ordinary path. |
+
+`WORKFLOW_NOTES.md` contributes input preparation, separate manual/generated
+context, source authority, identity invalidation, transport checks and deriving
+rules from editorial work. Its reviewed-only reference rule, blanket lint gate
+and CSV-only correction advice are superseded for this rework by the agreed
+process. Current-runtime descriptions remain historical facts, not implemented
+promises of this design.
+
+`REVIEW_SKILL_SPEC.md` contributes grouped multilingual reading, bounded scope,
+defect categories, guarded corrections and resumable review. The rework must use
+the shared write operation rather than mandate one source file format. Majority
+agreement across locales is diagnostic evidence, not an automatic semantic
+verdict; glossary disagreement cannot override protected editorial text.
+
+`GLOSSARY.md` supplies current merge/matching semantics; shared audit must agree
+with prompt selection. `BATCH_BASELINES.md` supplies the current batching policy
+and dated measurements, not approval to restore the cancelled output heuristic.
+`INTEGRATION_GUIDE.md` describes existing CSV/PO use and explicitly notes that an
+ID column does not yet change progress identity; P0/P1 must not promise otherwise
+before the rework provides it.
+
+### Existing decisions and mechanisms to retain
+
+- Identity direction is already recorded in `WORKFLOW_NOTES.md`: stable ID plus
+  source-text hash where IDs exist, source-as-key where appropriate, selected per
+  corpus. One project can contain both. The remaining task is representation,
+  disambiguation and migration, not choosing the principle again.
+- `regenerateLangs` already gates regeneration in the t3 runner (historical
+  `run.js:343` at the revision above). Preserve that protection. It is not a
+  demonstrated prohibition of all automatic gap filling or new-source translation.
+- Existing `--ensure-complete` and `sync_project_from_csv.py:202` provide gap
+  recovery and placeholder quarantine. Extend them for failed replacements,
+  per-locale outcomes, bounded accounting and interrupted writes.
+- Explicit protected corrections already exist in `translation_fixes.json`.
+  Their two-write durability gap remains; their existence must not be replaced
+  by an authorship-inference framework.
+- **Required rework, not an experiment:** remove unconditional reviewed-status
+  claims for both `reference` and `examples` in `prompts/translation.txt:18–19`.
+  Carry actual available provenance when presenting guidance. This follows the
+  agreed policy, independent of R2 quality measurements. The prompt is unchanged
+  during documentation review; its wording and associated checks belong with P2/P3.
+
+### What prevents this workflow from becoming an implementation-ready task
+
+The earlier U1–U6 list is now subordinate to this process:
+
+- **P0/P1:** specify installation/config ownership and per-corpus identity
+  representation (U1/U3). Check existing provenance evidence before adding storage;
+  legacy first-import reconciliation (U2) is a migration case, not a universal gate.
+- **P3/P4/P7:** specify retry-limit semantics and recovery across write boundaries,
+  including the explicit oversized-request/refusal branches (U4/U5).
+- **Across the round trip:** choose the first supported integration capabilities,
+  map every existing item to delivery or deferred experiment, then replace the
+  old alphabetical work order with those dependencies (U6).
+
+These are gaps to fill inside the process, not a new parallel checklist. The
+task is ready when the selected round trip and its failure branches have one
+unambiguous behaviour, responsibilities and offline acceptance evidence, with
+remaining experiments explicitly deferred. Agreement on this document still
+does not authorise implementation.
+
 ## Three layers
+
+The proposed operation-by-operation responsibility map is in
+[`REVIEW_ROUND2_TOOLING.md`](REVIEW_ROUND2_TOOLING.md#responsibility-map-concrete-t3-patterns).
+It covers G1–G11 and the context, review and agent workflows, with provider inputs
+and acceptance examples. It is pending agreement; the layer descriptions below
+have not yet been rewritten to adopt its proposed boundary changes.
 
 The boundary does not run script by script. It runs between layers.
 
@@ -94,24 +317,23 @@ the project supplies a provider.**
 
 ## Language and packaging
 
-Tradusco is Python. The integration is Node, and that is not an accident: this
-layer is catalog-format work, and catalog formats are read and written where the
-frontend toolchains live. Whatever a host project uses — gettext, ICU, i18next,
-Fluent — its parser, its extractor and its compiler are Node packages, and the
-integration has to speak to them. Rewriting the layer in Python buys nothing and
-costs every one of those parsers.
+Tradusco is Python and the current t3 integration is Node. This establishes a
+working implementation, not a Node requirement for every host. Existing format
+readers and host toolchains should inform packaging; the standalone installation
+contract and which operations require Node remain undecided.
 
 Proposal: a `tools/` directory in the Tradusco repository with its own
 `package.json`, published alongside the Python package. The contract between the
 two languages already exists and is already used by both sides —
-`tradusco.config.json` is read today by `preflight.js`, `lib/glossary.js` and
-`lib/context.js`. Only preflight and status need a Python entry point, because
-they gate `translate.py`.
+`tradusco.config.json` is read today by the Node integration. The Python engine
+reads `<project>/config.json` (`lib/storage/filesystem.py:65`), so these are not
+yet one shared configuration contract. Ownership, precedence and propagation of
+settings between the two files remain to be specified. Python entry points and
+Node packaging are proposals, not settled consequences of the current layout.
 
-The alternative — keep the code in each project and standardise only the file
-formats and CLI surface in the docs — is cheaper now and pays for itself never.
-F3 is the case in point: the same defect exists in Tradusco's extractor and in
-the t3 copy of it, was found and fixed once in the copy, and is still live here.
+Duplicating common operations across projects has a maintenance cost: F3 records
+an extractor defect fixed in the t3 copy but still present here. This supports
+sharing the operation, without proving a particular language or packaging choice.
 
 ## What moves out of the integration
 
@@ -127,13 +349,14 @@ the t3 copy of it, was found and fixed once in the copy, and is still live here.
 | G8 | `translation-terms.js` | mining glossary candidates from English strings by frequency and mid-sentence capitalisation |
 | G9 | `translation-catalog.js` | read one catalog across all languages at once, for review |
 | G10 | `tradusco/validate_po.js`, `export_translation_json.js` | catalog validation, and `progress.json` → catalog export. The traversal and the merge rules are generic, the output shape is a project adapter |
-| G11 | `scripts/lib/{csv,po,dotted-args}.js` | CSV, `.po` reading and the domain map, argument parsing |
+| G11 | `scripts/lib/{csv,po,dotted-args}.js` | CSV and `.po` reading, the domain map, and dotted-placeholder normalisation (format/project-specific parts must be separated) |
 
 Stays in the project: building the `terms` section from config tables, the
 context source map, reading dialogue in script order, per-language style rules,
 and review bookkeeping. Runtime coverage (`verify_runtime_coverage.js`,
 `check-compiled-catalogs.js`) is a mixed case — see the transport section: the
-gate is generic, only the compiler invocation is not.
+gate is generic; compiler invocation, artefact reading and key normalisation
+need adapters.
 
 One cleanup on the way out: t3 currently has two implementations of context
 filling — `scripts/translation-context.js` and the skill's `context-apply.js`.
@@ -143,6 +366,17 @@ first, and because it has no manual layer, the manual context was about to be
 hardcoded into it. Two entry points for one step means the wrong one gets used.
 
 ## Run observability (O)
+
+**Agreed completion/recovery behaviour (owner, 2026-09-07).** Retain successfully
+persisted cells and retry only unresolved eligible work within the declared budget.
+After budget exhaustion, report partial completion and resume only remaining work
+on a subsequent invocation, reconciling source and editorial changes first.
+Export the valid ready subset immediately without deleting unresolved/unrelated
+host values; preserved old text is not a successful new translation. If export
+or build fails after persistence, retry delivery without retranslating those
+results. After interruption, continue from confirmed persisted work; a lost model
+response may require another request. Completion of translation and delivery are
+reported separately. This agrees behaviour, not implementation or numerical limits.
 
 **O1. The only progress signal says nothing.**
 `lib/TranslationProject.py:494` prints `Progress saved: N`, where N is the total
@@ -175,9 +409,11 @@ What does not work is the reporting around it.
   text, and nothing outside that file says so.
 
 Needed: a non-zero exit code when phrases were abandoned, an end-of-run summary
-that reads the failure logs it just wrote, and — under regeneration — a record of
-which cells were actually rewritten, since that cannot be reconstructed
-afterwards.
+of unresolved cells after recovery, and — under regeneration — a record of which
+requested replacements were validated and persisted, even if their text did not
+change. Attempt failures alone do not establish the final outcome. Update the
+wrapper alongside exit semantics so partial failure still permits ready-subset
+export and bounded recovery; do not abort before those stages merely on nonzero.
 
 **O2a. An isolated language failure is never retried.** Decoupling a missing
 language block from the rest of the batch is the right first half, and
@@ -257,8 +493,8 @@ never return (C5).
 
 **C1. Cache behaviour is invisible.** The prompt is already laid out for caching:
 instructions and context first, phrases last (`prompts/translation.txt`).
-OpenRouter charges roughly ten times less for cache reads than for fresh input.
-Nothing counts hits, so every claim about savings is a guess. Printing
+Cache pricing depends on the selected model/provider and is not a fixed tenfold
+saving. Nothing counts hits, so actual savings here are unmeasured. Printing
 `input_cache_read` and `input_cache_write` from the response is enough.
 
 **C2. The batch glossary is truncated by entry count.** `lib/envelope.py`,
@@ -269,10 +505,11 @@ languages costs more than ten short ones. And the silence: nothing says when the
 cap binds, so a term that should have been enforced simply is not, and the
 translation that comes back looks like any other.
 
-The cap is not hypothetical. `BATCH_BASELINES.md` measures a 50-row, 17-language
-request against the real t3 glossary and reports exactly 20 glossary entries —
-the cap bound in the ordinary case, on the corpus the defaults were tuned for.
-Budget by tokens, and record what was dropped in the run log.
+`BATCH_BASELINES.md` reports exactly 20 entries in a 50-row, 17-language request.
+That establishes inclusion at the limit, not how many eligible entries were
+dropped. Report eligible, included and omitted entries separately. Token-based
+glossary budgeting remains a proposed change whose allocation and overflow
+behaviour must be specified; visibility does not require first changing the cap.
 
 **C3 (proposal). The glossary block breaks its own cache.** It sits after the
 stable prefix and changes from batch to batch. Ordering phrases by which terms
@@ -302,8 +539,8 @@ What the 4 September run adds is a data point the baselines do not cover. They
 were measured at up to 17 languages for size, but the failure statistics come
 from single-language Spanish runs. At 17 targets, two batches of 82 failed hard
 enough to exhaust three attempts before splitting, one of them on malformed JSON
-at character 52913 — a response the model did not finish. That is still well
-inside the policy's break-even. The open question is whether the failure rate
+at character 52913. That parse error alone does not establish truncation, and
+the failure count does not establish which side of break-even this run occupies. The open question is whether the failure rate
 rises with target count, which would move the break-even; the run log from O3 is
 what would answer it, and until then the defaults should not move.
 
@@ -348,6 +585,26 @@ distinguished from a slow one.
 
 ## References, examples, regeneration (R)
 
+**Agreed behaviour (owner, 2026-09-07; documentation only).**
+
+- A changed source requires a new translation automatically, followed by the
+  normal technical checks and export. Preserve the previous source/key,
+  translation and editorial history; do not carry its protection onto the new
+  source revision. Source change alone does not require human review.
+- For the same source revision, confirmed or presumed editorial changes take
+  precedence over automatic translations and glossary rules. A change from the
+  last known automatic value with no recorded automatic operation explaining it
+  is presumed editorial. Preserve that distinction from confirmed review.
+- Track automatic writes, including export and correction scripts, so that the
+  inference has a comparison point. The present integration does not reliably
+  establish authorship. Without a baseline, first-import provenance is unknown.
+- A glossary disagreement with editorial text is informational, not an approval
+  gate or an instruction to overwrite. Technical validation still applies.
+
+These decisions do not select a storage schema or authorise implementation.
+Ambiguous identity mapping and competing editorial changes remain separate
+conflict cases; they are not reasons to review every new source translation.
+
 **R1. The t3 pre-run gate is stricter than the engine needs.** `lib/envelope.py`,
 `build`: `reference` is assembled per phrase and an empty cell is simply omitted.
 An incomplete reference language does not bother the engine, yet
@@ -364,16 +621,20 @@ engine already tolerates that.
 are collected and their values are read from `dst_languages`, with no test of
 whether those values were ever reviewed. Under `--regenerate` the CSV still holds
 the previous machine translations, so those go into the prompt as models to
-follow, and regeneration is anchored to the very text it is meant to replace. The
-mechanism is confirmed and the scale is not small — building the envelope for
-`uk` against the current corpus attaches such examples to 1206 of 3564 phrases.
+follow. This exposes regeneration to the text it is meant to replace; an effect
+on the resulting translation has not been established. Building envelopes for
+`uk` attached examples to 1206 of 3559 corpus rows, with 3564 example pairs in
+total (measured 7 September).
 
 What is not confirmed is the harm: nobody has shown that a run with these
-examples produces worse output than one without. That comparison is what decides
-between the two cures — take examples only from cells marked reviewed (R6), or
-drop them under `--regenerate` — and it is cheap, because `EnvelopeBuilder` is
-pure and the difference in the assembled prompt can be read without calling a
-model.
+examples produces worse output than one without. An offline envelope comparison confirms which examples would be sent; it
+cannot establish whether those examples improve or harm output quality. Choosing
+between reviewed-only examples (R6), disabling examples during regeneration, or
+retaining them with an explicit trust policy requires a separate quality
+comparison. New model calls for that comparison require an approved experiment
+and spending budget. Independently, examples without review evidence must not
+be described as reviewed in the prompt; that is a truthfulness issue, not a
+quality hypothesis.
 
 **R3. Regeneration is whole-language, all or nothing.** There is no way to
 re-translate a handful of phrases — for instance the ones that just gained a
@@ -383,7 +644,10 @@ do it. Today this requires building a separate project.
 **R4. The engine has no notion of a protected language.** Reviewed languages are
 protected by the t3 orchestrator and by a `regenerateLangs` list in its config.
 One misplaced flag overwrites a month of human review. This is a property of the
-project and belongs in the Tradusco project config, with a hard refusal.
+project and belongs in the Tradusco project config. Under the agreed behaviour,
+protection prevents automatic replacement of editorial work for an unchanged
+source; it does not prevent translating new or changed source text. A separate
+policy forbidding all automatic work in a locale, if needed, remains undecided.
 
 **R5. Dead keys accumulate and the engine does not prune them.** A phrase removed
 from the source no longer appears in the phrase list, but its entry stays in
@@ -401,18 +665,19 @@ hand (`:130`) — see R6.
 
 Recount before quoting the scale: after that pruning ran, each language's
 `progress.json` holds 3629 keys against 3559 live phrases, 70 dead. The earlier
-figure in this plan (5011 against 3556, 1509 dead) described the state before it.
+figure in this plan (5011 against 3556, 1509 dead) was also arithmetically
+inconsistent: the difference is 1455. It is not a reproducible earlier baseline.
 
 **R6. There is no review status below the level of a language.** R4 protects a
 whole locale and R5 decides whether a key is alive, but neither says whether a
-particular cell was ever read by a human. Everything downstream needs that: an
-archived translation coming back (R5) is only worth restoring if it was reviewed,
-examples must be drawn from reviewed cells rather than fresh machine output (R2),
-and W7's reference phase turns on the same distinction. t3 carries it by hand as
-per-catalog review dates (`prune-progress.js:130`). Needed: a `reviewed` /
-`stale` / `retired` status stored per cell, set by the project — the engine
-cannot derive it — and honoured by regeneration, examples, references and
-pruning alike.
+particular cell was ever read by a human. t3 carries that evidence by hand as
+per-catalog review dates (`prune-progress.js:130`). Under the agreed behaviour,
+record confirmed review separately from presumed editorial changes inferred
+against known automatic writes. Protection applies to the corresponding source
+revision. Keep source freshness and active/retired membership separate from that
+provenance; the exact schema is not selected. Historical translations remain
+useful even without review. Reference/example reuse policy still belongs to R2
+and W7; presumed editorial authorship is not proof of human-reviewed quality.
 
 ## Checks and lints (L)
 
@@ -422,12 +687,13 @@ and whether JSON scaffolding leaked into the output (`is_valid_translation`).
 Everything else lives in the t3 integration, and all of it is generic apart from
 the choice of markup delimiters.
 
-`WORKFLOW_NOTES.md` already lists this ground and states the principle this
-section only restates: a lint should be a gate that returns the string to the
-queue, not a report. It also names the two most productive checks — residual
-source language, and a translation identical to its source, which is what a model
-emits when it is unsure. L1 to L5 below are that list, plus what a year of
-running it added.
+**Agreed check policy (owner, 2026-09-07).** Technical failures such as malformed
+output, missing required placeholders or invalid declared format can trigger
+bounded repair of automatic results. Heuristics such as source-equal text,
+unusual script, length or typography are warnings by default, not automatic paid
+retry instructions. This narrows the earlier blanket gate principle in
+`WORKFLOW_NOTES.md`. Project policy may promote a supported check explicitly;
+editorial protection and informational glossary disagreements still apply.
 
 **L1. Mechanical detectors belong in the engine.** Translation identical to the
 source, Latin text inside a non-Latin locale, the wrong script for the locale
@@ -443,9 +709,10 @@ dash conventions).
 
 None of these know anything about a game. Two need a project adapter: inline
 markup delimiters, and the runtime format that decides which argument names are
-legal. They belong in `audit_translations.py` — but they are worth more inside
-the run, where a failing cell can be re-asked within the same batch while its
-context is still paid for.
+legal. Expose applicable checks in offline audit and in the run. Under the agreed
+policy, only technical failures or explicitly promoted checks trigger bounded
+repair; ordinary heuristic findings remain warnings. Reusing input context does
+not imply that another model call is free.
 
 **L2. Nothing verifies what the glossary is for.** Entries go into the prompt,
 but no check confirms the term actually reached the translation. The t3
@@ -454,8 +721,9 @@ only signal that an entry did anything. Without it a bad entry is invisible unti
 a human reads the catalog.
 
 It cannot be ported as an equivalent of the engine's rules, because it is not
-one. The check looks only at the `manual` section, skips `keep` entries, accepts
-just `s`/`es` as inflections, and searches `near` in a ±40-character window
+one. The check looks only at the `manual` section, skips `keep` entries, matches
+only `s`/`es` suffixes in the source term (target forms use a separate heuristic),
+and searches `near` in a ±40-character window
 (`translation-lint.js:34`, `:92`, `:115`); the engine applies rules over both
 sections and evaluates `near` against the whole phrase (`lib/envelope.py:40`,
 `:57`). A lint that decides applicability differently from the prompt tells the
@@ -474,9 +742,10 @@ politeness level in Japanese, Du versus Sie in German — every project reinvent
 this. A declaration per locale in the project config, plus a hook for a project
 script, would cover most of it.
 
-**L5. Lint results feed back nowhere.** A failing cell can be re-asked with the
-finding itself as an instruction, which is an order of magnitude cheaper than a
-round trip through a human. Today the human round trip is the only path.
+**L5. Check results need selective feedback.** Feed technical failures from
+automatic output into bounded repair of affected cells. Heuristic warnings alone
+do not trigger paid retries. The former claim of an order-of-magnitude saving
+over human review was not measured and is not an acceptance criterion.
 
 **L6. Nothing reports glossary entries that never fire.** An entry that matches
 nothing is indistinguishable from an entry that works, so a glossary can be
@@ -555,8 +824,8 @@ the engine checks that the target contains the linked key's translation. The
 scope of a key comes from the domain column of F1.
 
 **L9. There are two override layers, and one of them duplicates the glossary.**
-In t3 the export applies a pinned-override map from the config and a per-locale
-fixes file, in that order, so the config layer wins over the fixes file
+In t3 the export applies the per-locale fixes file first and the pinned-override
+map from the config second, so the config layer wins over the fixes file
 (`export_translation_json.js:221`, `:236`), and neither is compared against the
 glossary. `Oblivion` was pinned to Latin in the config for every locale but
 three; the glossary had since grown non-Latin canon for five more. Every export
@@ -564,26 +833,28 @@ quietly rewrote those five back to Latin, so a hand fix in the catalog survived
 exactly until the next export, and the only reason it surfaced is that a
 Latin-script lint was run afterwards.
 
-The cure is not to merge the glossary with the fixes layer — they answer
-different questions. The glossary states a rule about a term wherever it occurs;
-a fix states the final text of one specific string. Both are needed. What is not
-needed is a term's canonical form living in an override layer at all: that is the
-glossary's job, and duplicating it there is what created the contradiction. So:
-canon out of the override layer, per-string fixes stay, and the two layers
-collapse to one.
+The glossary guides automatic translation; editorial corrections determine the
+text of specific cells for the source revision they address. Under the agreed
+behaviour, editorial text takes precedence. Export must not silently undo it
+through a glossary-derived or config override. A corrected whole-string label
+may legitimately equal a glossary value; equal values are not competing authority.
+How existing override files migrate into this rule remains to be designed.
 
 The check that remains is not "the same term has two different values". A
 glossary entry can legitimately list several allowed forms, and its `scope` and
 `except` narrow where it applies at all, so comparing two dictionary values would
 report correct data as broken. Check the produced text against the rules that
-actually apply to it — which is L2 — and let the override layer be flagged only
-when it pins a term the glossary also pins.
+actually apply to it — which is L2. For editorial text, a glossary disagreement
+is informational: it neither blocks delivery nor triggers automatic repair.
+Structural validation remains mandatory.
 
 **L10. An entry that fires can still have nothing to say in the target
 language.** L6 counts whether a term matches phrases; it does not ask whether the
 entry carries a form for the locale being translated. An entry with canon for
-eight locales out of twenty-nine is enforced in eight and silently absent in the
-rest, and the run cannot tell the difference from an entry that fires everywhere.
+eight locales out of twenty-nine provides explicit target forms for eight, not
+twenty-nine. The entry may still be sent with reference-language forms
+(`lib/envelope.py:86`, `:139`); absence of a target form is not necessarily
+absence of the whole entry. Prompt inclusion also does not prove conformance.
 Two things are generic: a report of missing forms per entry per target language,
 and an import path for confirmed canon so the answer, once found, is written back
 to the glossary rather than to a catalog. t3 needed both and built them
@@ -698,9 +969,12 @@ one shared translation pass, per-locale steps after it, and the language sequenc
 of W7 as part of the same plan. If the whole loop lives in Tradusco this cannot
 drift.
 
-**W2. There is no plan or dry run.** Before spending money there is no way to
-ask: how many batches, how many tokens, what will this cost, which phrases go in
-without context or glossary coverage. All the inputs exist.
+**W2. Input inspection must be read-only.** Report the exact selected cells,
+assembled inputs and missing guidance without model calls or persisted generated
+artefacts. Distinguish measurements from estimates: future output length, cache
+behaviour, retries and splits are unknown, so final cost and batch count cannot
+be promised. The existing skip-based wrapper still writes helper artefacts and
+does not satisfy this contract.
 
 **W3. Filling gaps works, repairing damage does not.** `run.js --ensure-complete`
 escalates the batch size downward (configured, then 20, then 10) and finally
@@ -727,10 +1001,17 @@ detaching. Each project rediscovers this.
 **W5. The pre-run gate should cover inputs, not just references.** Preflight
 checks reference completeness and hashes the glossary. It does not report how
 many rows are about to go to the model with neither context nor a glossary
-entry — the one number that predicts rework, and the cheapest thing to print
-before spending money. Seen in t3 on 4 September: 14 phrases from a new feature
+entry. This is an input diagnostic, not a demonstrated predictor of rework or a
+quality score. Seen in t3 on 4 September: 14 phrases from a new feature
 went into a 17-language run bare, because the context step had not been re-run
 after they appeared. The number was computable and nobody computed it.
+
+**Agreed input preparation (owner, 2026-09-07).** Automatically run configured
+deterministic context/glossary preparation for selected changes. Missing optional
+guidance does not block translation and does not require an approval turn.
+A configured provider failure is different: report it and stop its dependent
+stage unless that provider was declared optional. Projects may declare required
+inputs; the general tool must not inherit t3-specific requirements.
 
 **W6. The incremental cycle is an acceptance criterion, not a separate feature.**
 Everything is shaped for a full run, but the ordinary event in a live product is
@@ -758,20 +1039,21 @@ rows. The escape hatch exists (`--no-reference-langs`), but the order it implies
 translate the reference locales first, then the rest against them — is written
 down nowhere and is re-derived from a failed preflight each time.
 
-This has to be settled together with R1, or the two contradict each other: R1
-downgrades the completeness demand to a warning because the engine tolerates an
-empty reference cell, while this item keeps a gate for part of the cases. One
-policy, stated once: incompleteness is a warning, and what preflight actually
-gates is whether the phase order was followed.
+**Agreed reference policy (owner, 2026-09-07).** Missing reference cells are
+omitted and do not block ordinary translation. Translating reference locales
+first is an optional project workflow, with its calls included in the run budget;
+it is not a mandatory phase-order gate. Validate actual required inputs instead.
 
 The harder half is trust, not completeness. `prompts/translation.txt:17` presents
 references to the model as reviewed translations, and `WORKFLOW_NOTES.md` says a
 reference must be a reviewed language — but a reference locale that was just
 machine-translated in phase one is not reviewed, and feeding it to phase two
-presents fresh model output to the model as human ground truth. So the reference
-phase is opt-in and explicit, its output is not marked reviewed by the act of
-running it (R6), and the operator is told which references were unreviewed at the
-time they were used.
+presents fresh model output to the model as human ground truth. Under the agreed
+policy, current machine references are usable with honest provenance, without an
+intermediate human-review requirement. Distinguish confirmed review, presumed
+editorial, machine and unknown origin in the guidance supplied to the model and
+operator. The original source remains authoritative. R2's separate quality
+experiment may inform example policy; no blanket reviewed-only rule is imposed.
 
 **W8. Nothing coordinates two writers of the same files.** The engine writes
 `progress.json` under a lock and through an atomic replace
@@ -817,9 +1099,10 @@ found or to settle what it genuinely cannot know:
 - *Detected:* catalog format and location (`.po` files, an i18n JSON tree, XLIFF,
   a lingui or i18next config), the locale list and the base language, the
   extract and build commands from `package.json` scripts, and the placeholder
-  syntax — sampled from actual base-language strings, which settles F4 without
-  asking anyone.
-- *Asked:* which locales are human-reviewed and must never be regenerated (R4),
+  syntax — samples suggest a format adapter but do not prove support for unseen
+  structures or settle F4.
+- *Asked:* which existing translations have editorial protection for their
+  source revision (R4),
   which are references, the model and batch settings, and whether the product has
   a domain notion to put in the domain column (F1) — file names, table names, key
   prefixes, or none.
@@ -855,9 +1138,9 @@ languages are listed, context coverage is reported (W5). Dead keys are counted
 
 Three constraints learned the hard way in t3, worth carrying over:
 
-- **The agent answers with a file, not a pipe.** Piping into a script from an
-  interactive agent session asks the user for confirmation every time. Writing a
-  JSON answer file and calling `submit` does not.
+- **The agent answers with a file, not a pipe.** This is the t3 workflow's
+  preferred handoff. Approval behaviour depends on the agent host and permissions;
+  neither pipes nor answer files imply a universal approval rule.
 - **Data files must not live inside the skill directory.** Writes under the
   agent's configuration directory prompt for permission, and these pipelines
   write in batches. Glossary, contexts and queues live in the project root next
@@ -930,22 +1213,28 @@ an agent reads the status before the content.
 
 ## Order of work
 
+**Provisional dependency sketch, not an approved execution sequence.** The
+consolidated closure register in `REVIEW_ROUND2_TOOLING.md` lists what must be
+decided before this order is rebuilt. The agreed behaviour blocks above take
+precedence; estimated effort and future measurement do not authorise coding.
+
 0. **O4**, ahead of everything else, and only O4. A run that hangs cannot be
    distinguished from a run that works, and every measurement below is taken on
-   runs. It is a few lines on the driver plus a decision about where the value
-   comes from.
+   runs. Before implementation, define the unit of an attempt, the budget across
+   retries/fallback/splits, timeout behaviour and configuration precedence. The
+   size of that change has not been estimated from an agreed contract.
 1. **O3 first, then O1, O2, O2a.** O3 leads because every other item on this list
    is a question about a request or a response, and none of them can be answered
-   today. O1 and O2 are about half a day on top of it: the failure records
-   already exist, they only need surfacing, resolution to a final outcome per
-   pair, and an exit code. O2a — retrying a language whose block was lost — is
+   today. O1 and O2 need final persisted outcomes and compatible wrapper handling,
+   not just surfacing failure records; effort has not been established.
+   O2a — retrying a language whose block was lost — is
    the one place in this group where phrases are being abandoned for good.
 1a. **C5's measurement**, once O3 and O4 are in. Not the implementation: the
    comparison that decides whether output-volume sizing is needed at all, since
    the same heuristic was already built and removed once.
 2. **W5, W2** — the pre-run gate reporting context and glossary coverage, and a
-   dry run that prices the job. Cheap, and both prevent rework rather than
-   detecting it. W5 also has to produce the added-and-removed key list that the
+   read-only inspection that separates measured inputs from cost estimates.
+   W5 also has to produce the added-and-removed key list that the
    incremental cycle of W6 runs on.
 3. **F5's contract**, before the formats. Deciding what identifies a phrase
    changes what F1's column hangs off, what G2 syncs against and what R5 can
@@ -956,10 +1245,11 @@ an agent reads the status before the content.
    so it should not survive the first item of decoupling work, and T1 needs the
    key-reading half of the same adapter.
 5. **F1**, the domain column — unblocks more of the rest than anything else.
-6. **L2's rule contract, then L6, L1**, with findings fed back into the batch.
+6. **L2's rule contract, then L6, L1**, with technical failures eligible for
+   bounded repair and heuristic findings reported as warnings.
    The contract leads because a lint that decides applicability differently from
-   the prompt is what makes L5's feedback wrong. This is the only place where
-   checks start saving money rather than only time.
+   the prompt is what makes L5's feedback wrong. Repair policy must distinguish
+   warnings from failures; savings are unmeasured.
 7. **T1, T2** — the transport gate. Cheap, mechanical, and it covers a failure
    that is invisible by construction: correct translations that never reach the
    product.
@@ -976,9 +1266,8 @@ an agent reads the status before the content.
    of a month — and whose `check` half is worth having before that, since it is
    the only thing that tests whether the decoupling actually held.
 
-Separately and before all of it: **measure R2.** If examples really do anchor
-regeneration to the old text, that changes the quality of everything translated
-from scratch, and it needs to be known before the next large run. This one does
-not wait on O3: `EnvelopeBuilder` is pure, so building an envelope from the
-current CSV with `--regenerate` semantics and reading what comes out answers it
-without calling a model.
+Separately: **R2 input inspection is already confirmed; its quality effect is
+not.** Offline envelope inspection can be repeated without O3 or model calls. A
+controlled quality comparison is separate work and needs an approved experiment
+if it requires paid calls. Do not treat a prompt diff as evidence of improved or
+worse translations.

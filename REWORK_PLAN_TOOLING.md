@@ -67,21 +67,20 @@ integration lives at the tip of `steam/dev` (`143113d59d` at this review),
 `translation_contexts.json`. Read it without switching branches:
 
 ```sh
-git -C /Users/max/Documents/projects/t3/client show steam/dev:scripts/tradusco/run.js
-git -C /Users/max/Documents/projects/t3/client show steam/dev:.claude/skills/t3-translation-context/sources.js
+git -C /Users/max/Documents/projects/t3/client show 143113d59d5a2c7c43ef07a1a32bd75440826d1f:scripts/tradusco/run.js
+git -C /Users/max/Documents/projects/t3/client show 143113d59d5a2c7c43ef07a1a32bd75440826d1f:.claude/skills/t3-translation-context/sources.js
 ```
 
-A live branch tip is the anchor because it gives a coherent state; individual
-historical commits do not. Earlier file/line citations in this document may
-predate it, so record the revision when checking one.
+Use this single pinned snapshot for reproducible comparisons across files.
+`steam/dev` can be used to inspect later work, but record its resolved commit
+before measuring. Earlier file/line citations may predate this snapshot.
 
 ### Ordinary path
 
 | Step | Inputs and Tradusco action | Project responsibility | Output and next step |
 | --- | --- | --- | --- |
-| P0. Connect | Read configuration and declared sources/formats; validate the integration. Reuse existing supported project state. Inspect legacy ambiguity only where an import could erase or misattribute existing work. | Supply source/catalogue access, locales and identity convention, format support and providers. A plain phrase table is valid. Records may differ in domain and identity
-convention; that is a row property, not a separate corpus object. | Continue to P1 for configured and unambiguous data. Legacy migration is a separate bounded path, not a universal gate for every run or the whole design. |
-| P1. Reconcile and select | Compare source and guidance revisions, explicit editorial records, host changes and available automatic-write evidence. Classify new, changed, unchanged, retired and unmanaged records. Include selected regeneration after canon/context/style changes, not only source changes. | Identify complete versus partial extraction for the run; supply identities and affected scope, plus regeneration policy. | Explicit work selection. Editorial values remain protected for the same source. No source/guidance change or explicit regeneration request means no model work; pending delivery may remain. |
+| P0. Connect | Read configuration and declared sources/formats; validate the integration. Reuse existing supported project state. Inspect legacy ambiguity only where an import could erase or misattribute existing work. | Supply source/catalogue access, locales, format support and providers. A plain phrase table is valid. Records may differ in domain and identity convention. Define identity uniqueness and ownership scope for each extraction; no separate corpus object is required. | Continue to P1 for configured and unambiguous data. Legacy migration is a separate bounded path, not a universal gate for every run or the whole design. |
+| P1. Reconcile and select | Compare source and guidance revisions, explicit editorial records, host changes and available automatic-write evidence. Classify new, changed, unchanged, retired and unmanaged records. Include selected regeneration after canon/context/style changes, not only source changes. | Declare which extraction scopes participated and whether each result is complete or partial; supply identities, affected scope and regeneration policy. | Explicit work selection. Editorial values remain protected for the same source. No source/guidance change or explicit regeneration request means no model work; pending delivery may remain. |
 | P2. Prepare and decide inputs | Gather candidates/evidence through deterministic providers and optional glossary/context skills. Resolve existing decisions; where needed, prepare and accept new naming/context decisions before translation, within granted authority. Maintain accepted/deferred/rejected decisions. Then assemble guidance, references and diagnostics. | Supply product facts, canonical/style decisions, decision authority and required/optional input policy. | Ready inputs for P3 or specifically deferred preparation. Missing optional guidance alone does not force approval. Read-only inspection shows existing inputs and pending decisions without running inference or persisting changes. |
 | P3. Translate | Translate eligible selected cells from the source, sharing requests across target locales where applicable. Use current batching policy and declared models, fallback and bounded retry settings. References guide meaning and carry honest provenance. | Select models, permitted fallback, targets, optional reference-first ordering and resource limits. | Candidate results and attempt outcomes to P4. No automatic regeneration of editorial text for the same source; changed source is translated without mandatory review. |
 | P4. Validate and persist | Check response/format, repair technical failures within budget and report heuristics. Include cross-locale discrepancies where a supported check can detect them; semantic comparison is a separate inference operation, never an assumed free deterministic check. Reconcile intervening changes and record persisted outcomes. | Supply format/check policy and authorised quality-comparison scope. | Ready cells to P5 and unresolved work. Build on existing ensure-complete and placeholder quarantine, closing their outcome/selection gaps rather than replacing them. Majority agreement is not semantic proof. |
@@ -95,66 +94,129 @@ between every translation and export. Already persisted work can go from P1
 directly to P5; approved corrections enter P4 without P3. These paths expose the
 same deterministic operations to CLI users and agent skills.
 
-P2 contains a preparation loop, not just provider execution: gather candidates
-through deterministic providers and inference → write every value that can be
-derived → ask about what remains → turn an answer into a rule and apply it to
-the whole class it covers → return to the remainder. Glossary and context
-decisions can occur here before the first translation, as they did in t3; P6 can
-later feed new candidates back into the same loop. Recorded rejection (including
-“not a term”) prevents repeated proposals on unchanged evidence; deferred items
-remain visible without being asked again on every run. Evidence changes or an
-explicit request may reopen them. This restores an observed workflow; the
-persisted queue representation remains to be specified.
+P2 contains a preparation loop: gather evidence → reuse existing decisions and
+rules → prepare missing values → resolve decisions within granted authority →
+validate and apply authorised changes → return to the remainder. Glossary and
+context decisions can occur before the first translation; P6 can feed later
+findings into the same loop. Rejected candidates (including “not a term”) are not
+proposed again on unchanged evidence. Deferred work remains visible without a
+repeated question on every run. New evidence or an explicit request may reopen it.
 
-The loop has three tiers, and the t3 measurements set their relative size.
+There are two ways to obtain values, with a separate question of decision authority:
 
-- **Derived from data.** 1032 of the 1156 glossary entries, carrying 29 928 of
-  the 32 720 language values, are copied from already localised config columns
-  by `scripts/translation-glossary.js`; the eleven-row source table at its
-  `:46-56` supplies the selector, group and match mode. Neither a human nor an
-  agent is in this path, and a rerun reproduces it exactly.
-- **Written by the agent, reviewed by sample.** All context is this tier: the
-  857 per-string formulations produced through `context-ui`, and the 18 domain
-  functions plus one pattern rule in `sources.js` that cover roughly 2655 further
-  rows. A human wrote none of the text. What is reviewed is not the row but the
-  finite set of formulations, each shown with the number of rows it covers and
-  one example row.
-- **Asked of a person.** Only records whose meaning cannot be established from
-  configs or usage sites in code. In t3 that is the residue of context coverage,
-  about 62 of 3556 rows.
+- **Compute from available data using existing rules.** The glossary generator
+  takes names, groups and modes from its eleven source declarations and config
+  rows, but reads translated values from `locale_src/<lang>/translation.json`
+  (`scripts/translation-glossary.js:46–62,283–289`). Reproduction requires the same
+  source and catalogue snapshot; this path makes no new translation decision.
+- **Have an agent formulate values or propose a rule from evidence.** The
+  context skill supports individual screen-based answers as well as reusable
+  domain rules. A rule review can cover many records, whereas individual answers
+  remain individual values. The skill's `next`/`submit` procedure does not require
+  human approval of every row (`SKILL.md:64–94`); it relies on the agent's granted
+  scope and input validation. This does not establish who authored every stored
+  formulation historically.
+- **Resolve decisions outside that authority with the owner.** This includes
+  naming/canon choices even when candidate text can be read from data, as well as
+  genuinely unclear meaning. Missing optional guidance alone does not require a
+  question or block translation. An answer stays local unless evidence supports
+  a reusable rule and its adoption is authorised.
 
-So a rule is not a third escalation level between computing and asking. It is
-how the second tier stays reviewable: one accepted formulation replaces
-thousands of individual approvals. A rule is a repository record with a selector
-over a class of records, a computable value function, the right to return “no
-statement”, and reproducibility over the whole class. A per-record answer meets
-none of these and never becomes one implicitly.
+Measured on the pinned t3 snapshot: `terms` contains 1032 entries and 29 928
+language slots, `manual` 124 entries and 2792 slots. The total of 1156 entries is
+before merging sections: six keys overlap, leaving 1150 distinct terms. The
+generated modes are 939 `exact` and 93 `stem`. There are 105 rejected candidates
+and no queued candidates. `translation_contexts.json` contains 857 distinct
+formulations, 839 matching the 3559 source rows. `sources.js` supplies 23 domain
+handlers (17 named directly and six generated for events) and one pattern rule.
+These counts describe stored data, not how much human review each path required.
 
-Tradusco owns the protocol around rules, never the rules themselves, which
-depend on the host's config structure and stay in the project layer. Four
-obligations follow.
+The old coverage figure 3494/3556 is dated 2026-09-04 (`WORKFLOW_NOTES.md:22`).
+Subtracting today's 839 matching manual entries to get 2655 rule-covered rows
+mixes snapshots; subtracting 3494 from 3556 gives 62 uncovered rows, not 62 human
+decisions. Measure current coverage by resolution source and classify the reasons
+for missing context before estimating operator work. The tracked
+`locale_src/translations.csv` has an empty context column in all 3559 rows; actual
+context application targets `.tradusco/booty/translations.csv`, a different file.
 
-- A coverage report per class, showing where records attach and how many are
-  unexplained, so an unexplained group is visible before per-record work starts.
-- A dry run by default, printing the resulting set of formulations with row
-  counts and one example each, not a list of rows.
-- Writing as a separate explicit step.
-- Editing rules as an action outside the ordinary run, on demand rather than as
-  a side effect of processing records.
+A rule is a repository record with a selector, a computable value function and
+permission to return “no statement”. It must reproduce its result for the same
+inputs. Rules make repeatable agent-authored logic reviewable; they are not an
+escalation tier between computation and asking. A per-record answer does not
+implicitly become a class rule. Review checks both the formulation and selector
+behaviour, including distinct branches; one example cannot establish correctness
+for every record, and dynamic formulations need not collapse to a small set.
 
-Answers must be looked up before they are asked for, and the order between
-providers is part of that. The glossary is prepared before context and serves as
-its lookup: in t3 a context formulation called Leila an in-game item while the
-glossary already held her as `hero`/`stem` from `heroes/heroes.csv`, and a
-hero-name predicate existed and was used by another rule. Glossary candidates
-arise from two triggers, corpus-wide frequency mining and the selection at hand,
-and both consult the recorded accept/defer/reject decisions first.
+Tradusco owns the following protocol for project-specific preparation rules.
+The selectors and product meanings stay with the project; shared glossary
+matching and format-validation semantics remain Tradusco responsibilities.
 
-Context has four levels and merges from general to specific: project-wide
-context, language context (`load_context`, `lib/storage/filesystem.py:325`), the
-per-record `context` column, and per-record per-language `context_{language}`
-columns (`lib/TranslationProject.py:679`). A rule fills the record-level column;
-it does not overwrite a more specific level.
+1. **Explain coverage.** Report attachment by class and resolution source,
+   including unhandled records, conflicting candidates and values masked by a
+   manual entry. Projects define classes; Tradusco provides the common report.
+2. **Preview rule changes without writing.** Show old/new formulations and
+   affected counts, examples from selector branches and access to affected rows.
+   Include removals and unchanged effective values, not only new coverage.
+3. **Apply separately against checked inputs.** Tie the preview to the rule and
+   input revisions it describes; reject or recompute if either changed. Applying
+   a change must not silently write results different from those reviewed.
+4. **Separate changing rules from using them.** Rule editing is explicitly
+   requested preparation work. Ordinary runs automatically apply existing rules;
+   a separate write operation is not a new human-approval requirement on every
+   run. Read-only inspection never writes, and agent answer submission uses its
+   existing authority rather than pretending each answer is a reviewed rule.
+5. **Define replacement and downstream effects.** Replace values generated by
+   the changed rule, preserve manual entries, and remove an obsolete generated
+   value if resolution now yields no statement. Re-resolve other applicable
+   rules before declaring a gap. Unknown legacy origin must not be guessed away.
+   Report effective context changes separately from rule-file changes and use
+   them to prepare the eligible regeneration selection described below.
+
+Answers must be looked up before they are asked for. Prepare available glossary
+data before context consumers that use it; other ordering follows declared data
+dependencies, not a universal requirement to finish all naming decisions first.
+Leila is recorded as `hero`/`stem` from `heroes/heroes.csv`, and the mistaken
+item description is documented in the context skill's `references/map.md:92–95`.
+But `isHeroName` itself reads the hero table directly (`scripts/lib/context.js`
+inside that skill, `:104–123`): this failure proves a missing entity check, not
+that rerunning the glossary generator would have fixed it. Both full-source
+frequency mining and the selected changes can introduce glossary candidates;
+both consult recorded decisions. Context inspection can feed new candidates
+back into that same loop without blocking unrelated ready records.
+
+Context has four levels: project-wide context, language context (both through
+`load_context`, `lib/storage/filesystem.py:325`, combined at
+`lib/TranslationProject.py:146-159`), the per-record `context` column, and
+per-record per-language `context_{language}` columns, joined with `"; "` at
+`lib/TranslationProject.py:677-684`. They accumulate rather than override: no
+level replaces another today. A rule fills the record-level column, so a rule
+and a hand-written per-language note reach the model together, and a rule that
+contradicts a more specific level produces conflicting guidance instead of
+losing. Whether any level should win is open; the accumulating behaviour is the
+current one and must be stated before it is changed.
+
+There are also two different resolution operations: the t3 provider chooses
+manual → column → domain → pattern within the record-level context
+(`scripts/lib/context.js:350–382` in the context skill), while Python accumulates
+that result with project/language guidance. The current `context-apply.js:82–88`
+keeps an already populated value for nonmanual results, so editing a rule does
+not by itself refresh its previous output. The replacement protocol above is a
+rework requirement, not a claim about current behaviour. The rework must add an
+explicit operation that refreshes values produced by a changed rule. Each stored
+context value therefore needs enough provenance to distinguish manual input from
+generated output and to identify the producing rule and revision; without it the
+operation cannot safely select values to replace or remove.
+
+A rule change can alter context for many already translated records without
+touching their source. A manual override or an unchanged computed result can also
+make the effective input unchanged. Rule 1 does not apply, since the source is
+unchanged, and P1 already selects regeneration after guidance changes under the
+existing locale policy. What is missing is evidence: nothing records the context
+under which a translation was produced, so a divergence between the current
+formulation and the one in force at translation time is undetectable. Until a
+guidance revision is recorded per persisted translation, regeneration scope
+after a rule change can only be explicit, and this document must not claim
+automatic dependency selection for it.
 
 An accepted canon/context change can select affected unreviewed cells for
 regeneration even when source text is unchanged. Scope may initially be explicit;
@@ -181,7 +243,9 @@ and recomputing export after progress changes does not prove what was last expor
 | P1 | Only identity/format spelling changes, with unchanged source meaning | **Proposed:** reuse only with an unambiguous declared mapping. Whitespace removal is not proof. A changed source follows the preceding row unless a separately agreed migration rule applies. |
 | P1 | Record disappears or later returns | Preserve history. A filtered selection is not evidence of retirement; only a complete source snapshot can establish absence. **Open:** archive/reactivation mechanics and treatment of unknown legacy provenance. |
 | P1/P5 | Host key was never managed by the selected extraction | Classify as unmanaged, not retired. Preserve it during export. A complete snapshot establishes retirement only within the identities that extraction previously managed. |
+| P0/P1 | Two extractors emit the same local ID, or only one extractor participates | The integration must supply identities unique in the managed set and declare ownership scopes. A complete result for A says nothing about absent B; do not retire B's records. This does not require a corpus object, but the identity/ownership contract cannot be removed. |
 | P1/P2 | Canon or context changes with unchanged source | Select affected eligible cells for regeneration under existing locale policy; retain editorial values. Explain selection and return through preparation before model execution. |
+| P2 | A rule changes after preview, or now returns no statement | Recompute/review changed results before apply; replace or remove only attributable generated values and re-resolve fallback rules. Preserve manual context. Effective input changes, not a rule-file edit alone, determine the affected selection. |
 | P2 | Candidate was rejected or deferred previously | Reuse the decision for unchanged evidence. Do not repeatedly request the same naming decision; deferred work can be resumed explicitly. |
 | P1/P5 | Value differs from the known automatic value, unexplained by recorded automatic operations | Treat as presumed editorial, retain that distinction from confirmed review, and prefer it over automatic text for the same source. **Open:** accounting for automatic writers and competing editorial edits. |
 | P2 | No context, applicable term or reference exists | Continue with available guidance and report omissions. Do not manufacture product facts, require canon for every word or force reference-first translation. |
@@ -225,12 +289,17 @@ This is an acceptance scenario, not a claim that it has been executed.
    translation remains in history; it does not block the new translation.
 9. Change canon without changing source: select affected unreviewed cells in
    allowed locales, prepare inputs and regenerate. Preserve editorial cells and
-   host keys that were never managed by the corpus.
+   host keys that were never managed by the selected extraction.
 
 Repeat the same round trip in t3 and a small independent integration with
 different catalogue/identity conventions, changing only configuration/providers.
 Offline model substitutes can verify control flow and persistence; they cannot
 establish translation quality. Paid quality experiments remain separate.
+
+The repository-level executable specification for this round trip is the
+[small-shop acceptance scenario](ACCEPTANCE_SMALL_SHOP.md). It defines the
+independent fixtures, adapter variants, observable results and fault checkpoints
+used to verify the selected vertical slice without depending on t3.
 
 ### Reconciliation with the existing records
 
@@ -266,10 +335,11 @@ before the rework provides it.
 ### Existing decisions and mechanisms to retain
 
 - Identity direction is already recorded in `WORKFLOW_NOTES.md`: stable ID plus
-  source-text hash where IDs exist, source-as-key where appropriate, chosen per
-  record and recorded on it. One project can contain both. The remaining task is
-  representation,
-  disambiguation and migration, not choosing the principle again.
+  source-text hash where IDs exist, source-as-key where appropriate. That note
+  groups the choice by corpus. This rework expresses the convention on records
+  without introducing a corpus object; it retains identity uniqueness and each
+  extraction's ownership/completeness boundary. Representation, disambiguation
+  and migration remain to be specified.
 - `regenerateLangs` already gates regeneration in the t3 runner (historical
   `run.js:343` at the revision above). Preserve that protection. It is not a
   demonstrated prohibition of all automatic gap filling or new-source translation.
@@ -959,9 +1029,11 @@ one thing impossible outright: two identical source phrases that must translate
 differently in different places cannot be represented at all, no matter how good
 the glossary or the context is. `WORKFLOW_NOTES.md` works the general problem
 through and lands on stable id plus a hash of the source text stored beside the
-translation — gettext's fuzzy flag, computed explicitly — decided per project
-rather than per project, because config-derived strings usually have ids and UI
-strings usually do not. That is the largest open design item in this repository,
+translation — gettext's fuzzy flag, computed explicitly. The notes choose the
+convention by source group because config-derived strings usually have IDs and
+UI strings usually do not. The rework can record that convention per row, but
+must still define unique identities and extraction ownership. That is the
+largest open design item in this repository,
 it is prerequisite to any honest answer on R5 and on rekeying, and it should be
 scoped before anything builds further on the current key.
 

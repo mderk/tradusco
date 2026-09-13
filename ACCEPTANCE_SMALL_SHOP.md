@@ -16,22 +16,20 @@ together with it.
 
 Use English source and French, German and Japanese targets. Initial data:
 
-| Owner | Logical identity | Source | Initial condition |
-| --- | --- | --- | --- |
-| Interface | `checkout.title` | Checkout | Existing editorial translation, with explicit evidence for its source revision. |
-| Interface | `checkout.pay` | Pay {amount} | Missing target values; declared placeholder validation applies. |
-| Interface | `common.back` | Back | Existing machine values; an existing context rule describes navigation. |
-| Products | `42.name` | Travel Pack | Existing machine values; Pack is a glossary candidate. |
-| Products | `42.description` | Everything for a short trip | Existing machine values; source will change during the scenario. |
-| Host only | `legacy.notice` | Legacy notice | Present in host targets but never managed by either extraction. |
+| Record | Source | Initial condition |
+| --- | --- | --- |
+| `checkout.title` | Checkout | Existing editorial translation. |
+| `checkout.pay` | Pay {amount} | Missing target values; declared placeholder validation applies. |
+| `common.back` | Back | Existing machine values; an existing context rule describes navigation. |
+| `42.name` | Travel Pack | Existing machine values; Pack is a glossary candidate. |
+| `42.description` | Everything for a short trip | Existing machine values; source will change during the scenario. |
+| `legacy.notice` | Legacy notice | Present in host targets but never managed by the extraction. |
 
-Run the same events through two configurations: a CSV phrase-table integration
-and a JSON catalogue integration with explicit IDs. Keep logical identities,
-source text and expected outcomes equivalent; change the readers/writers and
-configuration. Both expose separate interface/product ownership scopes. The
-test must use the normal workflow entry points for selection, preparation,
-application, export and recovery, rather than implement a second orchestrator.
-Concrete fixture layout and command spelling follow the agreed integration API.
+The first upgrade runs these events through one CSV phrase-table integration
+using the current source-as-key convention. The test must use the normal workflow
+entry points for selection, preparation, application, export and recovery rather
+than implement a second orchestrator. Add another adapter only when a real second
+project requires it.
 
 Two execution modes use this example:
 
@@ -48,6 +46,16 @@ Two execution modes use this example:
   limits and any spending ceiling must be selected before a live run. Do not
   depend on a real model spontaneously producing the failure fixtures.
 
+The first executable characterization is
+`tests/test_acceptance_small_shop.py`. It uses the current CSV workflow and
+filesystem storage with a controlled model boundary. It covers preservation of a
+prefilled editorial cell, a placeholder failure isolated to one locale, resuming
+only that cell, a final repeat with no model call and recovery after progress was
+saved but before the CSV was updated. An opt-in test runs the successful
+three-language round trip through Gemini and verifies that repeating it makes no
+model call. The tests do not yet claim rule-refresh, host-delivery or
+all-checkpoint crash coverage required by the complete scenario below.
+
 ## Events and observable acceptance results
 
 Use the ordinary fixture for the successive events below. Fault cases branch
@@ -57,7 +65,7 @@ avoid exact assertions on an internal storage layout that has not been selected.
 
 | Round-trip step | Event | Expected result |
 | --- | --- | --- |
-| 1 | Connect the fixture twice | Import preserves existing values and known provenance. Reconnection is idempotent. `legacy.notice` stays unmanaged. A separate divergent-legacy variant reports an unresolved import instead of inventing authorship. |
+| 1 | Connect the fixture twice | Import preserves existing values. Reconnection is idempotent and `legacy.notice` stays unmanaged. |
 | 3 | Prepare terminology/context | Candidate evidence for Pack is presented. A recorded decision supplies its canon; an existing rule supplies Back's context. An unrelated rejected candidate is not proposed again on unchanged evidence; a deferred candidate remains resumable. Offline answers are fixtures, not a mandatory interactive approval screen. |
 | 3 | Inspect without executing | Selection, pending decisions and missing guidance are visible. Project files remain unchanged and model-call count is zero. |
 | 2 | Add `checkout.receipt` = Email receipt and change the product description | Select missing Pay cells, the new receipt and changed description for the three locales. Preserve prior source/translation history; do not regenerate Checkout, Back or the product name merely because extraction ran. Missing optional receipt context does not block translation. |
@@ -68,7 +76,6 @@ avoid exact assertions on an internal storage layout that has not been selected.
 | 7, 9 | Change the rule producing Back's context | Preview includes old/new effective values and affected rows. A manual-context variant is preserved; a no-statement variant removes only attributable obsolete generated context and resolves any fallback. Rule/input changes between preview and apply invalidate that preview. |
 | 8 | Change Checkout's source to Secure checkout | Produce a new translation after ordinary checks without an editorial approval gate. Keep the old source and its editorial translation in history. |
 | 5 | Fail the host build after translation persistence | Report translated but not delivered. Retry delivery from stored values with zero additional model calls. Also test a build that exits zero but omits a key: coverage must catch it. |
-| Extension | Extract interface only, then remove and restore a product in complete product snapshots | Partial participation does not retire product records. Complete removal affects only previously managed product identities; history survives. `legacy.notice` is preserved throughout. Reactivation follows the specified revision/provenance policy. |
 | 5 | Repeat completed work | No new model calls or effective value changes absent a new source/guidance change or an explicit regeneration request. Summaries do not count preserved stale text as a successful replacement. |
 
 The live variant checks structure, declared placeholders, saved/exported coverage
@@ -79,20 +86,12 @@ semantic quality evaluation remains separate from workflow acceptance.
 
 ## Fault checkpoints and limits of the example
 
-Offline variants inject missing locale blocks, timeouts and nested retry/fallback
-failures to verify the declared budget. At each boundary in the chosen persistence
-procedure, terminate the operation and restart: no accepted edit may disappear,
-no undelivered result may be reported delivered, and recoverable saved translations
-must not be requested again. Inject an editorial or source change while a response
-is pending to check that stale model output cannot overwrite it. Where no response
-survived, a new request is permitted; exactly-once provider execution is not promised.
+Offline variants inject missing locale blocks and timeouts to verify bounded retry.
+The existing progress-before-CSV boundary is restarted to verify that saved
+translations are not requested again. Add further failure fixtures only for write
+boundaries introduced by the transferred operations.
 
-Add small identity variants to this same fixture: two equal source texts with
-different meanings/IDs, colliding local IDs from different owners, and ambiguous
-whitespace rekeying. These verify identity and ownership contracts without
-inventing a second large example project.
-
-Passing requires both adapters to satisfy the same observable contract and every
+Passing requires the selected adapter to satisfy the observable contract and every
 declared fault variant to reach its expected recovery state. Live success cannot
 replace offline fault coverage. This example is the first workflow acceptance
 baseline, not proof of every format, language, integration or translation quality.

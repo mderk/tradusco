@@ -25,6 +25,20 @@ boundary, not to absorb the host project's knowledge or to keep Tradusco a
 t3-only utility. This goal does not approve individual design proposals or
 authorise implementation; the current phase is document agreement.
 
+**First-upgrade scope.** Implement only the reusable parts of the proven t3
+workflow listed as G1–G11: glossary and context preparation, their use in model
+input, deterministic checks and reports, guarded editorial sync, orchestration,
+resume and export. Move product facts and catalogue-specific access behind project
+providers. Preserve the current engine, source-as-key storage and batching policy
+unless a transferred operation cannot work without a small compatible change.
+
+The first upgrade does not include a new identity store, owner/domain identity
+modes, legacy identity migration, a general transaction system, concurrent-writer
+support, new semantic or language heuristics, cache/batch experiments, an init
+interview or parity across multiple new adapters. Those are later work justified
+only by a real target project. They must not block the G1–G11 transfer and are
+tracked in [`BACKLOG_TOOLING.md`](BACKLOG_TOOLING.md).
+
 Every item with a `file:line` reference was verified against the code. Items
 without one are proposals, not findings, and are labelled as such.
 
@@ -79,8 +93,8 @@ before measuring. Earlier file/line citations may predate this snapshot.
 
 | Step | Inputs and Tradusco action | Project responsibility | Output and next step |
 | --- | --- | --- | --- |
-| P0. Connect | Read configuration and declared sources/formats; validate the integration. Reuse existing supported project state. Inspect legacy ambiguity only where an import could erase or misattribute existing work. | Supply source/catalogue access, locales, format support and providers. A plain phrase table is valid. Records may differ in domain and identity convention. Define identity uniqueness and ownership scope for each extraction; no separate corpus object is required. | Continue to P1 for configured and unambiguous data. Legacy migration is a separate bounded path, not a universal gate for every run or the whole design. |
-| P1. Reconcile and select | Compare source and guidance revisions, explicit editorial records, host changes and available automatic-write evidence. Classify new, changed, unchanged, retired and unmanaged records. Include selected regeneration after canon/context/style changes, not only source changes. | Declare which extraction scopes participated and whether each result is complete or partial; supply identities, affected scope and regeneration policy. | Explicit work selection. Editorial values remain protected for the same source. No source/guidance change or explicit regeneration request means no model work; pending delivery may remain. |
+| P0. Connect | Read configuration and declared sources/formats; validate the integration and reuse existing project state. | Supply source/catalogue access, locales, format support and glossary/context providers. | Continue to P1 with the current source-as-key project. |
+| P1. Reconcile and select | Compare source keys, guidance changes, protected edits and host changes. Select new, changed and explicitly regenerated work. | Supply the current source snapshot, affected scope and regeneration policy. | Explicit work selection. Protected values remain protected; no relevant change means no model work. |
 | P2. Prepare and decide inputs | Gather candidates/evidence through deterministic providers and optional glossary/context skills. Resolve existing decisions; where needed, prepare and accept new naming/context decisions before translation, within granted authority. Maintain accepted/deferred/rejected decisions. Then assemble guidance, references and diagnostics. | Supply product facts, canonical/style decisions, decision authority and required/optional input policy. | Ready inputs for P3 or specifically deferred preparation. Missing optional guidance alone does not force approval. Read-only inspection shows existing inputs and pending decisions without running inference or persisting changes. |
 | P3. Translate | Translate eligible selected cells from the source, sharing requests across target locales where applicable. Use current batching policy and declared models, fallback and bounded retry settings. References guide meaning and carry honest provenance. | Select models, permitted fallback, targets, optional reference-first ordering and resource limits. | Candidate results and attempt outcomes to P4. No automatic regeneration of editorial text for the same source; changed source is translated without mandatory review. |
 | P4. Validate and persist | Check response/format, repair technical failures within budget and report heuristics. Include cross-locale discrepancies where a supported check can detect them; semantic comparison is a separate inference operation, never an assumed free deterministic check. Reconcile intervening changes and record persisted outcomes. | Supply format/check policy and authorised quality-comparison scope. | Ready cells to P5 and unresolved work. Build on existing ensure-complete and placeholder quarantine, closing their outcome/selection gaps rather than replacing them. Majority agreement is not semantic proof. |
@@ -94,63 +108,11 @@ between every translation and export. Already persisted work can go from P1
 directly to P5; approved corrections enter P4 without P3. These paths expose the
 same deterministic operations to CLI users and agent skills.
 
-**Identity and ownership contract.** A managed record has an owner namespace, a
-local identity, the current source text and a revision derived from that source.
-The stable Tradusco identity is `(owner, local identity)`; the source revision is
-freshness evidence and never substitutes for identity. Where the host provides a
-stable ID, use it as the local identity. A source-as-key integration uses the
-exact identity emitted by its adapter and therefore creates a new identity when
-that source key changes unless the project supplies an explicit unambiguous
-migration. Domain and other descriptive metadata do not participate in identity.
-A project may declare its domains as owner namespaces, and then the domain
-participates in identity as the owner; a domain label carried on a record whose
-owner is declared elsewhere does not. An integration with no ownership structure,
-such as a plain phrase table, declares one owner for everything.
-
-An owner namespace is also the extraction and completeness boundary. Every
-extraction declares the owners it ran and, independently for each owner, whether
-its result is complete or partial. Absence retires a previously managed record
-only in a complete result for its owner. Absence from a partial result or from an
-owner that did not participate changes nothing. Host records outside declared
-owner namespaces are unmanaged and survive delivery.
-
-P1 applies these rules without inference: an unseen identity is new; the same
-identity and source revision is unchanged; the same identity with a different
-source revision is changed and needs new translations; absence proved by a
-complete owner snapshot retires it. A retired identity that returns is reactivated:
-saved translations may be reused only for the same source revision, while a
-different revision follows the changed-source path. History remains attached to
-old revisions.
-
-Emitting one identity more than once in a reconciliation needs two cases
-separated. Repeated emission carrying the same source is a duplicate: collapse it
-and report the count, since a record cannot be identified twice by its own
-adapter. Repeated emission carrying different sources is a collision, because
-nothing in the input says which source the identity now names. A collision never
-merges records by source, domain or row order. It excludes the colliding
-identities from the selection and denies that owner a complete result, so nothing
-it manages can be retired on this run, while every other record of the same owner
-proceeds. Stop the owner outright only when the collision makes its reconciliation
-impossible, not when it is confined to named identities.
-
-How a project draws its owner boundaries decides how many records it manages, so
-it is a decision for P0 rather than for later migration. Measured on the pinned t3
-snapshot, `locale_src/en/` holds 28 domains with 3864 msgid occurrences and 3521
-distinct texts; 277 texts occur in more than one domain, heroine names such as
-`Paula` and `Zoe` appearing at once in `heroes.po`, `items.po`, `quests.po` and
-`offers.po`. One owner for the whole catalogue keeps today's source-as-key
-behaviour, and those 277 texts stay collapsed into one record each with one
-translation, which is exactly the limitation F5 describes. One owner per domain
-separates them and adds 343 records that are then translated per owner. Neither
-is a collision, and the contract does not choose between them; the project does,
-before the first run.
-
-Persisted translation state must therefore retain the logical identity, source
-revision and value provenance needed by P1, P4 and P6. This is a logical record
-contract, not a prescribed JSON or CSV layout. Existing phrase-keyed state lacks
-those fields; its storage representation and legacy mapping are migration work.
-Unknown or ambiguous legacy relationships are preserved and reported rather than
-guessed. They do not block unrelated owners or new projects.
+**Identity scope for this upgrade.** Keep the current source-as-key convention:
+one managed translation per exact source key. Source changes create new work and
+old progress remains available as history. Stable-ID storage, owner namespaces,
+domain-separated values and legacy identity migration are deferred and do not
+block glossary, context or pipeline transfer.
 
 P2 contains a preparation loop: gather evidence → reuse existing decisions and
 rules → prepare missing values → resolve decisions within granted authority →
@@ -291,17 +253,19 @@ check whether existing progress, fixes and export state suffice. Progress is not
 automatically a pure model-output log: back-sync writes imported values into it,
 and recomputing export after progress changes does not prove what was last exported.
 
+**Persistence scope for this upgrade.** Preserve the existing progress-first
+resume behaviour and port t3's guarded edits. A failed export retries from saved
+translations without another model call. General transactions, every possible
+crash boundary and concurrent writers are deferred.
+
 ### Branches and edge cases at their point of occurrence
 
 | At | Case | Required behaviour / explicit open boundary |
 | --- | --- | --- |
 | P0 | Existing catalogue and progress disagree, with no trustworthy baseline | Preserve both; do not invent authorship from timestamps. **Open:** first-import selection and reconciliation procedure. Subsequent editorial inference requires recorded automatic values. |
-| P0/P1 | Identical source text appears under different identities | Keep separate `(owner, local identity)` records and histories. Domain labels alone are not identity. Legacy migration remains separate; reject an ambiguous mapping rather than silently merge. |
 | P1 | Source changes under a stable ID, or source-as-key changes | Translate the new source automatically after normal checks; preserve old source/key, translation and editorial history. Do not demand reapproval just because the source changed. |
-| P1 | Only identity/format spelling changes, with unchanged source meaning | Reuse only with an unambiguous declared migration. Whitespace removal is not proof. Without that mapping, a changed source-as-key identity is new. |
-| P1 | Record disappears or later returns | Preserve history. Only a complete snapshot for the record's owner can retire it. On return, reactivate it and reuse saved translations only when the source revision matches; otherwise translate the changed source. Unknown legacy provenance remains a migration case. |
-| P1/P5 | Host key was never managed by the selected extraction | Classify as unmanaged, not retired. Preserve it during export. A complete snapshot establishes retirement only within the identities that extraction previously managed. |
-| P0/P1 | Two extractors emit the same local ID, or only one extractor participates | Equal local IDs in different owner namespaces remain separate. Repeating the same `(owner, local identity)` with the same source is a duplicate: collapse and report it. Repeating it with different sources is a collision: exclude those identities, deny that owner a complete result and continue with its other records. A complete result for A says nothing about absent B; do not retire B's records. |
+| P1 | Record disappears or later returns | Preserve history. Retire it only from a complete source snapshot; on return, reuse the saved translation only when the exact source key matches. |
+| P1/P5 | Host key was never managed by the selected extraction | Preserve it during export. |
 | P1/P2 | Canon or context changes with unchanged source | Select affected eligible cells for regeneration under existing locale policy; retain editorial values. Explain selection and return through preparation before model execution. |
 | P2 | A rule changes after preview, or now returns no statement | Recompute/review changed results before apply; replace or remove only attributable generated values and re-resolve fallback rules. Preserve manual context. Effective input changes, not a rule-file edit alone, determine the affected selection. |
 | P2 | Candidate was rejected or deferred previously | Reuse the decision for unchanged evidence. Do not repeatedly request the same naming decision; deferred work can be resumed explicitly. |
@@ -314,7 +278,7 @@ and recomputing export after progress changes does not prove what was last expor
 | P4 | Required placeholder is lost | The candidate is technically invalid; attempt bounded repair of automatic output, preserving successful cells. Exhaustion leaves unresolved work. |
 | P4/P6 | Unusual script, length, source-equal text or glossary disagreement with editorial text | Report an applicable warning; no paid repair from a heuristic alone. Editorial text wins over glossary rules without a mandatory resolution step. Technical validation still applies. |
 | P4 | Source or editorial text changes while the model is working | Old-source output cannot satisfy the new revision; editorial changes for the same revision win. Report superseded work and reconcile the next selection. |
-| P4/P5 | Crash occurs between writes, or another writer starts | Preserve completed work and recover a coherent state. **Open:** common writer coordination and recoverable persistence mechanism; per-file atomicity alone is insufficient. |
+| P4/P5 | Crash occurs between writes, or another writer starts | Recover committed cells and repair derived artefacts without retranslating them. Reject stale writes, retain independent valid changes and retry pending delivery. **Open:** characterize every write boundary and select the smallest storage or project-side guard that satisfies this behaviour. |
 | P5 | 97 of 100 cells are ready | Export the ready subset now; preserve unresolved host values and report partial completion. Stale values are not counted as fresh success. An adapter unable to export partially reports that limitation, without losing saved translations. |
 | P5 | Compiler exits zero but drops a key | Report incomplete delivery from artefact comparison. Correct the delivery problem and retry P5, without another model call for saved valid translations. |
 | P6 | Review proposal was prepared against a value that has since changed | Keep the original expected value; do not replace it with the live value when converting the proposal. Report the conflict and retain both editorial decisions when neither has established precedence. |
@@ -363,12 +327,12 @@ used to verify the selected vertical slice without depending on t3.
 
 | Process responsibility | Existing plan coverage | Required reconciliation |
 | --- | --- | --- |
-| Connection, sources and identity (P0/P1) | G7, G11; F1–F5; R4–R6; init | Identity/config/migration must support the selected process before dependent writes ship. Sampling syntax is not proof of format support. |
+| Connection and sources (P0/P1) | G7, G11; F1–F4; R4–R6 | Preserve the current source-as-key workflow and separate catalogue-specific reading behind the project provider. |
 | Selection and input preparation (P1/P2) | G1, G8; R1–R3; W1/W2/W5–W7; L6/L10; glossary/context skills | Selection feeds the same operations in preview and execution. Machine guidance is permitted with provenance; optional input gaps do not become gates. |
-| Model execution and observation (P3/P4) | G3; O1–O4 including O2a; C1–C5; W3/W4 | Define bounded outcomes; expose omissions, costs and failures. C3/C5 remain experiments, and R2 quality comparison does not block the agreed reference policy. |
-| Validation and editorial preservation (P4/P6) | G4–G6; L1–L10; R4/R6; F2/F4 | Shared applicability; technical repair versus warnings. L7 remains an experiment. Glossary is not an authority to overwrite editorial text. |
-| Persistence, export and recovery (P4/P5/P7) | G2/G5/G10/G11; O2/O3; R5; T1/T2; W3/W8 | One preservation protocol across writers; partial export and delivery verification; retirement separate from missing selected rows. |
-| Reading and learning from review (P6) | G8/G9; L3/L4/L8/L10; context/glossary/review skills | Generic ordered reading and decision tracking, with project meaning outside Tradusco. No compulsory semantic review on the ordinary path. |
+| Model execution and observation (P3/P4) | G3; O2/O4; W3/W4 | Expose failures, bound a run and preserve partial results without changing batching policy. |
+| Validation and editorial preservation (P4/P6) | G4–G6; L1/L2/L5/L6/L9/L10; F2/F4 | Port existing deterministic checks and glossary conformance; technical failures can retry, warnings cannot. |
+| Persistence, export and recovery (P4/P5/P7) | G2/G5/G10/G11; O2/O3; R5; T1/T2; W3 | Preserve reviewed edits, partial export and current resume behaviour. |
+| Reading and learning from review (P6) | G8/G9; context/glossary/review skills | Port ordered reading and decision queues; keep project meaning outside Tradusco. |
 
 `WORKFLOW_NOTES.md` contributes input preparation, separate manual/generated
 context, source authority, identity invalidation, transport checks and deriving
@@ -392,11 +356,8 @@ before the rework provides it.
 
 ### Existing decisions and mechanisms to retain
 
-- Identity direction is already recorded in `WORKFLOW_NOTES.md`: stable ID plus
-  source-text hash where IDs exist, source-as-key where appropriate. That note
-  groups the choice by corpus. This rework expresses the convention as the
-  identity and ownership contract above, without introducing a corpus object.
-  Persisted representation and legacy migration remain to be implemented.
+- Keep the current source-as-key identity for this upgrade. Stable-ID storage and
+  migration remain outside its scope.
 - `regenerateLangs` already gates regeneration in the t3 runner (historical
   `run.js:343` at the revision above). Preserve that protection. It is not a
   demonstrated prohibition of all automatic gap filling or new-source translation.
@@ -414,22 +375,15 @@ before the rework provides it.
 
 ### What prevents this workflow from becoming an implementation-ready task
 
-The earlier U1–U6 list is now subordinate to this process:
+Only three choices remain before implementation:
 
-- **P0/P1:** implement the identity/ownership contract and choose its persisted
-  representation (U1/U3). Check existing provenance evidence before adding storage;
-  legacy first-import reconciliation (U2) is a migration case, not a universal gate.
-- **P3/P4/P7:** specify retry-limit semantics and recovery across write boundaries,
-  including the explicit oversized-request/refusal branches (U4/U5).
-- **Across the round trip:** choose the first supported integration capabilities,
-  map every existing item to delivery or deferred experiment, then replace the
-  old alphabetical work order with those dependencies (U6).
+- the project-provider input/output shapes for glossary sources, context sources
+  and host catalogue access;
+- the package/entry-point location for the transferred Node operations;
+- the exact G1–G11 delivery checklist against the small-shop acceptance test.
 
-These are gaps to fill inside the process, not a new parallel checklist. The
-task is ready when the selected round trip and its failure branches have one
-unambiguous behaviour, responsibilities and offline acceptance evidence, with
-remaining experiments explicitly deferred. Agreement on this document still
-does not authorise implementation.
+Identity redesign, migration, generalized persistence and experiments are not
+prerequisites for this upgrade.
 
 ## Three layers
 
@@ -671,13 +625,10 @@ part that does not wait for that measurement is that the bound exists and is
 announced; the failure this hides is not a slow model, it is a request that will
 never return (C5).
 
-## Cost (C)
+## Cost (C) — deferred except glossary omission reporting
 
-**C1. Cache behaviour is invisible.** The prompt is already laid out for caching:
-instructions and context first, phrases last (`prompts/translation.txt`).
-Cache pricing depends on the selected model/provider and is not a fixed tenfold
-saving. Nothing counts hits, so actual savings here are unmeasured. Printing
-`input_cache_read` and `input_cache_write` from the response is enough.
+Keep current batching and cache behaviour in the first upgrade. Only C2's report
+of eligible, included and omitted glossary entries belongs with the glossary move.
 
 **C2. The batch glossary is truncated by entry count.** `lib/envelope.py`,
 `_prompt_glossary`: entries are ranked by frequency and the loop breaks at
@@ -693,77 +644,6 @@ dropped. Report eligible, included and omitted entries separately. Token-based
 glossary budgeting remains a proposed change whose allocation and overflow
 behaviour must be specified; visibility does not require first changing the cap.
 
-**C3 (proposal). The glossary block breaks its own cache.** It sits after the
-stable prefix and changes from batch to batch. Ordering phrases by which terms
-they contain would make the block repeat more often across a run of batches —
-though not identically, since the entry set still depends on which phrases
-actually landed in each batch and on C2's cap. Neither the current loss nor the
-saving is measured; C1 is what would measure both, and this should not be built
-before it.
-
-**C4. Whether large-batch-first still holds at 17 languages is worth
-re-measuring — but not re-litigating.** Output-side batch estimation was specced
-in `A6_BATCH_TASK.md`, implemented, and then deliberately removed in favour of
-input-aware batching plus split-on-failure; `BATCH_BASELINES.md` records the
-policy ("output size is not estimated or capped locally") and an arithmetic
-sketch behind it: splitting one failed batch of 50 into five of 10 costs eight
-requests against fifteen for always-small. The policy stands and this plan does
-not reopen it, but that sketch should stop being cited as its proof. It models a
-one-shot split into fives, and the engine does not do that: a failed batch is
-halved recursively (`TranslationProject.py:546`, `:603`), and each attempt
-carries the driver's own retries underneath it. A batch of 50 that only passes
-once it is down to ten or fewer costs about seventeen calls per 150 rows against
-fifteen for always-small, before counting a single inner retry. The break-even is
-therefore not established in either direction; keep the current defaults because
-nothing has shown them to be wrong, not because the arithmetic settles it.
-
-What the 4 September run adds is a data point the baselines do not cover. They
-were measured at up to 17 languages for size, but the failure statistics come
-from single-language Spanish runs. At 17 targets, two batches of 82 failed hard
-enough to exhaust three attempts before splitting, one of them on malformed JSON
-at character 52913. That parse error alone does not establish truncation, and
-the failure count does not establish which side of break-even this run occupies. The open question is whether the failure rate
-rises with target count, which would move the break-even; the run log from O3 is
-what would answer it, and until then the defaults should not move.
-
-**C5 (proposal, not a finding). Batch size counts rows, and the cost of a batch
-may be characters times languages.** `-b/--batch-size` is a count of phrases, so
-the same number means a trivial request on short UI labels and a very large one
-on prose. Nothing in the engine computes the quantity that would have to stay
-inside the model's output budget: the sum of source lengths in the batch times
-the number of target languages.
-
-The observation behind it, from t3. A batch of 50 that happened to contain 20
-hero backstories (median 832 characters, longest 1790) against 27 target
-languages would ask for roughly 500 000 characters of generation in a single
-structured response. That batch did not fail — it never returned. The same
-phrases at `--batch-size 3` completed in 2623 seconds.
-
-That is one run, and it does not establish the cause. Nothing in it separates an
-exhausted output budget from an unbounded wait (O4), from provider-side
-throttling, or from an ordinary slow response nobody was willing to sit through;
-the specific batch was not recorded, so neither the elapsed time nor the
-character figure is reproducible from anything on disk. The `parse_error` records
-in `<lang>/failures.jsonl` were read as corroboration and are not: that category
-also covers a response missing a language block, and `TranslationProject.py:267`
-files model-level failures under it as well (`failure_reporting.py:24`). And this
-is the heuristic that `A6_BATCH_TASK.md:3` recorded as implemented and then
-deliberately removed, so bringing it back needs evidence, not a second opinion.
-
-Where it sits against C4: C4's policy assumes a failed batch fails quickly and
-cheaply, and a request that exhausts the output budget would not — it would hang
-or burn the full generation before returning unparseable text, and the split
-retries would pay it again. If that mechanism is confirmed, the two are
-compatible: output-volume sizing as a guard against requests that cannot fit at
-all, split-on-failure for everything merely large. Until it is confirmed, C5 is
-not a decision.
-
-What would make it one: the same set of short, long and mixed rows run across
-several batch sizes and target-language counts, at a fixed model, provider and
-retry policy, comparing cost, wall time, successful cells, actual output tokens,
-`finish_reason` and the full retry chain. All of that is O3's log. O4 comes
-first, because without a bound the "never returns" case cannot even be
-distinguished from a slow one.
 
 ## References, examples, regeneration (R)
 
@@ -861,7 +741,10 @@ provenance; the exact schema is not selected. Historical translations remain
 useful even without review. Reference/example reuse policy still belongs to R2
 and W7; presumed editorial authorship is not proof of human-reviewed quality.
 
-## Checks and lints (L)
+## Checks and lints (L) — transfer existing checks only
+
+The first upgrade ports G4 and G6 plus checks required by their current behaviour.
+L3, L4, L7 and L8 are outside its scope.
 
 Two properties are checked during a run today: placeholders and lingui tags
 (`lib/utils.py`, `placeholders_match` — see F4 for how narrowly that is defined),
@@ -915,14 +798,6 @@ for when a rule applies, with one set of fixtures exercised by both the Python
 and the Node side; the conformance check is written against that contract, and L5
 comes after it.
 
-**L3. Lints have no baseline.** The output is correctly shaped as "places to
-read" rather than a verdict, but with no recorded baseline every run reprints the
-same accepted places. Recording what was accepted leaves only new noise visible.
-
-**L4. There are no per-language style rules.** Informal address in Russian,
-politeness level in Japanese, Du versus Sie in German — every project reinvents
-this. A declaration per locale in the project config, plus a hook for a project
-script, would cover most of it.
 
 **L5. Check results need selective feedback.** Feed technical failures from
 automatic output into bounded repair of affected cells. Heuristic warnings alone
@@ -949,61 +824,6 @@ help inside a sentence; one that fires but has no form for the target language
 the first is a dead entry. Alongside it, entry generators should still state a
 mode explicitly rather than inherit `exact` by silence.
 
-**L7 (proposal). A name in the right script can still be in the wrong form.**
-Substituting a
-canonical name into a sentence is not the same as translating it. The engine can
-check the script; only grammar tells whether the form is right, and the check for
-that is cheap: count how many occurrences of a name stand in the bare dictionary
-form, and flag a bare form directly after a preposition that governs an oblique
-case. Measured in t3 on a corrective pass: Ukrainian came back with 2.4% of name
-occurrences inflected, which for a language that declines everything means the
-names were pasted in, not written. Greek needed a narrower rule, because it
-leaves foreign names undeclined and carries the case on the article, so only
-names it treats as its own were wrong — 28 occurrences against 468. Thai,
-Bulgarian and Arabic needed nothing, since none of them inflect the name itself.
-The rule that generalises: the check is per-language and belongs with the
-per-language style rules of L4, and the preposition list is the only data it
-needs. What does not generalise, and must stay out of the engine, is the
-correction itself.
-
-Why this is a proposal and not a finding. The 2.4% figure comes from a detector
-that is itself narrow — it selects names by `group === "hero"`, tests inflection
-by trimming the last letter, and reads only the fixes file
-(`translation-inflection-check.js:36`). A number produced that way shows that
-something was wrong in Ukrainian; it does not establish the detector's precision
-or recall, and a grammatical check that is wrong in either direction is worse
-than none, because L5 would feed its findings back to the model as instructions.
-Before this is built, a labelled sample: a few hundred occurrences per language
-judged by hand, against which the detector's error rate is stated. Then it is a
-language plugin.
-
-**L8. A string that quotes another string must quote its translation.** UI text
-routinely names other controls: *Press "Check status", then enable "Open payments
-in the Steam app" in Settings*. Each string is translated on its own, so the
-translator never sees the button it is naming, and the instruction ends up
-pointing at a label that does not exist on screen. The check is mechanical: take
-the quoted spans of the source key, keep those that are themselves source keys of
-UI scope, and require the target to contain that key's translation. Quote
-characters must not be compared — locales substitute their own («…», „…“, 「…」) —
-and prose must be excluded, since quotation marks there are speech, not a
-reference.
-
-Measured in t3 the day the string was added: three of the twenty-seven locales
-translated the quoted button independently of the button (bg, it, nl), on the
-first run, with the glossary already pinning that label. Older damage of the same
-kind was sitting unnoticed in sixteen string-and-locale pairs, one label (`Find
-Match`) accounting for ten of them. The class is not particular to games —
-naming a control inside another string is standard UI writing, and vendor style
-guides tell writers to do it.
-
-Quoting is only the first heuristic for finding the reference, and the plan
-should not promise more. The t3 detector reads quoted spans and separates UI from
-prose by a catalog list (`translation-quote-check.js:44`), which misses every
-reference written without quotation marks and depends on a project's own idea of
-what prose is. The general form is that the project supplies the link between two
-keys — from its own markup, from a reference syntax, or from a classifier — and
-the engine checks that the target contains the linked key's translation. The
-scope of a key comes from the domain column of F1.
 
 **L9. There are two override layers, and one of them duplicates the glossary.**
 In t3 the export applies the per-locale fixes file first and the pinned-override
@@ -1080,21 +900,6 @@ A phrase whose only change was line endings never enters the list and becomes
 permanently untranslatable. The same defect existed in the t3 extractor and cost
 two live strings that sat untranslated for six months.
 
-**F5. Phrase-as-key is the only identity, and it decides more than it looks.**
-`progress.json` is keyed by the source string, which `GLOSSARY.md` notes makes
-one thing impossible outright: two identical source phrases that must translate
-differently in different places cannot be represented at all, no matter how good
-the glossary or the context is. `WORKFLOW_NOTES.md` works the general problem
-through and lands on stable id plus a hash of the source text stored beside the
-translation — gettext's fuzzy flag, computed explicitly. The notes choose the
-convention by source group because config-derived strings usually have IDs and
-UI strings usually do not. The identity and ownership contract above makes that
-choice explicit without requiring a corpus object: owner plus local identity
-identifies the record, while the source-derived revision invalidates translations.
-F5 implements that contract for new state and supplies explicit migration tools
-for legacy phrase-keyed projects. It must not infer mappings from equal source,
-domain labels, whitespace normalisation or row order. This remains prerequisite
-to an honest implementation of R5 and rekeying.
 
 **F4. The placeholder and tag syntax is hardcoded.** `lib/utils.py` defines
 `_CURLY_TOKEN_RE` for `{token}` and `_LINGUI_TAG_RE` for lingui's numbered tags,
@@ -1268,72 +1073,9 @@ lands, not after the first corrupted progress file.
   design; what is missing is that four of those five roles now exist as the G3 to
   G6 scripts, so the spec should be re-read against them rather than implemented
   from scratch.
-- **`tradusco-init`** — bring up a new project, and check an existing one. See
-  below.
+- **`tradusco-init`** — deferred; the first new project is configured directly
+  against the extracted provider contract.
 
-### `tradusco-init`
-
-Two commands, one skill. `check` is not only for new projects: it is the thing
-that answers "is this repository still wired correctly" after any change, and it
-should be runnable on its own.
-
-**`init` — an interview that mostly confirms.** The failure mode of a scaffolding
-questionnaire is twenty blind questions. Almost everything here is detectable
-from the repository, so the skill detects first and asks only to confirm what it
-found or to settle what it genuinely cannot know:
-
-- *Detected:* catalog format and location (`.po` files, an i18n JSON tree, XLIFF,
-  a lingui or i18next config), the locale list and the base language, the
-  extract and build commands from `package.json` scripts, and the placeholder
-  syntax — samples suggest a format adapter but do not prove support for unseen
-  structures or settle F4.
-- *Asked:* which existing translations have editorial protection for their
-  source revision (R4),
-  which are references, the model and batch settings, and whether the product has
-  a domain notion to put in the domain column (F1) — file names, table names, key
-  prefixes, or none.
-
-The interview itself belongs in the host's structured question facility
-(`AskUserQuestion` in Claude Code) rather than in a script prompting on stdin: it
-renders as a choice list with the detected value offered first, it survives the
-agent being interrupted, and it keeps the skill free of terminal input handling.
-The script's job is to detect, hand the agent a set of questions with defaults,
-and consume the answers as a file — the same shape the other two pipelines use.
-
-Output: a `tradusco.config.json`, and scaffolded project-local providers with one
-worked example each rather than empty files — a glossary term source emitting
-`{term: {lang: canonical}}`, a context source map with one real domain mapped and
-the rest listed as `TODO`, and a `README` naming which file to edit next. The
-skill then hands off to `tradusco-glossary` and `tradusco-context`, which are
-built to be driven by an agent from exactly that state.
-
-The honest boundary: scaffolding is cheap, and a *good* context source map is not
-— it encodes what the product's strings mean, which is the layer-3 knowledge that
-never moves. `init` should produce a skeleton that runs and one example that
-works, then stop. Generating more would generate guesses.
-
-**`check` — validate a project against the contract.** Config parses and every
-path in it exists. The extract command produces a CSV with the expected columns.
-The base language has no empty cells. The configured placeholder patterns
-actually match the placeholders present in the base strings, and no base string
-contains a token no pattern matches — the check that would have caught F4 in any
-project that is not t3. The glossary file matches its schema (F2) and its
-entries are reachable in some mode (L6). Reference languages exist, protected
-languages are listed, context coverage is reported (W5). Dead keys are counted
-(R5). Exit code says whether a run is safe to start.
-
-Three constraints learned the hard way in t3, worth carrying over:
-
-- **The agent answers with a file, not a pipe.** This is the t3 workflow's
-  preferred handoff. Approval behaviour depends on the agent host and permissions;
-  neither pipes nor answer files imply a universal approval rule.
-- **Data files must not live inside the skill directory.** Writes under the
-  agent's configuration directory prompt for permission, and these pipelines
-  write in batches. Glossary, contexts and queues live in the project root next
-  to `tradusco.config.json`.
-- **A skill needs a decision it may not take.** Both pipelines stop and ask when
-  a candidate is a naming decision rather than a mechanical one. That is what
-  keeps them safe to run unattended.
 
 ## Stale documentation and loose ends
 
@@ -1399,61 +1141,21 @@ an agent reads the status before the content.
 
 ## Order of work
 
-**Provisional dependency sketch, not an approved execution sequence.** The
-consolidated closure register in `REVIEW_ROUND2_TOOLING.md` lists what must be
-decided before this order is rebuilt. The agreed behaviour blocks above take
-precedence; estimated effort and future measurement do not authorise coding.
+1. **Glossary path:** move G8's candidate queue and decisions, G6/L2 conformance,
+   L6 coverage and the shared glossary schema/matcher. Keep t3's term extraction
+   script in t3. Make prompt selection and conformance use the same matcher.
+2. **Context path:** move the manual/generated resolution order, rule preview and
+   apply protocol, deferred/rejected queues and coverage report. Keep t3's source
+   map and product-data readers in t3. Feed the resolved context into the existing
+   translation envelope.
+3. **Ordinary run:** move G1 with W2/W5 inspection, the incremental W6/W7 sequence,
+   existing resume behaviour and the minimum O3/O4 logging and timeout needed to
+   operate a run. Keep current batching and model policy.
+4. **Review and delivery:** move G2, G5 and G9 for reviewed edits; G4's existing
+   deterministic checks; G7, G10 and G11 for reconciliation, validation and
+   export. Preserve current editorial overrides and partial results.
+5. **Acceptance:** complete the small-shop offline cases, run its live API check,
+   then use the same provider contracts in the next real project. Record any
+   capability that project actually needs as the next increment.
 
-0. **O4**, ahead of everything else, and only O4. A run that hangs cannot be
-   distinguished from a run that works, and every measurement below is taken on
-   runs. Before implementation, define the unit of an attempt, the budget across
-   retries/fallback/splits, timeout behaviour and configuration precedence. The
-   size of that change has not been estimated from an agreed contract.
-1. **O3 first, then O1, O2, O2a.** O3 leads because every other item on this list
-   is a question about a request or a response, and none of them can be answered
-   today. O1 and O2 need final persisted outcomes and compatible wrapper handling,
-   not just surfacing failure records; effort has not been established.
-   O2a — retrying a language whose block was lost — is
-   the one place in this group where phrases are being abandoned for good.
-1a. **C5's measurement**, once O3 and O4 are in. Not the implementation: the
-   comparison that decides whether output-volume sizing is needed at all, since
-   the same heuristic was already built and removed once.
-2. **W5, W2** — the pre-run gate reporting context and glossary coverage, and a
-   read-only inspection that separates measured inputs from cost estimates.
-   W5 also has to produce the added-and-removed key list that the
-   incremental cycle of W6 runs on.
-3. **F5's representation for new state**, before the formats. The identity and
-   ownership contract is settled above; its persisted representation changes what
-   F1's column hangs off, what G2 syncs against and what R5 can honestly say about
-   a dead key. Legacy migration stays late.
-4. **F4** — the format adapter, starting with placeholder patterns out of the
-   engine. It is the one coupling to a single project already inside the engine,
-   so it should not survive the first item of decoupling work, and T1 needs the
-   key-reading half of the same adapter.
-5. **F1**, the domain column — unblocks more of the rest than anything else.
-6. **L2's rule contract, then L6, L1**, with technical failures eligible for
-   bounded repair and heuristic findings reported as warnings.
-   The contract leads because a lint that decides applicability differently from
-   the prompt is what makes L5's feedback wrong. Repair policy must distinguish
-   warnings from failures; savings are unmeasured.
-7. **T1, T2** — the transport gate. Cheap, mechanical, and it covers a failure
-   that is invisible by construction: correct translations that never reach the
-   product.
-8. **G2 and G1 together, with W6, W7 and W8 inside them.** The return path and
-   the orchestrator: the incremental cycle is the orchestrator's behaviour, the
-   reference phase order is its sequencing, and the write protocol has to be
-   settled before the return path ships. Without this pair any second project
-   starts by losing its human review.
-9. **F5's legacy migration**, using the representation introduced in step 3.
-10. **Skills** for glossary and context, together with the layer-2 halves of both
-   subsystems — which begins with separating the project's data access and
-   content classification out of what is being moved. Then `tradusco-init`, which
-   is what turns all of the above into a second project that costs a day instead
-   of a month — and whose `check` half is worth having before that, since it is
-   the only thing that tests whether the decoupling actually held.
-
-Separately: **R2 input inspection is already confirmed; its quality effect is
-not.** Offline envelope inspection can be repeated without O3 or model calls. A
-controlled quality comparison is separate work and needs an approved experiment
-if it requires paid calls. Do not treat a prompt diff as evidence of improved or
-worse translations.
+Deferred items above remain evidence or backlog and do not enter this sequence.

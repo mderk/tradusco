@@ -28,6 +28,7 @@ The input data is an object with a `phrases` array and an optional batch-level `
 - The base-language `phrase` is always the translation source. `reference` contains reviewed translations that only disambiguate meaning; never translate from them instead.
 - `examples` are reviewed neighboring phrases. Use them for terminology and pattern consistency, but translate the current base-language phrase.
 - Translate only `phrase`. Do not translate or return context, glossary, reference, or examples.
+- `context` says where the phrase appears and who it refers to. Use it only to choose the right sense and the right grammatical form — gender, number, formality. Never carry its words into the output: do not name a screen, feature, item, resource or character that the `phrase` itself does not name. A short generic phrase must stay short and generic.
 
 Data to translate:
 {"glossary": [{"term": "gems", "mode": "stem", "note": "Use the inventory currency term.", "except": "abilities.po", "t": {"ru": ["самоцветы", "самоцветов"], "uk": "самоцвіти"}}], "phrases": [{"phrase": "You gained {count} gems.", "context": "Reward popup after a battle.", "reference": {"ja": "ジェムを{count}個獲得した。"}, "examples": [{"phrase": "You gained {count} coins.", "t": {"ru": "Вы получили {count} монет."}}]}, {"phrase": "Read the <0>rules</0> first."}, {"phrase": "Line one.\nLine two.", "context": "Two lines of a tooltip."}, {"phrase": "Chest", "context": "A container the player opens, not a body part."}]}

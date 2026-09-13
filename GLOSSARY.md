@@ -3,6 +3,37 @@
 Tradusco reads an optional `<project>/glossary.json`. If the file is absent,
 translation continues without a glossary.
 
+## Workflow tool
+
+The first-upgrade workflow keeps generated terms and reviewed decisions in one
+file while preserving their separate sections. Its project configuration is:
+
+```json
+{
+  "projectDir": ".tradusco/shop",
+  "glossaryFile": "translation_glossary.json",
+  "glossarySourceCommand": ["node", "scripts/build-glossary.js"]
+}
+```
+
+The source command receives `--output <temporary-file>` and writes the generated
+`terms` object. Preview is the default; `--write` replaces only `terms`:
+
+```bash
+node tools/glossary.js prepare --config tradusco.config.json
+node tools/glossary.js prepare --write --config tradusco.config.json
+node tools/glossary.js report --config tradusco.config.json
+node tools/glossary.js next --config tradusco.config.json
+node tools/glossary.js submit --json .tradusco/glossary-answer.json --config tradusco.config.json
+node tools/glossary.js lint --config tradusco.config.json
+```
+
+Candidate decisions persist in `translation_not_terms.json` and
+`translation_terms_queue.json`. The paths can be overridden with
+`glossaryRejectedFile` and `glossaryQueueFile`. The prompt and lint paths use the
+same source matcher from `lib/glossary.py`. Agent operation is documented in
+[`skills/tradusco-glossary/SKILL.md`](skills/tradusco-glossary/SKILL.md).
+
 ## File format
 
 ```json

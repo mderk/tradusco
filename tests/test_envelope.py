@@ -1,4 +1,5 @@
 from lib.envelope import EnvelopeBuilder
+from lib.glossary import glossary_coverage, lint_glossary
 
 
 def test_glossary_modes_override_near_case_and_language_filtering():
@@ -21,9 +22,7 @@ def test_glossary_modes_override_near_case_and_language_filtering():
             "Brand": {"mode": "keep"},
             "Hero": {"mode": "exact", "t": {"es": "Viejo"}},
         },
-        "manual": {
-            "Hero": {"mode": "stem", "t": {"es": "Héroe", "fr": "Héros"}}
-        },
+        "manual": {"Hero": {"mode": "stem", "t": {"es": "Héroe", "fr": "Héros"}}},
     }
     phrases = [
         "Exact",
@@ -73,6 +72,44 @@ def test_glossary_modes_override_near_case_and_language_filtering():
     assert all(set(entry.get("t", {})) <= {"es", "fr"} for entry in batch["glossary"])
 
 
+def test_prompt_selection_and_lint_share_glossary_matching():
+    glossary = {
+        "terms": {
+            "Chaos": {
+                "mode": "stem",
+                "cs": True,
+                "near": r"\bFaction\b",
+                "t": {"es": "Caos"},
+            }
+        }
+    }
+    rows = [
+        {"en": "Chaos Faction", "es": "Facción del desorden"},
+        {"en": "chaos Faction", "es": "Facción del desorden"},
+        {"en": "Chaos everywhere", "es": "Desorden"},
+    ]
+
+    builder = EnvelopeBuilder(glossary, rows, "en", ["es"], [])
+    selected = builder.build(
+        [(row["en"], None) for row in rows],
+        {row["en"]: index for index, row in enumerate(rows)},
+    ).model_dump(exclude_none=True)
+
+    assert [entry["term"] for entry in selected["glossary"]] == ["Chaos"]
+    assert lint_glossary(glossary, rows, "en", ["es"]) == [
+        {
+            "language": "es",
+            "term": "Chaos",
+            "source": "Chaos Faction",
+            "translation": "Facción del desorden",
+            "expected": "Caos",
+        }
+    ]
+    assert glossary_coverage(glossary, (row["en"] for row in rows)) == [
+        {"term": "Chaos", "matched_rows": 1, "whole_phrase_rows": 0}
+    ]
+
+
 def test_references_and_neighbor_examples_are_optional():
     glossary = {
         "terms": {
@@ -118,6 +155,7 @@ def test_glossary_is_limited_by_phrase_frequency_and_may_be_absent():
     assert len(batch["glossary"]) == 20
     assert batch["glossary"][0]["term"] == "Token20"
     assert "Token19" not in {entry["term"] for entry in batch["glossary"]}
+    assert builder.last_omitted_glossary == [("Token19", 1)]
 
     no_glossary = EnvelopeBuilder({}, [{"en": "Hello"}], "en", ["es"], [])
     assert no_glossary.build([("Hello", None)], {"Hello": 0}).model_dump(

@@ -1,0 +1,7 @@
+{
+  "name": "tradusco-tools",
+  "private": true,
+  "bin": {
+    "tradusco-glossary": "glossary.js"
+  }
+}

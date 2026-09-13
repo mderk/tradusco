@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass
-from functools import cached_property
 from typing import Any
 
 from pydantic import BaseModel
 
+from lib.glossary import GlossaryRule, glossary_rules
 from lib.utils import is_valid_translation, placeholders_match
 
 
@@ -28,39 +26,6 @@ class BatchEnvelope(BaseModel):
     phrases: list[PhraseEnvelope]
 
 
-@dataclass(frozen=True, eq=False)
-class _Rule:
-    term: str
-    data: dict[str, Any]
-    order: int
-
-    @cached_property
-    def pattern(self) -> re.Pattern[str]:
-        flags = 0 if self.data.get("cs") else re.IGNORECASE
-        return re.compile(rf"(?<!\w){re.escape(self.term)}\w*", flags)
-
-    def spans(self, phrase: str) -> list[tuple[int, int]]:
-        mode = self.data.get("mode", "exact")
-        if mode == "skip":
-            return []
-
-        case_sensitive = bool(self.data.get("cs"))
-        if mode == "exact":
-            matches = phrase == self.term if case_sensitive else phrase.casefold() == self.term.casefold()
-            spans = [(0, len(phrase))] if matches else []
-        else:
-            spans = [match.span() for match in self.pattern.finditer(phrase)]
-
-        near = self.data.get("near")
-        if spans and isinstance(near, str) and near:
-            try:
-                if re.search(near, phrase) is None:
-                    return []
-            except re.error:
-                return []
-        return spans
-
-
 class EnvelopeBuilder:
     def __init__(
         self,
@@ -70,15 +35,7 @@ class EnvelopeBuilder:
         dst_languages: list[str],
         reference_languages: list[str],
     ) -> None:
-        merged = {
-            **self._section(glossary.get("terms")),
-            **self._section(glossary.get("manual")),
-        }
-        self.rules = [
-            _Rule(term, data, order)
-            for order, (term, data) in enumerate(merged.items())
-            if term and isinstance(data, dict)
-        ]
+        self.rules = glossary_rules(glossary)
         self.translations = translations
         self.base_language = base_language
         self.dst_languages = dst_languages
@@ -86,6 +43,7 @@ class EnvelopeBuilder:
         self.glossary_languages = list(
             dict.fromkeys([*dst_languages, *reference_languages])
         )
+        self.last_omitted_glossary: list[tuple[str, int]] = []
         self.matches = [
             self._matches(row.get(base_language, "")) for row in translations
         ]
@@ -95,26 +53,12 @@ class EnvelopeBuilder:
                 phrase = translations[index].get(base_language, "")
                 self.neighbors[self._skeleton(phrase, row_matches)].append(index)
 
-    @staticmethod
-    def _section(value: object) -> dict[str, dict[str, Any]]:
-        if not isinstance(value, dict):
-            return {}
-        return {
-            str(term): data
-            for term, data in value.items()
-            if isinstance(data, dict)
-        }
-
-    def _matches(self, phrase: str) -> list[tuple[_Rule, list[tuple[int, int]]]]:
-        return [
-            (rule, spans)
-            for rule in self.rules
-            if (spans := rule.spans(phrase))
-        ]
+    def _matches(self, phrase: str) -> list[tuple[GlossaryRule, list[tuple[int, int]]]]:
+        return [(rule, spans) for rule in self.rules if (spans := rule.spans(phrase))]
 
     @staticmethod
     def _skeleton(
-        phrase: str, matches: list[tuple[_Rule, list[tuple[int, int]]]]
+        phrase: str, matches: list[tuple[GlossaryRule, list[tuple[int, int]]]]
     ) -> str:
         candidates = sorted(
             (span for _rule, spans in matches for span in spans),
@@ -129,13 +73,12 @@ class EnvelopeBuilder:
         return phrase
 
     def _prompt_glossary(
-        self, batch_matches: list[list[tuple[_Rule, list[tuple[int, int]]]]]
+        self, batch_matches: list[list[tuple[GlossaryRule, list[tuple[int, int]]]]]
     ) -> list[dict[str, Any]]:
         counts = Counter(rule for matches in batch_matches for rule, _spans in matches)
-        selected: list[dict[str, Any]] = []
-        for rule, _count in sorted(
-            counts.items(), key=lambda item: (-item[1], item[0].order)
-        ):
+        ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0].order))
+        eligible: list[tuple[dict[str, Any], int]] = []
+        for rule, count in ranked:
             translations = rule.data.get("t")
             filtered = (
                 {
@@ -148,8 +91,7 @@ class EnvelopeBuilder:
                         or (
                             isinstance(translations[language], list)
                             and all(
-                                isinstance(form, str)
-                                for form in translations[language]
+                                isinstance(form, str) for form in translations[language]
                             )
                         )
                     )
@@ -174,16 +116,17 @@ class EnvelopeBuilder:
                 entry["except"] = excluded
             if filtered:
                 entry["t"] = filtered
-            selected.append(entry)
-            if len(selected) == 20:
-                break
-        return selected
+            eligible.append((entry, count))
+        self.last_omitted_glossary = [
+            (entry["term"], count) for entry, count in eligible[20:]
+        ]
+        return [entry for entry, _count in eligible[:20]]
 
     def _examples(
         self,
         row_index: int,
         phrase: str,
-        matches: list[tuple[_Rule, list[tuple[int, int]]]],
+        matches: list[tuple[GlossaryRule, list[tuple[int, int]]]],
     ) -> list[Example]:
         if not matches:
             return []

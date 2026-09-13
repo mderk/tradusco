@@ -82,7 +82,9 @@ class TranslationProject:
                 raise ValueError(f"Language {language} not found in project config")
         for language in self.reference_languages:
             if language not in config.languages:
-                raise ValueError(f"Reference language {language} not found in project config")
+                raise ValueError(
+                    f"Reference language {language} not found in project config"
+                )
         overlap = set(dst_languages) & set(self.reference_languages)
         if overlap:
             raise ValueError(
@@ -236,7 +238,9 @@ class TranslationProject:
                     continue
                 existing_translation = row.get(language) or ""
                 if existing_translation and not regenerate:
-                    ok, _ = self.translation_tool.validate_translation_text(existing_translation)
+                    ok, _ = self.translation_tool.validate_translation_text(
+                        existing_translation
+                    )
                     if ok:
                         continue
                 if source_phrase in progress[language] and not regenerate:
@@ -263,7 +267,9 @@ class TranslationProject:
             for phrase, needed_languages in phrase_languages.items():
                 if language not in needed_languages:
                     continue
-                translation = language_translations.get(phrase) if language_translations else None
+                translation = (
+                    language_translations.get(phrase) if language_translations else None
+                )
                 if translation is None:
                     await self._record_failure(
                         language=language,
@@ -274,7 +280,9 @@ class TranslationProject:
                         method=method,
                     )
                     continue
-                ok, reason = self.translation_tool.validate_placeholders(phrase, translation)
+                ok, reason = self.translation_tool.validate_placeholders(
+                    phrase, translation
+                )
                 if not ok:
                     print(
                         "Warning: Skipping translation due to placeholder/tag mismatch for: "
@@ -289,7 +297,9 @@ class TranslationProject:
                         method=method,
                     )
                     continue
-                ok, reason = self.translation_tool.validate_translation_text(translation)
+                ok, reason = self.translation_tool.validate_translation_text(
+                    translation
+                )
                 if not ok:
                     print(
                         "Warning: Skipping translation due to invalid translation text for: "
@@ -536,12 +546,8 @@ class TranslationProject:
             indices: dict[str, int],
             languages: dict[str, set[str]],
         ) -> tuple[
-            tuple[
-                list[tuple[str, str | None]], dict[str, int], dict[str, set[str]]
-            ],
-            tuple[
-                list[tuple[str, str | None]], dict[str, int], dict[str, set[str]]
-            ],
+            tuple[list[tuple[str, str | None]], dict[str, int], dict[str, set[str]]],
+            tuple[list[tuple[str, str | None]], dict[str, int], dict[str, set[str]]],
         ]:
             midpoint = len(phrases) // 2
 
@@ -580,6 +586,13 @@ class TranslationProject:
                 await run_batch(*left)
                 await run_batch(*right)
                 return
+
+            if envelope_builder.last_omitted_glossary:
+                omitted = ", ".join(
+                    f"{term} ({count})"
+                    for term, count in envelope_builder.last_omitted_glossary
+                )
+                print(f"Glossary entries omitted by 20-entry prompt cap: {omitted}")
 
             if sent_batch:
                 await driver.wait(delay_seconds)
@@ -649,9 +662,14 @@ class TranslationProject:
             for language in self.dst_languages:
                 existing_translation = row.get(language) or ""
                 if existing_translation and not regenerate:
-                    ok, _ = self.translation_tool.validate_translation_text(existing_translation)
+                    ok, _ = self.translation_tool.validate_translation_text(
+                        existing_translation
+                    )
                     if ok:
-                        if progress[language].get(source_phrase) != existing_translation:
+                        if (
+                            progress[language].get(source_phrase)
+                            != existing_translation
+                        ):
                             progress[language][source_phrase] = existing_translation
                             csv_corrections[language].add(source_phrase)
                         continue
@@ -681,7 +699,9 @@ class TranslationProject:
                 if row.get(f"context_{language}")
             ]
             if language_contexts:
-                phrase_context = "; ".join(filter(None, [phrase_context, *language_contexts]))
+                phrase_context = "; ".join(
+                    filter(None, [phrase_context, *language_contexts])
+                )
 
             phrases_to_translate.append((source_phrase, phrase_context))
             phrase_indices[source_phrase] = i
@@ -764,8 +784,7 @@ class TranslationProject:
         fb_driver = get_driver(fallback_model)
         fb_method = fb_driver.get_best_translation_method("auto")
         print(
-            f"Gap-filling pass with fallback model={fallback_model} "
-            f"method={fb_method}"
+            f"Gap-filling pass with fallback model={fallback_model} method={fb_method}"
         )
         await self._translate_pass(
             model=fallback_model,

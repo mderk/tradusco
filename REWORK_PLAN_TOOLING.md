@@ -1,9 +1,10 @@
 # Rework plan: the tooling around the engine
 
-> **Status: implementation-ready for the first upgrade (2026-09-13).**
+> **Status: implementation in progress; glossary path complete (2026-09-13).**
 > It continues `REWORK_PLAN.md` and `REWORK_PLAN_MULTILANG.md`, both closed.
-> Nothing here has been implemented yet; only the documentation fixes listed
-> under "Stale documentation and loose ends" are done. An outside review on
+> The glossary path is implemented; later order-of-work stages remain pending.
+> The earlier documentation fixes listed under "Stale documentation and loose
+> ends" are also done. An outside review on
 > 7 September checked the items against the code: its findings are folded into
 > the text, and the items it demoted are now marked as proposals.
 
@@ -1066,7 +1067,7 @@ an agent reads the status before the content.
 
 ## Order of work
 
-1. **Glossary path:** move G8's candidate queue and decisions, G6/L2 conformance,
+1. **Glossary path (implemented):** move G8's candidate queue and decisions, G6/L2 conformance,
    L6 coverage and the shared glossary schema/matcher. Keep t3's term extraction
    script in t3. Make prompt selection and conformance use the same matcher.
    **Done when:** a configured source command produces the generated `terms`, the

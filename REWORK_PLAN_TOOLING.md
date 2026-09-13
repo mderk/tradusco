@@ -340,9 +340,11 @@ before the rework provides it.
 
 - Keep the current source-as-key identity for this upgrade. Stable-ID storage and
   migration remain outside its scope.
-- `regenerateLangs` already gates regeneration in the t3 runner (historical
-  `run.js:343` at the revision above). Preserve that protection. It is not a
-  demonstrated prohibition of all automatic gap filling or new-source translation.
+- `regenerateLangs` gates regeneration in the historical t3 runner
+  (`run.js:343` at the revision above). The transferred workflow expresses the
+  same protection directly as `protectLangs`: listed locales cannot be
+  regenerated. It does not prohibit automatic gap filling or new-source
+  translation.
 - Existing `--ensure-complete` and `sync_project_from_csv.py:202` provide gap
   recovery and placeholder quarantine. Extend them for failed replacements,
   per-locale outcomes, bounded accounting and interrupted writes.
@@ -687,7 +689,9 @@ context line. A `--only-keys` selection, or selection by changed context, would
 do it. Today this requires building a separate project.
 
 **R4. The engine has no notion of a protected language.** Reviewed languages are
-protected by the t3 orchestrator and by a `regenerateLangs` list in its config.
+protected by the t3 orchestrator and historically by the inverse of a
+`regenerateLangs` allowlist in its config. The transferred runner uses the direct
+`protectLangs` list instead.
 One misplaced flag overwrites a month of human review. This is a property of the
 project and belongs in the Tradusco project config. Under the agreed behaviour,
 protection prevents automatic replacement of editorial work for an unchanged

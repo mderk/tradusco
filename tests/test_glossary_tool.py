@@ -62,6 +62,7 @@ fs.writeFileSync(output, JSON.stringify({Chest: {group: "shop", mode: "stem", t:
                 "projectDir": ".tradusco/shop",
                 "glossarySourceCommand": ["node", "provider.js"],
                 "locales": ["fr"],
+                "translate": {"protectLangs": ["fr"]},
             }
         ),
         encoding="utf-8",

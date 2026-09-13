@@ -107,7 +107,7 @@ from the directory containing that file.
     "retries": 3,
     "delaySeconds": 1,
     "referenceLangs": ["fr"],
-    "regenerateLangs": ["ja"]
+    "protectLangs": ["fr"]
   },
   "deliveryCommands": [["node", "../scripts/apply-and-build-translations.js"]],
   "artifactKeysCommand": ["node", "../scripts/list-built-translation-keys.js"]
@@ -130,9 +130,8 @@ outside `.tradusco/` because the host project owns them.
   build them. Tradusco does not infer the host catalog format.
 - `artifactKeysCommand`, when configured, must print a JSON array of source keys
   present in the final built artifacts. A missing `sourceCsv` key fails delivery.
-- `translate.regenerateLangs` lists locales where explicit automatic
-  regeneration is allowed. It does not prevent ordinary translation of new
-  source keys.
+- `translate.protectLangs` lists reviewed locales that `--regenerate` must not
+  overwrite. It does not prevent ordinary translation of new source keys.
 
 The runner creates `<projectDir>/config.json`; it is internal state rather than a
 second integration configuration to maintain by hand.
@@ -271,10 +270,14 @@ node "$TRADUSCO_ROOT/tools/run.js" \
   --only-keys-file .tradusco/affected-keys.json
 ```
 
-The runner rejects regeneration for locales absent from `regenerateLangs`.
+The runner rejects regeneration for locales listed in `protectLangs`.
 Editorial values for the same source key are excluded, and unrelated keys are
 left unchanged. Tradusco does not yet derive affected keys automatically from a
 changed glossary or context rule.
+
+The former `regenerateLangs` allowlist used the inverse meaning and is rejected
+to prevent a silent protection reversal. Replace it with the locales that need
+protection.
 
 ## Review and correction
 

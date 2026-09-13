@@ -11,7 +11,8 @@ file while preserving their separate sections. Its project configuration is:
 ```json
 {
   "projectDir": "shop",
-  "glossarySourceCommand": ["node", "../scripts/build-glossary.js"]
+  "glossarySourceCommand": ["node", "../scripts/build-glossary.js"],
+  "translate": {"protectLangs": ["fr"]}
 }
 ```
 
@@ -33,6 +34,8 @@ By default the glossary and candidate decisions persist in
 `glossaryRejectedFile` and `glossaryQueueFile`. The prompt and lint paths use the
 same source matcher from `lib/glossary.py`. Agent operation is documented in
 [`skills/tradusco-glossary/SKILL.md`](skills/tradusco-glossary/SKILL.md).
+`protectLangs` also identifies the reviewed-language values required when a
+manual glossary entry is accepted.
 
 ## File format
 

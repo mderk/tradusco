@@ -40,7 +40,7 @@ module.exports = {
         "baseCol": "en",
         "locales": ["fr"],
         "contextProviderFile": "context-provider.js",
-        "translate": {"regenerateLangs": []},
+        "translate": {"protectLangs": ["fr"]},
         "artifactKeysCommand": ["node", "artifact-keys.js"],
         "deliveryCommands": [["node", "build.js"]],
     }
@@ -124,5 +124,11 @@ module.exports = {
         check=False,
     )
     assert protected.returncode == 1
-    assert "regeneration is not allowed for: fr" in protected.stderr
+    assert "refusing to regenerate protected locales: fr" in protected.stderr
     assert not (tmp_path / ".tradusco/shop/.run.lock").exists()
+
+    config["translate"] = {"regenerateLangs": ["fr"]}
+    (tmp_path / "tradusco.config.json").write_text(json.dumps(config), encoding="utf-8")
+    legacy = run_tool(tmp_path, "--dry-run", check=False)
+    assert legacy.returncode == 1
+    assert "regenerateLangs was replaced by translate.protectLangs" in legacy.stderr

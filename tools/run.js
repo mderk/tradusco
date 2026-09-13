@@ -144,12 +144,13 @@ function main() {
     });
     stage(state, "translate", options["skip-translate"], () => {
       const translate = config.translate || {};
+      if (Object.hasOwn(translate, "regenerateLangs")) throw new Error("translate.regenerateLangs was replaced by translate.protectLangs; list protected locales instead");
       const locales = String(options.langs || options.lang || (config.locales || []).join(","));
       if (!locales) throw new Error("no translation locales selected");
       if (options.regenerate) {
-        const allowed = new Set((translate.regenerateLangs || []).map(String));
-        const forbidden = locales.split(",").filter((lang) => !allowed.has(lang));
-        if (forbidden.length) throw new Error(`regeneration is not allowed for: ${forbidden.join(", ")}`);
+        const protectedLocales = new Set((translate.protectLangs || []).map(String));
+        const forbidden = locales.split(",").filter((lang) => protectedLocales.has(lang));
+        if (forbidden.length) throw new Error(`refusing to regenerate protected locales: ${forbidden.join(", ")}`);
       }
       run(state, [state.python, "-u", path.join(state.traduscoRoot, "translate.py"), "-p", state.projectDir, "-l", locales, "-m", String(options.model || translate.model || "gemini"), "--method", String(translate.method || "auto"), "-b", String(translate.batchSize || 50), "--batch-max-input-tokens", String(translate.batchMaxInputTokens || 65536), "--request-timeout", String(translate.requestTimeout || 120), "-r", String(translate.retries ?? 3), "-d", String(translate.delaySeconds ?? 1), ...(translate.referenceLangs && translate.referenceLangs.length ? ["--reference-langs", translate.referenceLangs.join(",")] : []), ...(options.regenerate ? ["--regenerate"] : []), ...(options["only-keys-file"] ? ["--only-keys-file", path.resolve(state.root, String(options["only-keys-file"]))] : [])]);
     });

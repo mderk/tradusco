@@ -47,10 +47,12 @@ function load(options) {
   const sourceFile = path.join(projectDir, projectConfig.sourceFile || "translations.csv");
   const base = projectConfig.baseLanguage || config.baseCol || "en";
   const locales = config.locales || (projectConfig.languages || []).filter((lang) => lang !== base);
-  const regenerate = new Set(((config.translate || {}).regenerateLangs || []).map(String));
+  const translate = config.translate || {};
+  if (Object.hasOwn(translate, "regenerateLangs")) throw new Error("translate.regenerateLangs was replaced by translate.protectLangs; list protected locales instead");
+  const protectedLocales = new Set((translate.protectLangs || []).map(String));
   return {
     config, root, projectDir, glossaryFile, sourceFile, base, locales,
-    reviewed: locales.filter((lang) => !regenerate.has(lang)),
+    reviewed: locales.filter((lang) => protectedLocales.has(lang)),
     rejectedFile: path.resolve(root, config.glossaryRejectedFile || path.join(projectDir, "not_terms.json")),
     queueFile: path.resolve(root, config.glossaryQueueFile || path.join(projectDir, "terms_queue.json")),
     contextsFile: path.resolve(root, config.contextsFile || path.join(projectDir, "contexts.json")),

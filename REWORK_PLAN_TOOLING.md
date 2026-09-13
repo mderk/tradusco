@@ -1,10 +1,13 @@
 # Rework plan: the tooling around the engine
 
-> **Status: first-upgrade implementation and small-shop acceptance complete;
-> next-project validation pending (2026-09-13).**
+> **Status: first-upgrade implementation and small-shop acceptance mostly
+> complete; W2 input inspection and next-project validation remain pending
+> (2026-09-13).**
 > It continues `REWORK_PLAN.md` and `REWORK_PLAN_MULTILANG.md`, both closed.
-> The first-upgrade paths and small-shop acceptance are implemented. Validation
-> in the next real project remains pending.
+> The implementation paths and small-shop acceptance are present. The current
+> `--dry-run` prints commands and the pre-run working-project status, but does not
+> yet execute read-only providers or show the exact post-extraction model input
+> required by W2. Validation in the next real project also remains pending.
 > The earlier documentation fixes listed under "Stale documentation and loose
 > ends" are also done. An outside review on
 > 7 September checked the items against the code: its findings are folded into
@@ -1084,7 +1087,8 @@ an agent reads the status before the content.
    is read-only, apply preserves manual and filled values, coverage names each
    resolution source and omission, and resolved context appears in the captured
    model prompt.
-3. **Ordinary run (implemented):** move G1 and G3's status half with W2/W5 inspection, the
+3. **Ordinary run (implemented except full W2 inspection):** move G1 and G3's
+   status half with W2/W5 inspection, the
    incremental W6/W7 sequence, existing progress-first outcome/resume behaviour
    and the minimum O3/O4 logging and timeout needed to operate a run. Keep current
    batching and model policy; model bakeoff remains backlog. **Done when:** one

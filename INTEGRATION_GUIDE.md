@@ -1,219 +1,91 @@
-# Tradusco Integration Guide
+# Tradusco integration guide
 
-This guide explains how to integrate **Tradusco** into another repository while keeping all translation state
-in the target project (recommended).
+This document describes the workflow implemented in the current repository. A
+host project keeps its own source readers, product knowledge, catalogs and build
+commands. Tradusco owns preparation, source-key selection, model calls,
+validation, persisted translation state, guarded editorial changes and delivery
+coordination.
 
-Tradusco is opinionated about its **internal interchange format**:
+Tradusco currently identifies a message by its exact base-language text. An `id`
+column may be preserved in CSV, but it is not the translation-memory key.
 
-- a Tradusco “project” is a directory containing `config.json`, a phrase table (usually `translations.csv`),
-  and per-locale `progress.json` files
-- your application is responsible for extracting strings and building catalogs
-- Tradusco is responsible for translating missing strings and maintaining translation memory (`progress.json`)
-
-## Project directory (what Tradusco expects)
-
-Minimal structure:
-
-```
-.tradusco/myproject/
-  config.json
-  translations.csv
-  glossary.json              # optional
-  editorial.json             # written by guarded review
-  context.txt                # optional
-  fr/progress.json
-  fr/failures.jsonl          # written when a cell fails
-  es/progress.json
-```
-
-### `config.json`
-
-Tradusco reads configuration from `config.json`:
-
-```json
-{
-  "name": "myproject",
-  "sourceFile": "translations.csv",
-  "languages": ["en", "fr", "es"],
-  "baseLanguage": "en",
-  "keyColumn": "en"
-}
-```
-
-Notes:
-
-- **`keyColumn`** is the column that uniquely identifies a phrase. In “phrase-table” workflows it’s usually the
-  same as `baseLanguage` (e.g. English text).
-- You may include metadata columns in `translations.csv` (see below).
-
-### `translations.csv`
-
-`translations.csv` is a table with:
-
-- one **base** column (e.g. `en`)
-- one column per target locale (e.g. `fr`, `es`)
-- optional **stable key** column (e.g. `id`) if your application uses string IDs like `CAR_COMMON`
-- optional context/metadata columns:
-  - `context` (phrase-specific notes)
-  - `context_<lang>` (language-specific phrase notes)
-
-Tradusco translates only rows where the destination column is empty (unless `--regenerate` is used).
-
-Notes:
-
-- Column names are **case-sensitive**. `baseLanguage` and `--lang` must match the CSV headers exactly (recommended: lowercase BCP-47-ish codes like `en`, `fr`, `pt-BR`).
-- `translate.py` currently uses the **base-language text** as the key for `progress.json` (translation memory). If you keep an `id` column, it will be preserved in the CSV, but it is not used as the translation-memory key.
-  - **Base strings should be unique within a project.** If you have the same English text under multiple IDs but need different translations, Tradusco cannot reliably disambiguate them today because both caching and updates are keyed by the base text. Make the base strings distinct (or update the code to key by `id`).
-
-### `progress.json`
-
-`<lang>/progress.json` is a translation memory mapping:
-
-```json
-{
-  "Hello": "Bonjour",
-  "Goodbye": "Au revoir"
-}
-```
-
-It is used for caching and can be applied back into other formats.
-
-## Recommended workflows
-
-### Workflow A: “CSV-first” (you already have a CSV phrase table)
-
-1) Create a project dir (either manually or via `create_project.py`)
-2) Run `translate.py` for each target locale
-3) Consume results from `translations.csv` or `progress.json`
-
-Example “keyed” source CSV (IDs + English):
-
-```csv
-id,en,fr,es,ru,context
-CAR_COMMON,Common Car Box,,,,UI label
-BTN_SAVE,Save,,,,Button label
-ERR_REQUIRED,Field is required,,,,Validation error
-WELCOME_USER,"Welcome, {name}!",,,,Keep `{name}` placeholder
-RICH_TEXT,"<0>Learn more</0>",,,,Keep Lingui rich-text tags
-```
-
-Create a Tradusco project from it:
-
-```bash
-python create_project.py -p .tradusco/myproject -c path/to/translations.csv -b en -k id -i context
-```
-
-### Workflow B: gettext `.po` (extract → translate → apply)
-
-This is the most common “end-to-end” workflow for gettext/Lingui-style projects.
-
-**Step 1 — extract base msgids into a CSV**
-
-```bash
-python extract_translations_csv.py \
-  --po-dir locale_src/en \
-  --out-csv locale_src/translations.csv \
-  --base-col en
-```
-
-**Step 2 — sync into a Tradusco project dir**
-
-```bash
-python sync_project_from_csv.py \
-  --project-dir .tradusco/myproject \
-  --source-csv locale_src/translations.csv \
-  --base-col en
-```
-
-This writes/updates:
-
-- `.tradusco/myproject/config.json`
-- `.tradusco/myproject/translations.csv` (prefilled from progress caches when present)
-
-Useful options:
-
-- `--ignore-columns "context,notes"`: if your CSV contains non-locale metadata columns
-- `--context-col <name>`: if your context column isn’t named `context`
-- `--no-sanitize-progress`: disable mojibake migration + quarantine (enabled by default)
-- `--bootstrap-from <dir>`: seed empty `progress.json` files from another cache
-
-**Step 3 — translate missing strings**
-
-```bash
-python translate.py \
-  -p .tradusco/myproject \
-  -l fr \
-  -m google/gemini-2.5-flash \
-  --method auto
-```
-
-`--lang` takes a comma-separated list, and passing several targets at once is the
-cheaper path: the phrases, the context and the glossary are assembled and sent
-once for all of them rather than repeated per language. The steps that follow
-(apply, validate) are per-locale, so the loop below still applies to them.
-
-**Step 4 — apply progress into PO files**
-
-```bash
-python apply_progress_to_po.py \
-  --lang fr \
-  --project-dir .tradusco/myproject \
-  --po-dir locale_src/fr
-```
-
-Useful options:
-
-- `--force`: overwrite already-translated entries (default fills only missing/fuzzy)
-- `--no-validate-placeholders`: disable placeholder/tag validation when applying
-
-**Step 5 — validate**
-
-```bash
-python po_status.py --lang fr --po-dir locale_src/fr --fail
-```
-
-Optional: stable diffs
-
-```bash
-python sort_po.py locale_src/fr
-```
-
-### Orchestrating multiple locales (full loop)
-
-This is the current workflow:
+## Current workflow
 
 ```mermaid
 flowchart TD
-    Source[Project source files] --> Extract[Extract project strings]
-    Extract --> Sync[Sync the Tradusco project]
-    Sync --> Prepare[Prepare glossary and context]
-    Prepare --> Select[Select missing or explicit source keys]
-    Select --> Translate[Translate through the configured model]
-    Translate --> Validate[Validate output and placeholders]
+    Candidates[Glossary and context candidates] --> Decisions[Optional agent or human decisions]
+    Decisions --> Accepted[Accepted glossary and context files]
+    Project[Host project sources] --> Extract[Run extraction commands]
+    Extract --> Sync[Sync source keys into Tradusco]
+    Accepted --> Prepare[Refresh deterministic glossary and context]
+    Sync --> Prepare
+    Prepare --> Select[Select missing or explicitly requested keys]
+    Select --> Model[Call the configured model]
+    Model --> Validate[Validate structure and placeholders]
     Validate --> Persist[Save progress and failures]
-    Persist --> Audit[Audit project state]
-    Audit --> Export[Export ready managed values]
-    Export --> Catalog[Update project catalogs]
-    Catalog --> Build[Run project delivery commands]
-    Build --> Verify[Verify artifact source keys]
-
-    Review[Guarded review or back sync] --> Editorial[Record editorial values]
+    Persist --> Audit[Audit Tradusco state]
+    Audit --> Export[Merge ready values into the host CSV]
+    Export --> Deliver[Run host delivery commands]
+    Deliver --> Verify[Verify keys in built artifacts]
+    Review[Guarded edit or explicit back sync] --> Editorial[Record editorial values]
     Editorial --> Persist
     Editorial --> Select
 ```
 
-Project code owns extraction, product-specific glossary and context providers,
-catalog formats, build commands and artifact inspection. Tradusco owns the stage
-order, source-key selection, model calls, validation, persistence, guarded
-review and recovery.
+The decision commands and the ordinary runner are separate today. The runner
+refreshes deterministic provider output and consumes decisions already recorded
+in project files. It does not call `next` or `submit`, wait for an agent, or make
+product decisions by itself. Missing optional glossary or context guidance does
+not block translation.
 
-The generic workflow runner reads project commands and paths from
-`tradusco.config.json`:
+## Files and ownership
+
+The host repository normally contains both an integration configuration and a
+Tradusco state directory:
+
+```text
+your-project/
+  tradusco.config.json
+  translation_glossary.json
+  translation_contexts.json
+  translation_not_terms.json
+  translation_terms_queue.json
+  .tradusco/
+    app/
+      config.json
+      translations.csv
+      glossary.json
+      editorial.json
+      fr/
+        progress.json
+        failures.jsonl
+```
+
+| File | Writer | Meaning |
+| --- | --- | --- |
+| `tradusco.config.json` | Host project | Commands, paths, locales and model policy |
+| Host `sourceCsv` | Host extractor and Tradusco export | Interchange table between the host and Tradusco |
+| `<projectDir>/translations.csv` | Tradusco | Working snapshot reconstructed from live source keys and progress |
+| `<locale>/progress.json` | Tradusco | Persisted translations keyed by exact source text |
+| `<locale>/failures.jsonl` | Tradusco | Append-only technical failure records |
+| `<projectDir>/editorial.json` | Guarded edit and back-sync | Explicit editorial values that model regeneration must preserve |
+| Host glossary and context files | Providers and decision commands | Generated facts and accepted decisions |
+| `<projectDir>/glossary.json` | Runner | Glossary snapshot consumed by translation |
+
+`progress.json` is saved before the working CSV. If the CSV write fails, the
+next translation run reconstructs it from progress without another model call.
+An editorial record is authoritative for the same source key and repairs
+progress and CSV if an earlier guarded write was interrupted.
+
+## Integration configuration
+
+The runner reads `tradusco.config.json`. Relative paths and commands are resolved
+from the directory containing that file.
 
 ```json
 {
   "traduscoRoot": "/path/to/tradusco",
-  "projectDir": ".tradusco/myproject",
+  "projectDir": ".tradusco/app",
   "sourceCsv": "locale_src/translations.csv",
   "baseCol": "en",
   "locales": ["fr", "de", "ja"],
@@ -227,207 +99,282 @@ The generic workflow runner reads project commands and paths from
     "model": "gemini",
     "method": "auto",
     "batchSize": 50,
+    "batchMaxInputTokens": 65536,
     "requestTimeout": 120,
     "retries": 3,
+    "delaySeconds": 1,
+    "referenceLangs": ["fr"],
     "regenerateLangs": ["ja"]
   },
-  "deliveryCommands": [["node", "scripts/build-catalogs.js"]],
+  "deliveryCommands": [["node", "scripts/apply-and-build-translations.js"]],
   "artifactKeysCommand": ["node", "scripts/list-built-translation-keys.js"]
 }
 ```
 
-Commands are argv arrays and run from the directory containing this file. The
-glossary source command must accept an appended `--output PATH`. The context
-provider contract is documented in [CONTEXT.md](CONTEXT.md); the glossary files
-and decision queues are documented in [GLOSSARY.md](GLOSSARY.md).
+All commands are argv arrays; shell syntax is not interpreted.
+
+- `extractCommands` must produce `sourceCsv`.
+- `glossarySourceCommand` receives an appended `--output PATH` and must write a
+  JSON object containing generated term entries.
+- `contextProviderFile` is a CommonJS provider described in
+  [CONTEXT.md](CONTEXT.md).
+- `deliveryCommands` must apply exported values to the real host catalogs and
+  build them. Tradusco does not infer the host catalog format.
+- `artifactKeysCommand`, when configured, must print a JSON array of source keys
+  present in the final built artifacts. A missing `sourceCsv` key fails delivery.
+- `translate.regenerateLangs` lists locales where explicit automatic
+  regeneration is allowed. It does not prevent ordinary translation of new
+  source keys.
+
+The runner creates `<projectDir>/config.json`; it is internal state rather than a
+second integration configuration to maintain by hand.
+
+## Connecting existing state
+
+Do not start with the full runner when the host CSV already contains translations
+that are absent from `progress.json`. Sync reconstructs the working CSV from
+progress; it does not infer whether a host value is reviewed, automatic or stale.
+
+First create the internal snapshot:
 
 ```bash
-node tools/run.js --config /path/to/project/tradusco.config.json
+TRADUSCO_ROOT=/path/to/tradusco
+PYTHON="$TRADUSCO_ROOT/.venv/bin/python"
+
+$PYTHON "$TRADUSCO_ROOT/sync_project_from_csv.py" \
+  --project-dir .tradusco/app \
+  --source-csv locale_src/translations.csv \
+  --base-col en
 ```
 
-It acquires `<projectDir>/.run.lock`, runs configured extraction, synchronizes the
-source CSV, prepares glossary and context, translates missing cells, audits the
-result and merges ready values back into the source CSV. It then runs optional
-`deliveryCommands` from the integration config. If `artifactKeysCommand` is set,
-that command must print a JSON array of source keys found in the built artefact;
-the run fails when a source-catalog key is missing. Each stage has a `--skip-*`
-flag. `--dry-run` prints the planned commands. Model calls have a configurable
-`translate.requestTimeout` (120 seconds by default).
+Then choose how known values enter Tradusco:
 
-The normal stage order is `extract`, `sync`, `glossary`, `context`, `translate`,
-`audit` and `delivery`. A run holds `<projectDir>/.run.lock`; guarded edits and
-back-sync refuse to write while another run owns that lock.
+- seed known automatic translation memory with `--bootstrap-from` or existing
+  `progress.json` files;
+- import known editorial host values with an explicit back-sync preview and
+  write;
+- leave values of unknown origin untouched until their ownership is resolved.
 
-Translation results are saved to `<locale>/progress.json` before the working
-CSV. If the CSV write fails, the next run repairs it from progress without
-calling the model again. Technical failures are appended to
-`<locale>/failures.jsonl`. Delivery exports every ready managed value while
-preserving unresolved cells and catalog entries that are outside the extracted
-source set.
+Do not translate or deliver that unresolved scope: the host CSV preserves an
+unknown value only until Tradusco has a ready managed replacement for it.
 
-For an explicit affected scope, put exact source keys in a JSON array and pass
-`--only-keys-file keys.json`. With `--regenerate`, only those keys in permitted
-locales are regenerated; recorded editorial cells and unrelated rows are kept.
-
-## Review and source-CSV delivery
-
-Read one source string across locales:
+Back-sync records every imported difference as editorial, so it must not be used
+as a blanket import for values that are merely assumed to be machine output.
 
 ```bash
-python review_translations.py read --config /path/to/tradusco.config.json --source "Pay {amount}"
+$PYTHON "$TRADUSCO_ROOT/review_translations.py" back-sync \
+  --config tradusco.config.json
+
+$PYTHON "$TRADUSCO_ROOT/review_translations.py" back-sync \
+  --config tradusco.config.json \
+  --write \
+  --expect REVISION_FROM_PREVIEW
 ```
 
-Apply an explicit correction from a JSON array. Every item must contain
-`source`, `language`, `from` and `to`; a changed `from` is reported as a conflict.
+The revision covers both the host CSV and the working CSV. A concurrent change
+causes the write to fail instead of overwriting it.
+
+## Preparing glossary and context decisions
+
+The host project supplies facts; Tradusco supplies the common queues and command
+protocol. Deterministic provider refresh is automatic during a normal run.
+Candidate decisions remain an explicit operation before that run.
+
+Inspect glossary state and one pending candidate:
 
 ```bash
-python review_translations.py apply --config /path/to/tradusco.config.json --edits edits.json
-python review_translations.py apply --config /path/to/tradusco.config.json --edits edits.json --write
+node "$TRADUSCO_ROOT/tools/glossary.js" report --config tradusco.config.json
+node "$TRADUSCO_ROOT/tools/glossary.js" next --config tradusco.config.json
 ```
 
-The write records the value in `<projectDir>/editorial.json`, progress and the
-project CSV. Repeating it repairs an interrupted write. Editorial values are
-preserved during regeneration for the same source key.
-
-To import intentional edits made in the configured source CSV, preview first and
-then pass the reported revision:
+Record a prepared accept, defer or reject answer:
 
 ```bash
-python review_translations.py back-sync --config /path/to/tradusco.config.json
-python review_translations.py back-sync --config /path/to/tradusco.config.json --write --expect REVISION
+node "$TRADUSCO_ROOT/tools/glossary.js" submit \
+  --config tradusco.config.json \
+  --json glossary-answer.json
 ```
 
-`export` uses the same preview/revision protocol. It writes only ready managed
-cells and preserves unresolved values and source rows outside Tradusco. The
-ordinary runner performs this export automatically. All write commands honour
-the project run lock.
-
-The equivalent manual pattern remains useful for integrations that need custom
-delivery steps:
-
-Example (gettext/PO):
+Inspect unresolved context groups and record an answer:
 
 ```bash
-# one-time extraction + sync
-python extract_translations_csv.py --po-dir locale_src/en --out-csv locale_src/translations.csv --base-col en
-python sync_project_from_csv.py --project-dir .tradusco/myproject --source-csv locale_src/translations.csv --base-col en
-
-# per-locale translate + apply + validate
-for lang in fr es de; do
-  python translate.py -p .tradusco/myproject -l "$lang" -m google/gemini-2.5-flash --method auto
-  python apply_progress_to_po.py --lang "$lang" --project-dir .tradusco/myproject --po-dir "locale_src/$lang"
-  python po_status.py --lang "$lang" --po-dir "locale_src/$lang" --fail
-done
-
-# build catalogs in your app (project-specific)
-# e.g. yarn lingui:build / npm run i18n:compile / etc
+node "$TRADUSCO_ROOT/tools/context.js" report --config tradusco.config.json
+node "$TRADUSCO_ROOT/tools/context.js" next --config tradusco.config.json
+node "$TRADUSCO_ROOT/tools/context.js" submit \
+  --config tradusco.config.json \
+  --json context-answer.json
 ```
 
-## Auditing completeness & correctness (recommended)
+Context answers may contain a context formulation or `needs_glossary`; the latter
+enters the shared terminology queue. Accepted decisions are used on the next
+provider refresh. Rejected and deferred candidates remain recorded so unchanged
+evidence is not presented repeatedly. See [GLOSSARY.md](GLOSSARY.md) and
+[CONTEXT.md](CONTEXT.md) for answer shapes and precedence.
 
-When integrating Tradusco into another repo, it’s useful to have a deterministic “sanity check” step
-that catches:
-
-- missing destination cells in `translations.csv`
-- invalid JSON-like artifacts accidentally saved as translations (e.g. `{` or `"translations": [`)
-- placeholder / Lingui-tag mismatches (`{name}`, `<0>...</0>`)
-- progress/cache drift between `translations.csv` and `<lang>/progress.json`
-
-Run:
+## Running the ordinary cycle
 
 ```bash
-python audit_translations.py --project-dir .tradusco/myproject
+node "$TRADUSCO_ROOT/tools/run.js" --config tradusco.config.json
 ```
 
-Machine-readable output:
+The implemented stage order is:
+
+1. acquire `<projectDir>/.run.lock`;
+2. run extraction commands;
+3. synchronize live source keys and rebuild the working CSV from progress;
+4. regenerate the deterministic `terms` section and copy the resulting glossary
+   into the Tradusco project;
+5. preview context resolution, verify its revision and apply eligible context;
+6. translate missing cells for the selected locales;
+7. print the deterministic audit report;
+8. merge non-empty managed values into `sourceCsv` while preserving unresolved
+   host values and rows that are not in the working snapshot;
+9. run project delivery commands;
+10. verify built artifact keys when an artifact command is configured;
+11. release the project lock.
+
+Every stage has a matching `--skip-*` flag: `--skip-extract`, `--skip-sync`,
+`--skip-glossary`, `--skip-context`, `--skip-translate`, `--skip-audit` and
+`--skip-delivery`. Use `--lang` or `--langs` to restrict target locales.
+
+`--dry-run` currently prints the commands and the current working-project status.
+It does not execute providers, assemble model envelopes, or report the exact
+post-extraction selection. Use the glossary and context report commands above for
+read-only preparation inspection.
+
+## New source text and explicit regeneration
+
+An exact source-text change is a new source key. It is translated automatically
+when its destination cell is missing. The old source and translation stay in
+`progress.json`; no human approval is required merely because the source changed.
+
+When accepted canon or context changes while source text stays the same, provide
+the affected source keys explicitly:
+
+```json
+["Travel Pack", "Back"]
+```
 
 ```bash
-python audit_translations.py --project-dir .tradusco/myproject --json
+node "$TRADUSCO_ROOT/tools/run.js" \
+  --config tradusco.config.json \
+  --lang ja \
+  --regenerate \
+  --only-keys-file affected-keys.json
 ```
 
-Fail CI if issues exist:
+The runner rejects regeneration for locales absent from `regenerateLangs`.
+Editorial values for the same source key are excluded, and unrelated keys are
+left unchanged. Tradusco does not yet derive affected keys automatically from a
+changed glossary or context rule.
+
+## Review and correction
+
+Read one source row across all configured locales:
 
 ```bash
-python audit_translations.py --project-dir .tradusco/myproject --fail
+$PYTHON "$TRADUSCO_ROOT/review_translations.py" read \
+  --config tradusco.config.json \
+  --source "Pay {amount}"
 ```
 
-## Translating all locales (parallel)
+An edit file is a JSON array. `from` is mandatory:
 
-Tradusco ships a small helper runner that reads `languages[]` from `config.json` and runs `translate.py`
-for each locale with a concurrency limit.
+```json
+[
+  {
+    "source": "Pay {amount}",
+    "language": "fr",
+    "from": "Payer {amount}",
+    "to": "Régler {amount}"
+  }
+]
+```
 
-Example (Gemini → Grok fallback, run only locales that still have missing/invalid cells):
+Preview and apply it:
 
 ```bash
-python translate_all.py \
-  --project-dir .tradusco/myproject \
-  --model google/gemini-2.5-flash \
-  --fallback-model x-ai/grok-4.3 \
-  --parallel 3 \
-  --batch-size 50 \
-  --batch-max-input-tokens 65536 \
-  --method auto \
-  --only-missing
+$PYTHON "$TRADUSCO_ROOT/review_translations.py" apply \
+  --config tradusco.config.json \
+  --edits edits.json
+
+$PYTHON "$TRADUSCO_ROOT/review_translations.py" apply \
+  --config tradusco.config.json \
+  --edits edits.json \
+  --write
 ```
 
-Notes:
+A stale `from` is a conflict. A successful write records the value in
+`editorial.json`, `progress.json` and the working CSV. Repeating the same edit is
+idempotent and repairs an interrupted write. Run delivery again to propagate the
+saved correction; no model call is needed.
 
-- The runner prints per-locale logs prefixed with `[<lang>]`.
-- During parallel runs, Tradusco uses lockfiles like `.translations.csv.lock` and `.<lang>/.progress.json.lock`
-  to avoid races. These files are safe to ignore and can be excluded from VCS.
-- Per-locale failure logs live in `<lang>/failures.jsonl` (append-only). Check this file when audit
-  reports missing cells after a run.
+## Delivery and partial results
 
-### Single-locale fallback (`translate.py`)
+Tradusco exports every non-empty managed working value into `sourceCsv`. It does
+not blank an unresolved host cell and does not remove host rows that are absent
+from the working snapshot. This permits partial delivery after isolated model
+failures.
 
-For one locale, `--fallback-model` retries failed batches and then runs a gap-filling pass:
+`sourceCsv` is an interchange table, not necessarily the final catalog. For a PO
+project, the host delivery script must call the existing helpers for each locale
+and then build the application catalogs, for example:
 
 ```bash
-python translate.py -p .tradusco/myproject -l fr \
-  -m google/gemini-2.5-flash \
-  --fallback-model x-ai/grok-4.3 \
-  --method auto
+$PYTHON "$TRADUSCO_ROOT/apply_progress_to_po.py" \
+  --lang fr \
+  --project-dir .tradusco/app \
+  --po-dir locale_src/fr
+
+$PYTHON "$TRADUSCO_ROOT/sort_po.py" locale_src/fr
+python -m your_project_translation_build
 ```
 
-### Workflow C: “Bring your own extractor/applier”
-
-If your project doesn’t use gettext/PO, you can still use Tradusco by treating the CSV as the interchange format:
-
-1) **Export** phrases from your app into a CSV with an `en` (or other base) column and one column per locale.
-2) Run `sync_project_from_csv.py` to create/update `.tradusco/<name>/translations.csv` + `config.json`.
-3) Run `translate.py` to fill missing translations.
-4) **Import** translations back into your app using `progress.json` (or by reading the updated CSV).
-
-## Models & environment variables
-
-Tradusco supports multiple drivers (Gemini, OpenAI, Grok) and OpenRouter.
-
-Common environment variables:
-
-- `GEMINI_API_KEY`
-- `OPENAI_API_KEY`
-- `GROK_API_KEY`
-- `OPENROUTER_API_KEY`
-- `TRADUSCO_DEBUG=true` (verbose logs)
-
-### OpenRouter model ids
-
-If `OPENROUTER_API_KEY` is set, you can pass a raw OpenRouter model id containing `/`:
+If a build fails, rerun the runner with preparation and translation skipped. It
+will deliver persisted values without another model call:
 
 ```bash
-python translate.py -p .tradusco/myproject -l fr -m google/gemini-2.5-flash
+node "$TRADUSCO_ROOT/tools/run.js" \
+  --config tradusco.config.json \
+  --skip-extract \
+  --skip-sync \
+  --skip-glossary \
+  --skip-context \
+  --skip-translate \
+  --skip-audit
 ```
 
-## Common pitfalls and how Tradusco helps
+## Low-level commands
 
-- **Placeholder/tag mismatches**: Tradusco validates curly placeholders (`{name}`) and Lingui numeric tags (`<0>...</0>`)
-  before saving translations.
-- **Mojibake keys**: `sync_project_from_csv.py` can migrate common UTF-8-as-Latin1 mojibake keys for current phrases.
-- **Whitespace variants**: `apply_progress_to_po.py` includes conservative lookup fallbacks for msgids with trailing spaces
-  or “space before newline” sequences.
+The following scripts remain available for debugging or custom orchestration:
 
-## Advanced: integrate as a library (custom storage)
+- `translate.py` runs one translation pass for one or more locales;
+- `translate_all.py` runs per-locale translation processes;
+- `audit_translations.py` audits completeness, invalid values, placeholders and
+  progress drift;
+- `extract_translations_csv.py`, `apply_progress_to_po.py`, `po_status.py` and
+  `sort_po.py` support PO integrations.
 
-For non-filesystem workflows, implement a custom `StorageAdapter` (see `lib/storage/base.py`) and use
-`TranslationProject` directly. This allows storing translations/progress in a DB or another system while
-reusing the same translation logic.
+They do not perform the complete workflow above. In particular,
+`translate_all.py` does not acquire the project-level `.run.lock`; do not run it
+concurrently with `tools/run.js` or review writes.
+
+## Current limits
+
+- Source text is the translation-memory identity; duplicate source text cannot
+  carry different translations in one Tradusco project.
+- The decision queues are not orchestrated by `tools/run.js`.
+- `--dry-run` is a command plan, not the full input inspection described in the
+  rework plan.
+- Changed glossary and context rules require an explicit affected-key file for
+  regeneration.
+- Generated context fills gaps. Refreshing values previously produced by a
+  changed rule requires provenance and remains backlog.
+- Only supported guarded edits and explicit back-sync establish editorial
+  origin. Tradusco does not infer it from an unexplained catalog difference.
+- The project lock serializes supported writers. A general concurrent-writer
+  transaction protocol is not implemented.
+
+The executable workflow baseline is documented in
+[ACCEPTANCE_SMALL_SHOP.md](ACCEPTANCE_SMALL_SHOP.md) and covered by the repository
+test suite.

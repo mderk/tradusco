@@ -53,31 +53,34 @@ Typical layout in your app repo:
 
 ```
 your-app/
+  tradusco.config.json
+  translation_glossary.json
+  translation_contexts.json
   .tradusco/
     myproject/
       config.json
       translations.csv
       glossary.json
       editorial.json
-      context.txt
       ru/progress.json
       fr/progress.json
 ```
 
-All Tradusco scripts accept absolute paths, so you can run them from your app repo:
+Configure the host commands and providers in `tradusco.config.json`, then run the
+complete workflow from the app repository:
 
 ```bash
 TRADUSCO_ROOT=/path/to/tradusco
-PYTHON="$TRADUSCO_ROOT/.venv/bin/python"  # optional
-
-# translate missing strings into French using OpenRouter
-$PYTHON "$TRADUSCO_ROOT/translate.py" -p .tradusco/myproject -l fr -m google/gemini-2.5-flash --method auto
+node "$TRADUSCO_ROOT/tools/run.js" --config tradusco.config.json
 ```
 
 For the current workflow diagram and a step-by-step integration recipe, including
 gettext/PO workflows, see [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md).
 It contains the current end-to-end workflow diagram, runner configuration,
-review commands and delivery rules. See [GLOSSARY.md](GLOSSARY.md) and
+initial-state rules, review commands, known limits and delivery rules. The
+individual Python scripts documented below are low-level engine commands; they
+do not run the glossary, context, review and delivery workflow. See
+[GLOSSARY.md](GLOSSARY.md) and
 [CONTEXT.md](CONTEXT.md) for the two preparation providers.
 
 ## Creating a New Project

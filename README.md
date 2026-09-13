@@ -1,6 +1,7 @@
 # Tradusco
 
-A Python utility for translating texts using LLMs.
+A translation workflow for preparing glossary and context, translating with
+LLMs, reviewing changes and delivering results back to a host project.
 
 ## Installation
 
@@ -56,6 +57,8 @@ your-app/
     myproject/
       config.json
       translations.csv
+      glossary.json
+      editorial.json
       context.txt
       ru/progress.json
       fr/progress.json
@@ -71,7 +74,11 @@ PYTHON="$TRADUSCO_ROOT/.venv/bin/python"  # optional
 $PYTHON "$TRADUSCO_ROOT/translate.py" -p .tradusco/myproject -l fr -m google/gemini-2.5-flash --method auto
 ```
 
-For a step-by-step integration recipe (including gettext/PO workflows), see `INTEGRATION_GUIDE.md`.
+For the current workflow diagram and a step-by-step integration recipe, including
+gettext/PO workflows, see [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md).
+It contains the current end-to-end workflow diagram, runner configuration,
+review commands and delivery rules. See [GLOSSARY.md](GLOSSARY.md) and
+[CONTEXT.md](CONTEXT.md) for the two preparation providers.
 
 ## Creating a New Project
 

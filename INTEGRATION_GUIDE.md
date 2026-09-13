@@ -18,8 +18,11 @@ Minimal structure:
 .tradusco/myproject/
   config.json
   translations.csv
+  glossary.json              # optional
+  editorial.json             # written by guarded review
   context.txt                # optional
   fr/progress.json
+  fr/failures.jsonl          # written when a cell fails
   es/progress.json
 ```
 
@@ -177,8 +180,66 @@ python sort_po.py locale_src/fr
 
 ### Orchestrating multiple locales (full loop)
 
+This is the current workflow:
+
+```mermaid
+flowchart TD
+    Source[Project source files] --> Extract[Extract project strings]
+    Extract --> Sync[Sync the Tradusco project]
+    Sync --> Prepare[Prepare glossary and context]
+    Prepare --> Select[Select missing or explicit source keys]
+    Select --> Translate[Translate through the configured model]
+    Translate --> Validate[Validate output and placeholders]
+    Validate --> Persist[Save progress and failures]
+    Persist --> Audit[Audit project state]
+    Audit --> Export[Export ready managed values]
+    Export --> Catalog[Update project catalogs]
+    Catalog --> Build[Run project delivery commands]
+    Build --> Verify[Verify artifact source keys]
+
+    Review[Guarded review or back sync] --> Editorial[Record editorial values]
+    Editorial --> Persist
+    Editorial --> Select
+```
+
+Project code owns extraction, product-specific glossary and context providers,
+catalog formats, build commands and artifact inspection. Tradusco owns the stage
+order, source-key selection, model calls, validation, persistence, guarded
+review and recovery.
+
 The generic workflow runner reads project commands and paths from
 `tradusco.config.json`:
+
+```json
+{
+  "traduscoRoot": "/path/to/tradusco",
+  "projectDir": ".tradusco/myproject",
+  "sourceCsv": "locale_src/translations.csv",
+  "baseCol": "en",
+  "locales": ["fr", "de", "ja"],
+  "envFile": ".env.tradusco",
+  "extractCommands": [["node", "scripts/extract-translations.js"]],
+  "glossaryFile": "translation_glossary.json",
+  "glossarySourceCommand": ["node", "scripts/build-glossary.js"],
+  "contextProviderFile": "scripts/context-provider.js",
+  "contextsFile": "translation_contexts.json",
+  "translate": {
+    "model": "gemini",
+    "method": "auto",
+    "batchSize": 50,
+    "requestTimeout": 120,
+    "retries": 3,
+    "regenerateLangs": ["ja"]
+  },
+  "deliveryCommands": [["node", "scripts/build-catalogs.js"]],
+  "artifactKeysCommand": ["node", "scripts/list-built-translation-keys.js"]
+}
+```
+
+Commands are argv arrays and run from the directory containing this file. The
+glossary source command must accept an appended `--output PATH`. The context
+provider contract is documented in [CONTEXT.md](CONTEXT.md); the glossary files
+and decision queues are documented in [GLOSSARY.md](GLOSSARY.md).
 
 ```bash
 node tools/run.js --config /path/to/project/tradusco.config.json
@@ -190,9 +251,19 @@ result and merges ready values back into the source CSV. It then runs optional
 `deliveryCommands` from the integration config. If `artifactKeysCommand` is set,
 that command must print a JSON array of source keys found in the built artefact;
 the run fails when a source-catalog key is missing. Each stage has a `--skip-*`
-flag;
-`--dry-run` prints the planned commands. Model calls have a configurable
+flag. `--dry-run` prints the planned commands. Model calls have a configurable
 `translate.requestTimeout` (120 seconds by default).
+
+The normal stage order is `extract`, `sync`, `glossary`, `context`, `translate`,
+`audit` and `delivery`. A run holds `<projectDir>/.run.lock`; guarded edits and
+back-sync refuse to write while another run owns that lock.
+
+Translation results are saved to `<locale>/progress.json` before the working
+CSV. If the CSV write fails, the next run repairs it from progress without
+calling the model again. Technical failures are appended to
+`<locale>/failures.jsonl`. Delivery exports every ready managed value while
+preserving unresolved cells and catalog entries that are outside the extracted
+source set.
 
 For an explicit affected scope, put exact source keys in a JSON array and pass
 `--only-keys-file keys.json`. With `--regenerate`, only those keys in permitted

@@ -100,6 +100,14 @@ class FileSystemStorageAdapter(StorageAdapter):
             content = await f.read()
             return json.loads(content)
 
+    async def load_editorial(self, project_id: str) -> dict[str, dict[str, str]]:
+        path = self.project_path / "editorial.json"
+        if not path.exists():
+            return {}
+        async with aiofiles.open(path, "r", encoding="utf-8") as f:
+            value = json.loads(await f.read())
+        return value if isinstance(value, dict) else {}
+
     async def save_progress(
         self,
         project_id: str,

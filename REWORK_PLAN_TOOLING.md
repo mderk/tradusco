@@ -2,7 +2,7 @@
 
 > **Status: implementation in progress; preparation and ordinary-run paths complete (2026-09-13).**
 > It continues `REWORK_PLAN.md` and `REWORK_PLAN_MULTILANG.md`, both closed.
-> Glossary, context and ordinary-run paths are implemented; review/delivery and final acceptance remain pending.
+> Glossary, context, ordinary-run and review/delivery paths are implemented; final acceptance remains pending.
 > The earlier documentation fixes listed under "Stale documentation and loose
 > ends" are also done. An outside review on
 > 7 September checked the items against the code: its findings are folded into
@@ -1089,7 +1089,7 @@ an agent reads the status before the content.
    command prepares and translates selected new rows, reports status and bounded
    failures, resumes partial persisted work, and a completed repeat makes no model
    call.
-4. **Review and delivery:** move G2, G5 and G9 for reviewed edits; G4's existing
+4. **Review and delivery (implemented):** move G2, G5 and G9 for reviewed edits; G4's existing
    deterministic checks; G7's sorting half, G10 and G11 for reconciliation,
    validation and export. Preserve current editorial overrides and partial results;
    rekeying remains backlog. **Done when:** guarded edits and back-sync reject

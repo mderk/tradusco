@@ -107,6 +107,7 @@ function main() {
     fs.mkdirSync(state.projectDir, { recursive: true });
     try { fs.writeFileSync(lock, `${process.pid}\n`, { flag: "wx" }); }
     catch { throw new Error(`project is locked: ${lock}`); }
+    state.env.TRADUSCO_LOCK_PID = String(process.pid);
   }
   try {
     status(state);
@@ -136,6 +137,13 @@ function main() {
         if (forbidden.length) throw new Error(`regeneration is not allowed for: ${forbidden.join(", ")}`);
       }
       run(state, [state.python, "-u", path.join(state.traduscoRoot, "translate.py"), "-p", state.projectDir, "-l", locales, "-m", String(options.model || translate.model || "gemini"), "--method", String(translate.method || "auto"), "-b", String(translate.batchSize || 50), "--batch-max-input-tokens", String(translate.batchMaxInputTokens || 65536), "--request-timeout", String(translate.requestTimeout || 120), "-r", String(translate.retries ?? 3), "-d", String(translate.delaySeconds ?? 1), ...(translate.referenceLangs && translate.referenceLangs.length ? ["--reference-langs", translate.referenceLangs.join(",")] : []), ...(options.regenerate ? ["--regenerate"] : [])]);
+    });
+    stage(state, "audit", options["skip-audit"], () => run(state, [state.python, path.join(state.traduscoRoot, "audit_translations.py"), "--project-dir", state.projectDir]));
+    stage(state, "delivery", options["skip-delivery"], () => {
+      const review = path.join(state.traduscoRoot, "review_translations.py");
+      const preview = run(state, [state.python, review, "export", "--config", state.configFile], { capture: true });
+      if (!options["dry-run"]) run(state, [state.python, review, "export", "--write", "--expect", JSON.parse(preview).revision, "--config", state.configFile]);
+      for (const command of config.deliveryCommands || []) run(state, command);
     });
     status(state);
   } finally {

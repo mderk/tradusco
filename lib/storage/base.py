@@ -68,6 +68,10 @@ class StorageAdapter(ABC):
         """Load the optional project glossary."""
         return {}
 
+    async def load_editorial(self, project_id: str) -> dict[str, dict[str, str]]:
+        """Load translations explicitly accepted through review tools."""
+        return {}
+
     def set_active_language(self, language: Optional[str]) -> None:
         """
         Set the destination language for the current run.

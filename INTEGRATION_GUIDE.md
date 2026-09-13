@@ -185,9 +185,44 @@ node tools/run.js --config /path/to/project/tradusco.config.json
 ```
 
 It acquires `<projectDir>/.run.lock`, runs configured extraction, synchronizes the
-source CSV, prepares glossary and context, and translates missing cells. Each
-stage has a `--skip-*` flag; `--dry-run` prints the planned commands. Model calls
-have a configurable `translate.requestTimeout` (120 seconds by default).
+source CSV, prepares glossary and context, translates missing cells, audits the
+result and merges ready values back into the source CSV. It then runs optional
+`deliveryCommands` from the integration config. Each stage has a `--skip-*` flag;
+`--dry-run` prints the planned commands. Model calls have a configurable
+`translate.requestTimeout` (120 seconds by default).
+
+## Review and source-CSV delivery
+
+Read one source string across locales:
+
+```bash
+python review_translations.py read --config /path/to/tradusco.config.json --source "Pay {amount}"
+```
+
+Apply an explicit correction from a JSON array. Every item must contain
+`source`, `language`, `from` and `to`; a changed `from` is reported as a conflict.
+
+```bash
+python review_translations.py apply --config /path/to/tradusco.config.json --edits edits.json
+python review_translations.py apply --config /path/to/tradusco.config.json --edits edits.json --write
+```
+
+The write records the value in `<projectDir>/editorial.json`, progress and the
+project CSV. Repeating it repairs an interrupted write. Editorial values are
+preserved during regeneration for the same source key.
+
+To import intentional edits made in the configured source CSV, preview first and
+then pass the reported revision:
+
+```bash
+python review_translations.py back-sync --config /path/to/tradusco.config.json
+python review_translations.py back-sync --config /path/to/tradusco.config.json --write --expect REVISION
+```
+
+`export` uses the same preview/revision protocol. It writes only ready managed
+cells and preserves unresolved values and source rows outside Tradusco. The
+ordinary runner performs this export automatically. All write commands honour
+the project run lock.
 
 The equivalent manual pattern remains useful for integrations that need custom
 delivery steps:

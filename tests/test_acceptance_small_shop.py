@@ -178,6 +178,32 @@ async def test_restart_repairs_csv_after_progress_was_saved(tmp_path):
     ] == "Pagar {amount}"
 
 
+@pytest.mark.asyncio
+async def test_regeneration_preserves_explicit_editorial_value(tmp_path):
+    project_path = tmp_path / "reviewed-shop"
+    project_path.mkdir()
+    config = Config(name=project_path.name, sourceFile="translations.csv", baseLanguage="en", languages=["en", "fr"], keyColumn="en")
+    (project_path / "config.json").write_text(json.dumps(config.model_dump()), encoding="utf-8")
+    with (project_path / "translations.csv").open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=["en", "fr"])
+        writer.writeheader()
+        writer.writerows([{"en": "Reviewed", "fr": "Édité"}, {"en": "Machine", "fr": "Ancien"}])
+    (project_path / "editorial.json").write_text(json.dumps({"fr": {"Reviewed": "Édité"}}), encoding="utf-8")
+    (project_path / "fr").mkdir()
+    (project_path / "fr/progress.json").write_text(json.dumps({"Reviewed": "Édité", "Machine": "Ancien"}), encoding="utf-8")
+
+    storage = FileSystemStorageAdapter(project_path)
+    storage.set_active_language("fr")
+    storage.set_overwrite_active_language(True)
+    project = TranslationProject(project_id=project_path.name, config=config, dst_languages=["fr"], storage=storage, prompt="Translate {phrases_json} from {base_language} to {dst_languages}")
+    translate = AsyncMock(return_value={"fr": {"Machine": "Nouveau"}})
+    with patch("lib.TranslationProject.get_driver", return_value=MockLLMDriver()), patch.object(project.translation_tool, "translate_standard", translate):
+        await project.translate(model="test-model", regenerate=True, delay_seconds=0)
+    assert [phrase for phrase, _ in translate.await_args.args[0]] == ["Machine"]
+    rows = await storage.load_translations(project_path.name)
+    assert rows == [{"en": "Reviewed", "fr": "Édité"}, {"en": "Machine", "fr": "Nouveau"}]
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_live_multilanguage_round_trip(tmp_path):

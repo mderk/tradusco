@@ -68,17 +68,13 @@ def main() -> int:
     if not po_files:
         raise SystemExit("No .po files found.")
 
-    any_changed = False
     for po in po_files:
         if not po.exists():
             raise SystemExit(f"File not found: {po}")
         changed = sort_po_file(po)
         print(f"{po}: {'sorted' if changed else 'already sorted'}")
-        any_changed = any_changed or changed
-
-    return 1 if any_changed else 0
+    return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

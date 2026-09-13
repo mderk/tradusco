@@ -232,11 +232,14 @@ class TranslationProject:
         translations: list[dict[str, str]],
         progress: dict[str, dict[str, str]],
         regenerate: bool,
+        editorial: dict[str, dict[str, str]] | None = None,
     ) -> bool:
         for language in self.dst_languages:
             for row in translations:
                 source_phrase = row.get(self.base_language) or ""
                 if not source_phrase:
+                    continue
+                if regenerate and (editorial or {}).get(language, {}).get(source_phrase):
                     continue
                 existing_translation = row.get(language) or ""
                 if existing_translation and not regenerate:
@@ -534,6 +537,7 @@ class TranslationProject:
         batch_size: int,
         batch_max_input_tokens: int,
         regenerate: bool,
+        editorial: dict[str, dict[str, str]] | None = None,
         fallback_model: Optional[str],
         driver,
         request_timeout: float = 120.0,
@@ -699,6 +703,11 @@ class TranslationProject:
 
             missing_languages: set[str] = set()
             for language in self.dst_languages:
+                editorial_value = (editorial or {}).get(language, {}).get(source_phrase)
+                if regenerate and editorial_value:
+                    row[language] = editorial_value
+                    progress[language][source_phrase] = editorial_value
+                    continue
                 existing_translation = row.get(language) or ""
                 if existing_translation and not regenerate:
                     ok, _ = self.translation_tool.validate_translation_text(
@@ -797,6 +806,7 @@ class TranslationProject:
         method = driver.get_best_translation_method(translation_method)
 
         print(f"Using translation method: {method}")
+        editorial = await self.storage.load_editorial(self.project_id)
 
         await self._translate_pass(
             model=model,
@@ -807,6 +817,7 @@ class TranslationProject:
             batch_size=batch_size,
             batch_max_input_tokens=batch_max_input_tokens,
             regenerate=regenerate,
+            editorial=editorial,
             fallback_model=fallback_model,
             driver=driver,
         )
@@ -819,7 +830,8 @@ class TranslationProject:
             language: await self.storage.load_progress(self.project_id, language)
             for language in self.dst_languages
         }
-        if not self._has_missing_phrases(translations, progress, regenerate):
+        editorial = await self.storage.load_editorial(self.project_id)
+        if not self._has_missing_phrases(translations, progress, regenerate, editorial):
             return
 
         fb_driver = get_driver(fallback_model)
@@ -836,6 +848,7 @@ class TranslationProject:
             batch_size=batch_size,
             batch_max_input_tokens=batch_max_input_tokens,
             regenerate=regenerate,
+            editorial=editorial,
             fallback_model=None,
             driver=fb_driver,
         )

@@ -1,6 +1,6 @@
 # Rework plan: the tooling around the engine
 
-> **Status: open — this is the current plan (2026-09-04, reviewed 2026-09-07).**
+> **Status: implementation-ready for the first upgrade (2026-09-13).**
 > It continues `REWORK_PLAN.md` and `REWORK_PLAN_MULTILANG.md`, both closed.
 > Nothing here has been implemented yet; only the documentation fixes listed
 > under "Stale documentation and loose ends" are done. An outside review on
@@ -22,8 +22,9 @@ new reusable patterns and workflows, including deterministic operations, that
 should enrich the tool itself. Project-dependent tools remain a supported and
 necessary layer: the goal is to transfer common behaviour while retaining that
 boundary, not to absorb the host project's knowledge or to keep Tradusco a
-t3-only utility. This goal does not approve individual design proposals or
-authorise implementation; the current phase is document agreement.
+t3-only utility. The first-upgrade boundary and delivery order below are agreed.
+Deferred ideas remain outside implementation unless a real integration promotes
+one explicitly.
 
 **First-upgrade scope.** Implement only the reusable parts of the proven t3
 workflow listed as G1–G11: glossary and context preparation, their use in model
@@ -58,11 +59,10 @@ should assume gettext, lingui, a particular placeholder syntax, or a game.
 
 ## End-to-end workflow: the organising specification
 
-**Status: assembled for whole-process review, not implementation.** This section
-organises the agreed behaviour into one process. The ordinary translation,
-editorial-priority, partial-export and input-readiness rules were agreed with the
-owner; connecting details and explicitly open cases below remain proposals.
-Review this process first. The O/C/R/L/F/T/W/G inventory afterwards supplies
+**Status: implementation specification for the first upgrade.** This section
+organises the agreed behaviour into one process. Explicitly open numerical limits
+may be chosen conservatively during implementation; deferred architecture stays
+in `BACKLOG_TOOLING.md`. The O/C/R/L/F/T/W/G inventory afterwards supplies
 evidence and implementation concerns, not a second independent workflow.
 
 The objective is a reusable round trip: connect a project, recognise its changes,
@@ -349,25 +349,35 @@ before the rework provides it.
   agreed policy, independent of R2 quality measurements. The prompt is unchanged
   during documentation review; its wording and associated checks belong with P2/P3.
 
-### What prevents this workflow from becoming an implementation-ready task
+### First-upgrade implementation contract
 
-Only three choices remain before implementation:
-
-- the project-provider input/output shapes for glossary sources, context sources
-  and host catalogue access;
-- the package/entry-point location for the transferred Node operations;
-- the exact G1–G11 delivery checklist against the small-shop acceptance test.
-
-Identity redesign, migration, generalized persistence and experiments are not
-prerequisites for this upgrade.
+- Keep project configuration in `tradusco.config.json`. Add one
+  `glossarySourceCommand` argv array and one `contextProviderFile` path. Tradusco
+  runs the command without a shell and loads the context module directly.
+- The glossary command receives `--output <temporary-file>` and writes a JSON
+  object keyed by term; each value has the existing `group`, `mode` and `t`
+  fields. The context file is a CommonJS module with the existing `po`, `csv`,
+  `json` and `rules` exports plus `createApi(projectRoot)` for project data access;
+  its callbacks keep the current signatures and return a context string or `null`.
+  Tradusco validates either result before preview or apply, then merges generated
+  terms into `glossaryFile`. Host catalogue access continues through `sourceCsv`,
+  the existing format paths and the existing argv-array `extractCommands` and
+  `buildCommands`.
+- Keep the transferred JavaScript operations as JavaScript under `tools/`, with
+  their dependencies in `tools/package.json`. Do not rewrite them in Python as
+  part of this upgrade. Python remains the translation engine invoked by the
+  orchestrator.
+- The five delivery steps and their acceptance checks are the checklist at the
+  end of this document. No deferred identity, migration, transaction or adapter
+  work is prerequisite to it.
 
 ## Three layers
 
 The proposed operation-by-operation responsibility map is in
 [`REVIEW_ROUND2_TOOLING.md`](REVIEW_ROUND2_TOOLING.md#responsibility-map-concrete-t3-patterns).
 It covers G1–G11 and the context, review and agent workflows, with provider inputs
-and acceptance examples. It is pending agreement; the layer descriptions below
-have not yet been rewritten to adopt its proposed boundary changes.
+and acceptance examples. It is supporting evidence; the boundary below and the
+first-upgrade contract above are authoritative for implementation.
 
 The boundary does not run script by script. It runs between layers.
 
@@ -429,19 +439,13 @@ the project supplies a provider.**
 
 ## Language and packaging
 
-Tradusco is Python and the current t3 integration is Node. This establishes a
-working implementation, not a Node requirement for every host. Existing format
-readers and host toolchains should inform packaging; the standalone installation
-contract and which operations require Node remain undecided.
-
-Proposal: a `tools/` directory in the Tradusco repository with its own
-`package.json`, published alongside the Python package. The contract between the
-two languages already exists and is already used by both sides —
-`tradusco.config.json` is read today by the Node integration. The Python engine
-reads `<project>/config.json` (`lib/storage/filesystem.py:65`), so these are not
-yet one shared configuration contract. Ownership, precedence and propagation of
-settings between the two files remain to be specified. Python entry points and
-Node packaging are proposals, not settled consequences of the current layout.
+Tradusco remains a Python engine with transferred JavaScript workflow tools.
+Place the JavaScript operations under `tools/` with `tools/package.json`; keep
+their current language and call the Python entry points they already orchestrate.
+The project-facing workflow reads `tradusco.config.json`. The engine continues to
+read `<project>/config.json` (`lib/storage/filesystem.py:65`); the orchestrator
+passes explicit paths and options when invoking it. Merging these configurations
+or rewriting either side is outside this upgrade.
 
 Duplicating common operations across projects has a maintenance cost: F3 records
 an extractor defect fixed in the t3 copy but still present here. This supports
@@ -1065,21 +1069,37 @@ an agent reads the status before the content.
 1. **Glossary path:** move G8's candidate queue and decisions, G6/L2 conformance,
    L6 coverage and the shared glossary schema/matcher. Keep t3's term extraction
    script in t3. Make prompt selection and conformance use the same matcher.
+   **Done when:** a configured source command produces the generated `terms`, the
+   queues preserve accept/defer/reject decisions, preview reports coverage and
+   omissions without writing, and the same fixture passes prompt-selection and
+   conformance checks.
 2. **Context path:** move the manual/generated resolution order, rule preview and
    apply protocol, deferred/rejected queues and coverage report. Keep t3's source
    map and product-data readers in t3. Feed the resolved context into the existing
    translation envelope; preserve its current context-use instruction and prompt
-   snapshots.
+   snapshots. **Done when:** the small-shop provider feeds the resolver, preview
+   is read-only, apply preserves manual and filled values, coverage names each
+   resolution source and omission, and resolved context appears in the captured
+   model prompt.
 3. **Ordinary run:** move G1 and G3's status half with W2/W5 inspection, the
    incremental W6/W7 sequence, existing progress-first outcome/resume behaviour
    and the minimum O3/O4 logging and timeout needed to operate a run. Keep current
-   batching and model policy; model bakeoff remains backlog.
+   batching and model policy; model bakeoff remains backlog. **Done when:** one
+   command prepares and translates selected new rows, reports status and bounded
+   failures, resumes partial persisted work, and a completed repeat makes no model
+   call.
 4. **Review and delivery:** move G2, G5 and G9 for reviewed edits; G4's existing
    deterministic checks; G7's sorting half, G10 and G11 for reconciliation,
    validation and export. Preserve current editorial overrides and partial results;
-   rekeying remains backlog.
+   rekeying remains backlog. **Done when:** guarded edits and back-sync reject
+   stale input, the project lock rejects a second writer, persisted translations
+   repair the tested CSV-write failure without a model call, and validation,
+   sorting and partial export preserve protected and unmanaged values.
 5. **Acceptance:** complete the small-shop offline cases, run its live API check,
    then use the same provider contracts in the next real project. Record any
-   capability that project actually needs as the next increment.
+   capability that project actually needs as the next increment. **Done when:**
+   the offline scenario covers the four preceding steps, the opt-in live check
+   succeeds with the same prompt path, and the next project supplies its commands
+   and files without editing Tradusco workflow code.
 
 Deferred items above remain evidence or backlog and do not enter this sequence.

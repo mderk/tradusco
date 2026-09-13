@@ -56,6 +56,7 @@ function load(options) {
     config, root, projectDir, glossaryFile, sourceFile, base, locales,
     reviewed: locales.filter((lang) => protectedLocales.has(lang)),
     rejectedFile: path.resolve(root, config.glossaryRejectedFile || path.join(projectDir, "not_terms.json")),
+    deferredFile: path.resolve(root, config.glossaryDeferredFile || path.join(projectDir, "deferred_terms.json")),
     queueFile: path.resolve(root, config.glossaryQueueFile || path.join(projectDir, "terms_queue.json")),
     contextsFile: path.resolve(root, config.contextsFile || path.join(projectDir, "contexts.json")),
   };
@@ -114,6 +115,7 @@ function candidates(state, minimum) {
   const rows = parseObjects(fs.readFileSync(state.sourceFile, "utf8")).rows;
   const known = new Set([...Object.keys(glossary(state).terms), ...Object.keys(glossary(state).manual)]);
   const rejected = readJson(state.rejectedFile, {});
+  const deferredDecisions = readJson(state.deferredFile, {});
   const deferred = readJson(state.queueFile, {});
   const stats = new Map();
   for (const row of rows) for (const match of String(row[state.base] || "").matchAll(TERM)) {
@@ -125,10 +127,10 @@ function candidates(state, minimum) {
     stats.set(term, item);
   }
   const items = Object.entries(deferred)
-    .filter(([term]) => !known.has(term) && !rejected[term])
+    .filter(([term]) => !known.has(term) && !rejected[term] && !deferredDecisions[term])
     .map(([term, note]) => ({ term, source: "context", note }));
   for (const [term, item] of stats) {
-    if (known.has(term) || rejected[term] || term in deferred) continue;
+    if (known.has(term) || rejected[term] || deferredDecisions[term] || term in deferred) continue;
     if (item.total >= minimum && item.mid >= 3 && item.mid / item.total >= 0.2) items.push({ term, source: "frequency", ...item });
   }
   return items.sort((a, b) =>
@@ -146,6 +148,7 @@ function report(state, options) {
   console.log(`glossary: terms ${Object.keys(value.terms).length}, manual ${Object.keys(value.manual).length}`);
   console.log(`coverage: unmatched ${coverage.filter((item) => !item.matched_rows).length}; whole-phrase only ${coverage.filter((item) => item.matched_rows && item.matched_rows === item.whole_phrase_rows).length}`);
   console.log(`candidate queue: ${items.length}; rejected: ${Object.keys(readJson(state.rejectedFile, {})).length}`);
+  console.log(`deferred: ${Object.keys(readJson(state.deferredFile, {})).length}`);
   console.log(`manual entries missing reviewed-language values: ${gaps.length}`);
   if (options.check && (gaps.length || items.some((item) => item.source === "context"))) process.exitCode = 1;
 }
@@ -186,6 +189,7 @@ function submit(state, options) {
   let answer;
   if (options.json) answer = readJson(path.resolve(options.json), null);
   else if (options.term && options.reject) answer = { term: options.term, not_a_term: options.reject };
+  else if (options.term && options.defer) answer = { term: options.term, defer: options.defer };
   else if (options.term && options.mode && options.note && options.translation) {
     const translations = {};
     for (const item of options.translation) {
@@ -194,17 +198,22 @@ function submit(state, options) {
       translations[String(item).slice(0, at)] = String(item).slice(at + 1);
     }
     answer = { term: options.term, entry: { mode: options.mode, note: options.note, t: translations } };
-  } else throw new Error("submit requires --term with --reject, or --mode, --note and --translation LANG=VALUE; --json remains available for batch input");
-  if (!answer || !answer.term || Boolean(answer.entry) === Boolean(answer.not_a_term)) throw new Error("answer requires term and exactly one of entry or not_a_term");
+  } else throw new Error("submit requires --term with --reject or --defer, or --mode, --note and --translation LANG=VALUE; --json remains available for batch input");
+  if (!answer || !answer.term || [answer.entry, answer.not_a_term, answer.defer].filter(Boolean).length !== 1) throw new Error("answer requires term and exactly one of entry, not_a_term or defer");
   const item = candidates(state, 1).find(({ term }) => term === answer.term);
   if (!item) {
-    const recorded = answer.not_a_term
-      ? readJson(state.rejectedFile, {})[answer.term] === String(answer.not_a_term)
-      : JSON.stringify(glossary(state).manual[answer.term]) === JSON.stringify(answer.entry);
+    let recorded;
+    if (answer.not_a_term) recorded = readJson(state.rejectedFile, {})[answer.term] === String(answer.not_a_term);
+    else if (answer.defer) recorded = readJson(state.deferredFile, {})[answer.term] === String(answer.defer);
+    else recorded = JSON.stringify(glossary(state).manual[answer.term]) === JSON.stringify(answer.entry);
     if (!recorded) throw new Error(`term is not queued: ${answer.term}`);
     return finishDecision(state, answer);
   }
-  if (answer.not_a_term) {
+  if (answer.defer) {
+    const deferred = readJson(state.deferredFile, {});
+    deferred[answer.term] = String(answer.defer);
+    writeJson(state.deferredFile, deferred);
+  } else if (answer.not_a_term) {
     const rejected = readJson(state.rejectedFile, {});
     rejected[answer.term] = String(answer.not_a_term);
     writeJson(state.rejectedFile, rejected);
@@ -239,9 +248,18 @@ function finishDecision(state, answer) {
     contexts[answer.term] ||= deferred[answer.term];
     writeJson(state.contextsFile, Object.fromEntries(Object.entries(contexts).sort(([a], [b]) => a.localeCompare(b))));
   }
-  delete deferred[answer.term];
+  if (!answer.defer) delete deferred[answer.term];
   writeJson(state.queueFile, deferred);
   console.log(`recorded: ${answer.term}`);
+}
+
+function reopen(state, options) {
+  if (!options.term) throw new Error("reopen requires --term");
+  const deferred = readJson(state.deferredFile, {});
+  if (!Object.hasOwn(deferred, options.term)) throw new Error(`term is not deferred: ${options.term}`);
+  delete deferred[options.term];
+  writeJson(state.deferredFile, deferred);
+  console.log(`reopened: ${options.term}`);
 }
 
 function main() {
@@ -252,6 +270,7 @@ function main() {
   if (command === "report") return report(state, options);
   if (command === "next") return next(state, options);
   if (command === "submit") return submit(state, options);
+  if (command === "reopen") return reopen(state, options);
   if (command === "lint") process.exitCode = lint(state, options.json);
   else throw new Error(`unknown command: ${command}`);
 }

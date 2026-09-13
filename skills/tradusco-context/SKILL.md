@@ -5,7 +5,11 @@ description: Preview, apply and complete translation context using a project's d
 
 # Tradusco context
 
-1. Run `node tools/context.js report --config <path>` and `apply` without
+Resolve the integration config (normally `.tradusco/config.json`), read its
+`traduscoRoot`, and invoke `tools/context.js` from that directory. Do not assume
+the host repository contains `tools/`.
+
+1. Run `node <traduscoRoot>/tools/context.js report --config <config>` and `apply` without
    `--write`.
 2. Inspect the preview examples and revision. Existing generated rules run
    automatically; editing provider rules is separate work.

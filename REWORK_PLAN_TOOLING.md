@@ -934,8 +934,10 @@ For the first upgrade, current progress wins over older `failures.jsonl` entries
 a present valid value is successful, while an absent, invalid or quarantined value
 remains unresolved. A separate final-outcome store is not required.
 
-**W4 (deferred).** Long-run supervision moves with the deferred run skill. The
-first upgrade adds only the O4 request timeout required to stop a hung call.
+**W4 (partially implemented).** The run skill requires a PTY for long commands
+and verifies process exit and lock removal. Detached execution, heartbeat and
+recovery after loss of the invoking agent session remain backlog. The engine
+also retains the O4 request timeout required to stop a hung call.
 
 **W5. The pre-run gate should cover inputs, not just references.** Preflight
 checks reference completeness and hashes the glossary. It does not report how
@@ -1005,11 +1007,15 @@ cross-language write protocol remains backlog.
   all evidence, take a decision, run the conformance check before and after, and
   roll the entry back if it raised noise. Minus the term source, which is
   project-specific.
-- **`tradusco-context`** — the same for context: one screen's worth of strings
-  per turn, answer by file, validation and write. Minus the source map.
+- **`tradusco-context`** — the same for context: present one evidence group,
+  accept individual parameter input or batch input, validate and write. Minus
+  the source map.
+- **`tradusco-run`** — coordinate the free preparation pass, the glossary/context
+  fixed-point loop, exact translation scope, audit, resume and delivery. It calls
+  the two focused skills only when their queues contain work.
 
-Only these two skills are part of the first upgrade. Run, QA, review and init
-skills may be added after the transferred CLI workflow passes acceptance.
+These three skills cover the first complete agent-operated cycle. Separate QA,
+review and init skills remain deferred until repeated use justifies them.
 
 
 ## Stale documentation and loose ends

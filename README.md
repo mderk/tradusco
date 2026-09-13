@@ -61,6 +61,7 @@ your-app/
       glossary.json
       contexts.json
       not_terms.json
+      deferred_terms.json
       terms_queue.json
       editorial.json
       ru/progress.json
@@ -82,7 +83,8 @@ initial-state rules, review commands, known limits and delivery rules. The
 individual Python scripts documented below are low-level engine commands; they
 do not run the glossary, context, review and delivery workflow. See
 [GLOSSARY.md](GLOSSARY.md) and
-[CONTEXT.md](CONTEXT.md) for the two preparation providers.
+[CONTEXT.md](CONTEXT.md) for the two preparation providers. Agents can drive the
+complete cycle with [tradusco-run](skills/tradusco-run/SKILL.md).
 
 ## Creating a New Project
 

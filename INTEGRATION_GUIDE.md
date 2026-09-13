@@ -57,6 +57,7 @@ your-project/
       glossary.json
       contexts.json
       not_terms.json
+      deferred_terms.json
       terms_queue.json
       editorial.json
       fr/
@@ -75,7 +76,8 @@ your-project/
 | `<projectDir>/glossary.json` | Provider and decision commands | Generated terms and accepted terminology decisions consumed by translation |
 | `<projectDir>/contexts.json` | Context decisions | Accepted manual context |
 | `<projectDir>/not_terms.json` | Glossary decisions | Rejected terminology candidates |
-| `<projectDir>/terms_queue.json` | Glossary and context decisions | Deferred terminology candidates |
+| `<projectDir>/deferred_terms.json` | Glossary decisions | Candidates deliberately postponed pending evidence or authority |
+| `<projectDir>/terms_queue.json` | Context decisions | Terminology candidates sent from context for glossary resolution |
 
 `progress.json` is saved before the working CSV. If the CSV write fails, the
 next translation run reconstructs it from progress without another model call.
@@ -117,9 +119,9 @@ from the directory containing that file.
 All commands are argv arrays; shell syntax is not interpreted.
 
 Tradusco's mutable state defaults to `projectDir`: `glossary.json`,
-`contexts.json`, `not_terms.json`, `terms_queue.json`, `editorial.json`, the
-working CSV and per-locale progress. Project source data and provider code stay
-outside `.tradusco/` because the host project owns them.
+`contexts.json`, `not_terms.json`, `deferred_terms.json`, `terms_queue.json`,
+`editorial.json`, the working CSV and per-locale progress. Project source data
+and provider code stay outside `.tradusco/` because the host project owns them.
 
 - `extractCommands` must produce `sourceCsv`.
 - `glossarySourceCommand` receives an appended `--output PATH` and must write a
@@ -240,6 +242,15 @@ node "$TRADUSCO_ROOT/tools/glossary.js" submit \
   --reject "Generic word in this project."
 ```
 
+Defer a candidate when the available evidence or authority is insufficient:
+
+```bash
+node "$TRADUSCO_ROOT/tools/glossary.js" submit \
+  --config .tradusco/config.json \
+  --term Sanctuary \
+  --defer "Needs a product naming decision."
+```
+
 Inspect unresolved context groups and record an answer:
 
 ```bash
@@ -284,6 +295,9 @@ The implemented stage order is:
 Steps 4 and 5 are therefore part of every ordinary run. The optional `next` and
 `submit` decision loop above is separate and must happen before translation when
 the project requires those decisions for the selected strings.
+
+An agent can drive the complete sequence with
+[`skills/tradusco-run/SKILL.md`](skills/tradusco-run/SKILL.md).
 
 Every stage has a matching `--skip-*` flag: `--skip-extract`, `--skip-sync`,
 `--skip-glossary`, `--skip-context`, `--skip-translate`, `--skip-audit` and

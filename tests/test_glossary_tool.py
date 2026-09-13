@@ -40,6 +40,9 @@ def test_glossary_prepare_decisions_and_lint(tmp_path):
                 {"en": "enter Oblivion now", "fr": "entrer dans l'oubli"},
                 {"en": "return to Oblivion", "fr": "retourner dans l'oubli"},
                 {"en": "leave Oblivion", "fr": "quitter l'oubli"},
+                {"en": "enter Sanctuary now", "fr": "entrer au sanctuaire"},
+                {"en": "return to Sanctuary", "fr": "retourner au sanctuaire"},
+                {"en": "leave Sanctuary", "fr": "quitter le sanctuaire"},
             ]
         )
     glossary_file = engine / "glossary.json"
@@ -110,6 +113,19 @@ fs.writeFileSync(output, JSON.stringify({Chest: {group: "shop", mode: "stem", t:
         "fr": "Oubli"
     }
     assert json.loads(run_tool(tmp_path, "next").stdout) == {"done": True}
+
+    deferred = run_tool(tmp_path, "next", "--term", "Sanctuary", "--min", "3")
+    assert json.loads(deferred.stdout)["term"] == "Sanctuary"
+    run_tool(tmp_path, "submit", "--term", "Sanctuary", "--defer", "Needs product decision.")
+    assert json.loads((engine / "deferred_terms.json").read_text()) == {
+        "Sanctuary": "Needs product decision."
+    }
+    assert json.loads(run_tool(tmp_path, "next", "--min", "3").stdout) == {"done": True}
+    run_tool(tmp_path, "reopen", "--term", "Sanctuary")
+    assert json.loads(run_tool(tmp_path, "next", "--term", "Sanctuary", "--min", "3").stdout)[
+        "term"
+    ] == "Sanctuary"
+    run_tool(tmp_path, "submit", "--term", "Sanctuary", "--defer", "Needs product decision.")
 
     lint = subprocess.run(
         ["node", str(TOOL), "lint", "--config", str(tmp_path / "tradusco.config.json")],

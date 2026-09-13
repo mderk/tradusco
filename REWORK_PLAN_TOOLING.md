@@ -1,8 +1,10 @@
 # Rework plan: the tooling around the engine
 
-> **Status: implementation in progress; preparation and ordinary-run paths complete (2026-09-13).**
+> **Status: first-upgrade implementation and small-shop acceptance complete;
+> next-project validation pending (2026-09-13).**
 > It continues `REWORK_PLAN.md` and `REWORK_PLAN_MULTILANG.md`, both closed.
-> Glossary, context, ordinary-run and review/delivery paths are implemented; final acceptance remains pending.
+> The first-upgrade paths and small-shop acceptance are implemented. Validation
+> in the next real project remains pending.
 > The earlier documentation fixes listed under "Stale documentation and loose
 > ends" are also done. An outside review on
 > 7 September checked the items against the code: its findings are folded into
@@ -1096,7 +1098,8 @@ an agent reads the status before the content.
    stale input, the project lock rejects a second writer, persisted translations
    repair the tested CSV-write failure without a model call, and validation,
    sorting and partial export preserve protected and unmanaged values.
-5. **Acceptance:** complete the small-shop offline cases, run its live API check,
+5. **Acceptance (small-shop complete; next project pending):** complete the
+   small-shop offline cases, run its live API check,
    then use the same provider contracts in the next real project. Record any
    capability that project actually needs as the next increment. **Done when:**
    the offline scenario covers the four preceding steps, the opt-in live check

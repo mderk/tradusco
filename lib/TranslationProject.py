@@ -233,11 +233,14 @@ class TranslationProject:
         progress: dict[str, dict[str, str]],
         regenerate: bool,
         editorial: dict[str, dict[str, str]] | None = None,
+        only_keys: set[str] | None = None,
     ) -> bool:
         for language in self.dst_languages:
             for row in translations:
                 source_phrase = row.get(self.base_language) or ""
                 if not source_phrase:
+                    continue
+                if only_keys is not None and source_phrase not in only_keys:
                     continue
                 if regenerate and (editorial or {}).get(language, {}).get(source_phrase):
                     continue
@@ -538,6 +541,7 @@ class TranslationProject:
         batch_max_input_tokens: int,
         regenerate: bool,
         editorial: dict[str, dict[str, str]] | None = None,
+        only_keys: set[str] | None = None,
         fallback_model: Optional[str],
         driver,
         request_timeout: float = 120.0,
@@ -700,6 +704,8 @@ class TranslationProject:
             source_phrase = row[self.base_language]
             if not source_phrase:
                 continue
+            if only_keys is not None and source_phrase not in only_keys:
+                continue
 
             missing_languages: set[str] = set()
             for language in self.dst_languages:
@@ -779,6 +785,7 @@ class TranslationProject:
         translation_method: str = "standard",
         regenerate: bool = False,
         fallback_model: Optional[str] = None,
+        only_keys: set[str] | None = None,
     ) -> None:
         """Translate phrases from base language to destination language
 
@@ -818,6 +825,7 @@ class TranslationProject:
             batch_max_input_tokens=batch_max_input_tokens,
             regenerate=regenerate,
             editorial=editorial,
+            only_keys=only_keys,
             fallback_model=fallback_model,
             driver=driver,
         )
@@ -831,7 +839,9 @@ class TranslationProject:
             for language in self.dst_languages
         }
         editorial = await self.storage.load_editorial(self.project_id)
-        if not self._has_missing_phrases(translations, progress, regenerate, editorial):
+        if not self._has_missing_phrases(
+            translations, progress, regenerate, editorial, only_keys
+        ):
             return
 
         fb_driver = get_driver(fallback_model)
@@ -849,6 +859,7 @@ class TranslationProject:
             batch_max_input_tokens=batch_max_input_tokens,
             regenerate=regenerate,
             editorial=editorial,
+            only_keys=only_keys,
             fallback_model=None,
             driver=fb_driver,
         )

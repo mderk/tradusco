@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -133,6 +134,10 @@ async def async_main():
             "gap-filling pass for any still-missing/invalid cells (without --regenerate)."
         ),
     )
+    parser.add_argument(
+        "--only-keys-file",
+        help="JSON array of exact source keys to translate; other rows are untouched.",
+    )
 
     args = parser.parse_args()
 
@@ -220,6 +225,13 @@ async def async_main():
         else:
             parser.error(f"Invalid storage adapter: {args.storage}")
 
+        only_keys = None
+        if args.only_keys_file:
+            value = json.loads(Path(args.only_keys_file).read_text(encoding="utf-8"))
+            if not isinstance(value, list) or not all(isinstance(key, str) and key for key in value):
+                parser.error("--only-keys-file must contain a JSON array of non-empty strings")
+            only_keys = set(value)
+
         # Create and initialize the translator asynchronously
         translator = await TranslationProject.create(
             project_name=project_name,
@@ -239,6 +251,7 @@ async def async_main():
             translation_method=args.method,
             regenerate=args.regenerate,
             fallback_model=args.fallback_model,
+            only_keys=only_keys,
         )
     except Exception as e:
         print(f"Error: {e}")

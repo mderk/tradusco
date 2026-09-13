@@ -95,9 +95,24 @@ function status(state) {
   const rows = parseObjects(fs.readFileSync(file, "utf8")).rows.filter((row) => row[config.baseLanguage || state.base]);
   const languages = (config.languages || state.config.locales || []).filter((lang) => lang !== (config.baseLanguage || state.base));
   const counts = Object.fromEntries(languages.map((lang) => [lang, rows.filter((row) => String(row[lang] || "").trim()).length]));
-  const selected = rows.filter((row) => languages.some((lang) => !String(row[lang] || "").trim())).map((row) => row[config.baseLanguage || state.base]);
+  const onlyFile = state.options["only-keys-file"] && path.resolve(state.root, String(state.options["only-keys-file"]));
+  const onlyValue = onlyFile ? readJson(onlyFile, null) : null;
+  if (onlyFile && (!Array.isArray(onlyValue) || onlyValue.some((key) => typeof key !== "string" || !key))) throw new Error("--only-keys-file must contain a JSON array of non-empty strings");
+  const only = onlyValue && new Set(onlyValue);
+  const selected = rows.filter((row) => only ? only.has(row[config.baseLanguage || state.base]) : languages.some((lang) => !String(row[lang] || "").trim())).map((row) => row[config.baseLanguage || state.base]);
   console.log(`status: rows ${rows.length}; ${Object.entries(counts).map(([lang, count]) => `${lang} ${count}/${rows.length}`).join(", ")}`);
   console.log(`selected: ${selected.length}${selected.length ? `; ${selected.slice(0, 20).map(JSON.stringify).join(", ")}` : ""}`);
+}
+
+function verifyArtifacts(state) {
+  const command = state.config.artifactKeysCommand;
+  if (!command) return;
+  const output = run(state, command, { capture: true });
+  if (state.options["dry-run"]) return;
+  const keys = JSON.parse(output), expected = parseObjects(fs.readFileSync(state.sourceCsv, "utf8")).rows.map((row) => row[state.base]).filter(Boolean);
+  if (!Array.isArray(keys) || keys.some((key) => typeof key !== "string")) throw new Error("artifactKeysCommand must output a JSON array of source keys");
+  const present = new Set(keys), missing = expected.filter((key) => !present.has(key));
+  if (missing.length) throw new Error(`delivery artifact missing keys: ${missing.slice(0, 20).map(JSON.stringify).join(", ")}`);
 }
 
 function main() {
@@ -136,7 +151,7 @@ function main() {
         const forbidden = locales.split(",").filter((lang) => !allowed.has(lang));
         if (forbidden.length) throw new Error(`regeneration is not allowed for: ${forbidden.join(", ")}`);
       }
-      run(state, [state.python, "-u", path.join(state.traduscoRoot, "translate.py"), "-p", state.projectDir, "-l", locales, "-m", String(options.model || translate.model || "gemini"), "--method", String(translate.method || "auto"), "-b", String(translate.batchSize || 50), "--batch-max-input-tokens", String(translate.batchMaxInputTokens || 65536), "--request-timeout", String(translate.requestTimeout || 120), "-r", String(translate.retries ?? 3), "-d", String(translate.delaySeconds ?? 1), ...(translate.referenceLangs && translate.referenceLangs.length ? ["--reference-langs", translate.referenceLangs.join(",")] : []), ...(options.regenerate ? ["--regenerate"] : [])]);
+      run(state, [state.python, "-u", path.join(state.traduscoRoot, "translate.py"), "-p", state.projectDir, "-l", locales, "-m", String(options.model || translate.model || "gemini"), "--method", String(translate.method || "auto"), "-b", String(translate.batchSize || 50), "--batch-max-input-tokens", String(translate.batchMaxInputTokens || 65536), "--request-timeout", String(translate.requestTimeout || 120), "-r", String(translate.retries ?? 3), "-d", String(translate.delaySeconds ?? 1), ...(translate.referenceLangs && translate.referenceLangs.length ? ["--reference-langs", translate.referenceLangs.join(",")] : []), ...(options.regenerate ? ["--regenerate"] : []), ...(options["only-keys-file"] ? ["--only-keys-file", path.resolve(state.root, String(options["only-keys-file"]))] : [])]);
     });
     stage(state, "audit", options["skip-audit"], () => run(state, [state.python, path.join(state.traduscoRoot, "audit_translations.py"), "--project-dir", state.projectDir]));
     stage(state, "delivery", options["skip-delivery"], () => {
@@ -144,6 +159,7 @@ function main() {
       const preview = run(state, [state.python, review, "export", "--config", state.configFile], { capture: true });
       if (!options["dry-run"]) run(state, [state.python, review, "export", "--write", "--expect", JSON.parse(preview).revision, "--config", state.configFile]);
       for (const command of config.deliveryCommands || []) run(state, command);
+      verifyArtifacts(state);
     });
     status(state);
   } finally {

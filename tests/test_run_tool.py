@@ -31,6 +31,8 @@ module.exports = {
 """,
         encoding="utf-8",
     )
+    (tmp_path / "artifact-keys.js").write_text('console.log(JSON.stringify(["Pay"]));\n', encoding="utf-8")
+    (tmp_path / "build.js").write_text("", encoding="utf-8")
     config = {
         "traduscoRoot": str(ROOT),
         "projectDir": ".tradusco/shop",
@@ -39,6 +41,8 @@ module.exports = {
         "locales": ["fr"],
         "contextProviderFile": "context-provider.js",
         "translate": {"regenerateLangs": []},
+        "artifactKeysCommand": ["node", "artifact-keys.js"],
+        "deliveryCommands": [["node", "build.js"]],
     }
     (tmp_path / "tradusco.config.json").write_text(json.dumps(config), encoding="utf-8")
 
@@ -53,10 +57,28 @@ module.exports = {
         assert list(csv.DictReader(file))[0]["context"] == "Checkout action button."
     assert not (tmp_path / ".tradusco/shop/.run.lock").exists()
 
+    (tmp_path / "artifact-keys.js").write_text('console.log("[]");\n', encoding="utf-8")
+    incomplete = run_tool(tmp_path, "--skip-extract", "--skip-sync", "--skip-glossary", "--skip-context", "--skip-translate", "--skip-audit", check=False)
+    assert incomplete.returncode == 1
+    assert 'delivery artifact missing keys: "Pay"' in incomplete.stderr
+    (tmp_path / "artifact-keys.js").write_text('console.log(JSON.stringify(["Pay"]));\n', encoding="utf-8")
+
+    (tmp_path / "build.js").write_text("process.exit(7);\n", encoding="utf-8")
+    failed_build = run_tool(tmp_path, "--skip-extract", "--skip-sync", "--skip-glossary", "--skip-context", "--skip-translate", "--skip-audit", check=False)
+    assert failed_build.returncode == 1
+    (tmp_path / "build.js").write_text("", encoding="utf-8")
+    resumed_delivery = run_tool(tmp_path, "--skip-extract", "--skip-sync", "--skip-glossary", "--skip-context", "--skip-translate", "--skip-audit")
+    assert "translate: skipped" in resumed_delivery.stdout
+    assert "delivery: done" in resumed_delivery.stdout
+
     lock = tmp_path / ".tradusco/shop/.run.lock"
     lock.write_text("another writer\n", encoding="utf-8")
     blocked = run_tool(tmp_path, "--dry-run", check=True)
     assert "sync_project_from_csv.py" in blocked.stdout
+    (tmp_path / "only.json").write_text(json.dumps(["Pay"]), encoding="utf-8")
+    selected = run_tool(tmp_path, "--dry-run", "--only-keys-file", "only.json")
+    assert 'selected: 1; "Pay"' in selected.stdout
+    assert "--only-keys-file" in selected.stdout
     refused = run_tool(
         tmp_path,
         "--skip-extract",

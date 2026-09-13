@@ -1,6 +1,6 @@
 # Repository acceptance scenario: a small shop
 
-**Specification partially covered by an existing characterization test.** Keep
+**Executable specification covered by the repository acceptance suite.** Keep
 the example data, adapters and acceptance checks in the Tradusco repository.
 Each execution copies fixtures into a fresh temporary project. It must require
 neither a t3 checkout nor its data, credentials, configuration or agent skills.
@@ -45,15 +45,15 @@ Two execution modes use this example:
   limits and any spending ceiling must be selected before a live run. Do not
   depend on a real model spontaneously producing the failure fixtures.
 
-The first executable characterization is
-`tests/test_acceptance_small_shop.py`. It uses the current CSV workflow and
-filesystem storage with a controlled model boundary. It covers preservation of a
-prefilled editorial cell, a placeholder failure isolated to one locale, resuming
-only that cell, a final repeat with no model call and recovery after progress was
-saved but before the CSV was updated. An opt-in test runs the successful
-three-language round trip through Gemini and verifies that repeating it makes no
-model call. The tests do not yet cover glossary/context preparation or
-host delivery.
+The acceptance suite uses the current CSV workflow and filesystem storage.
+`tests/test_acceptance_small_shop.py` covers translation, isolated technical
+failure, resume, source change, explicit regeneration scope, editorial
+preservation and the opt-in Gemini path. `tests/test_glossary_tool.py` and
+`tests/test_context_tool.py` cover preparation. `tests/test_review_tool.py`,
+`tests/test_delivery_tools.py` and `tests/test_run_tool.py` cover guarded review,
+back-sync, partial export, the project lock, failed-build resume and missing
+artefact keys. Controlled model responses substitute only the external model
+boundary in offline tests.
 
 ## Events and observable acceptance results
 

@@ -187,9 +187,16 @@ node tools/run.js --config /path/to/project/tradusco.config.json
 It acquires `<projectDir>/.run.lock`, runs configured extraction, synchronizes the
 source CSV, prepares glossary and context, translates missing cells, audits the
 result and merges ready values back into the source CSV. It then runs optional
-`deliveryCommands` from the integration config. Each stage has a `--skip-*` flag;
+`deliveryCommands` from the integration config. If `artifactKeysCommand` is set,
+that command must print a JSON array of source keys found in the built artefact;
+the run fails when a source-catalog key is missing. Each stage has a `--skip-*`
+flag;
 `--dry-run` prints the planned commands. Model calls have a configurable
 `translate.requestTimeout` (120 seconds by default).
+
+For an explicit affected scope, put exact source keys in a JSON array and pass
+`--only-keys-file keys.json`. With `--regenerate`, only those keys in permitted
+locales are regenerated; recorded editorial cells and unrelated rows are kept.
 
 ## Review and source-CSV delivery
 

@@ -1,6 +1,8 @@
 import csv
 import json
 import os
+import subprocess
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -9,6 +11,9 @@ from lib.TranslationProject import TranslationProject
 from lib.storage.filesystem import FileSystemStorageAdapter
 from lib.utils import Config
 from tests.mock_llm_driver import MockLLMDriver
+
+
+ROOT = Path(__file__).parents[1]
 
 
 @pytest.mark.asyncio
@@ -187,10 +192,10 @@ async def test_regeneration_preserves_explicit_editorial_value(tmp_path):
     with (project_path / "translations.csv").open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=["en", "fr"])
         writer.writeheader()
-        writer.writerows([{"en": "Reviewed", "fr": "Édité"}, {"en": "Machine", "fr": "Ancien"}])
+        writer.writerows([{"en": "Reviewed", "fr": "Édité"}, {"en": "Machine", "fr": "Ancien"}, {"en": "Unrelated", "fr": "Stable"}])
     (project_path / "editorial.json").write_text(json.dumps({"fr": {"Reviewed": "Édité"}}), encoding="utf-8")
     (project_path / "fr").mkdir()
-    (project_path / "fr/progress.json").write_text(json.dumps({"Reviewed": "Édité", "Machine": "Ancien"}), encoding="utf-8")
+    (project_path / "fr/progress.json").write_text(json.dumps({"Reviewed": "Édité", "Machine": "Ancien", "Unrelated": "Stable"}), encoding="utf-8")
 
     storage = FileSystemStorageAdapter(project_path)
     storage.set_active_language("fr")
@@ -198,10 +203,37 @@ async def test_regeneration_preserves_explicit_editorial_value(tmp_path):
     project = TranslationProject(project_id=project_path.name, config=config, dst_languages=["fr"], storage=storage, prompt="Translate {phrases_json} from {base_language} to {dst_languages}")
     translate = AsyncMock(return_value={"fr": {"Machine": "Nouveau"}})
     with patch("lib.TranslationProject.get_driver", return_value=MockLLMDriver()), patch.object(project.translation_tool, "translate_standard", translate):
-        await project.translate(model="test-model", regenerate=True, delay_seconds=0)
+        await project.translate(model="test-model", regenerate=True, only_keys={"Reviewed", "Machine"}, delay_seconds=0)
     assert [phrase for phrase, _ in translate.await_args.args[0]] == ["Machine"]
     rows = await storage.load_translations(project_path.name)
-    assert rows == [{"en": "Reviewed", "fr": "Édité"}, {"en": "Machine", "fr": "Nouveau"}]
+    assert rows == [{"en": "Reviewed", "fr": "Édité"}, {"en": "Machine", "fr": "Nouveau"}, {"en": "Unrelated", "fr": "Stable"}]
+
+
+@pytest.mark.asyncio
+async def test_changed_source_translates_and_keeps_old_history(tmp_path):
+    project_path = tmp_path / ".tradusco/shop"
+    (project_path / "fr").mkdir(parents=True)
+    (project_path / "fr/progress.json").write_text(json.dumps({"Old title": "Ancien titre"}), encoding="utf-8")
+    source = tmp_path / "source.csv"
+    with source.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=["en", "fr"])
+        writer.writeheader()
+        writer.writerow({"en": "New title", "fr": ""})
+    subprocess.run(
+        [str(ROOT / ".venv/bin/python"), str(ROOT / "sync_project_from_csv.py"), "--project-dir", str(project_path), "--source-csv", str(source), "--base-col", "en"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    config = Config(**json.loads((project_path / "config.json").read_text()))
+    storage = FileSystemStorageAdapter(project_path)
+    storage.set_active_language("fr")
+    project = TranslationProject(project_id="shop", config=config, dst_languages=["fr"], storage=storage, prompt="Translate {phrases_json} from {base_language} to {dst_languages}")
+    translate = AsyncMock(return_value={"fr": {"New title": "Nouveau titre"}})
+    with patch("lib.TranslationProject.get_driver", return_value=MockLLMDriver()), patch.object(project.translation_tool, "translate_standard", translate):
+        await project.translate(model="test-model", delay_seconds=0)
+    assert [phrase for phrase, _ in translate.await_args.args[0]] == ["New title"]
+    assert json.loads((project_path / "fr/progress.json").read_text()) == {"Old title": "Ancien titre", "New title": "Nouveau titre"}
 
 
 @pytest.mark.integration

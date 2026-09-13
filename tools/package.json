@@ -2,6 +2,7 @@
   "name": "tradusco-tools",
   "private": true,
   "bin": {
-    "tradusco-glossary": "glossary.js"
+    "tradusco-glossary": "glossary.js",
+    "tradusco-context": "context.js"
   }
 }

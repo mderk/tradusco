@@ -1,8 +1,8 @@
 # Rework plan: the tooling around the engine
 
-> **Status: implementation in progress; glossary path complete (2026-09-13).**
+> **Status: implementation in progress; glossary and context paths complete (2026-09-13).**
 > It continues `REWORK_PLAN.md` and `REWORK_PLAN_MULTILANG.md`, both closed.
-> The glossary path is implemented; later order-of-work stages remain pending.
+> The glossary and context paths are implemented; later order-of-work stages remain pending.
 > The earlier documentation fixes listed under "Stale documentation and loose
 > ends" are also done. An outside review on
 > 7 September checked the items against the code: its findings are folded into
@@ -1074,7 +1074,7 @@ an agent reads the status before the content.
    queues preserve accept/defer/reject decisions, preview reports coverage and
    omissions without writing, and the same fixture passes prompt-selection and
    conformance checks.
-2. **Context path:** move the manual/generated resolution order, rule preview and
+2. **Context path (implemented):** move the manual/generated resolution order, rule preview and
    apply protocol, deferred/rejected queues and coverage report. Keep t3's source
    map and product-data readers in t3. Feed the resolved context into the existing
    translation envelope; preserve its current context-use instruction and prompt

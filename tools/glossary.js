@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const { parseObjects } = require("./lib/csv");
 
 const MODES = new Set(["exact", "stem", "keep", "skip"]);
 const TERM = /\b[A-Z][a-z]{2,}(?:\s+(?:of|the|and|to)\s+[A-Z]?[a-z]{2,}|\s+[A-Z][a-z]{2,})*/g;
@@ -33,27 +34,6 @@ function writeJson(file, data) {
   const temporary = `${file}.tmp`;
   fs.writeFileSync(temporary, `${JSON.stringify(data, null, 2)}\n`, "utf8");
   fs.renameSync(temporary, file);
-}
-
-function parseCsv(text) {
-  const table = [];
-  let row = [], field = "", quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (quoted) {
-      if (char === '"' && text[i + 1] === '"') { field += '"'; i++; }
-      else if (char === '"') quoted = false;
-      else field += char;
-    } else if (char === '"') quoted = true;
-    else if (char === ",") { row.push(field); field = ""; }
-    else if (char === "\n") { row.push(field); table.push(row); row = []; field = ""; }
-    else if (char !== "\r") field += char;
-  }
-  if (field || row.length) { row.push(field); table.push(row); }
-  const head = table.shift() || [];
-  return table.filter((item) => item.length > 1).map((item) =>
-    Object.fromEntries(head.map((name, index) => [name, item[index] || ""]))
-  );
 }
 
 function load(options) {
@@ -127,7 +107,7 @@ function startsSentence(text, at) {
 
 function candidates(state, minimum) {
   if (!fs.existsSync(state.sourceFile)) throw new Error(`source CSV not found: ${state.sourceFile}`);
-  const rows = parseCsv(fs.readFileSync(state.sourceFile, "utf8"));
+  const rows = parseObjects(fs.readFileSync(state.sourceFile, "utf8")).rows;
   const known = new Set([...Object.keys(glossary(state).terms), ...Object.keys(glossary(state).manual)]);
   const rejected = readJson(state.rejectedFile, {});
   const deferred = readJson(state.queueFile, {});
@@ -170,7 +150,7 @@ function next(state, options) {
   const items = candidates(state, Number(options.min || 6));
   const item = options.term ? items.find(({ term }) => term === options.term) : items[0];
   if (!item) return console.log(JSON.stringify({ done: true }, null, 2));
-  const rows = parseCsv(fs.readFileSync(state.sourceFile, "utf8"));
+  const rows = parseObjects(fs.readFileSync(state.sourceFile, "utf8")).rows;
   const samples = rows.filter((row) => new RegExp(`\\b${item.term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(row[state.base] || "")).slice(0, 8);
   const languages = Object.fromEntries(state.reviewed.map((lang) => [lang, samples.map((row) => ({ source: row[state.base], translation: row[lang] })).filter((sample) => sample.translation)]));
   console.log(JSON.stringify({ ...item, queue_left: items.length, examples: samples.map((row) => row[state.base]), languages, answer_shape: { term: item.term, entry: { mode: "stem", note: "One English sentence.", t: {} } } }, null, 2));

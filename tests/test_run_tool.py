@@ -46,6 +46,27 @@ module.exports = {
     }
     (tmp_path / "tradusco.config.json").write_text(json.dumps(config), encoding="utf-8")
 
+    default_config = {
+        **config,
+        "projectDir": "shop",
+        "sourceCsv": "../source.csv",
+        "contextProviderFile": "../context-provider.js",
+        "artifactKeysCommand": ["node", "../artifact-keys.js"],
+        "deliveryCommands": [["node", "../build.js"]],
+    }
+    (tmp_path / ".tradusco").mkdir()
+    (tmp_path / ".tradusco/config.json").write_text(
+        json.dumps(default_config), encoding="utf-8"
+    )
+    default_run = subprocess.run(
+        ["node", str(TOOL), "--dry-run"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "status: project source not synced" in default_run.stdout
+
     result = run_tool(tmp_path, "--skip-extract", "--skip-glossary", "--skip-translate")
     assert "sync: done" in result.stdout
     assert "context: done" in result.stdout

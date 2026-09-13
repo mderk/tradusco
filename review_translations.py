@@ -78,7 +78,7 @@ class State:
     def __init__(self, config_path: Path):
         integration = read_json(config_path, {})
         self.root = config_path.parent
-        self.project = (self.root / integration.get("projectDir", ".tradusco/project")).resolve()
+        self.project = (self.root / integration.get("projectDir", "project")).resolve()
         config = read_json(self.project / "config.json", {})
         self.project_csv = self.project / config.get("sourceFile", "translations.csv")
         self.catalog = (self.root / integration.get("sourceCsv", self.project_csv)).resolve()
@@ -193,7 +193,7 @@ def sync(state: State, command: str, write: bool, expected: str | None) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Review and deliver source-as-key translations.")
     parser.add_argument("command", choices=("read", "apply", "back-sync", "export"))
-    parser.add_argument("--config", default="tradusco.config.json")
+    parser.add_argument("--config", default=".tradusco/config.json")
     parser.add_argument("--source")
     parser.add_argument("--edits")
     parser.add_argument("--write", action="store_true")

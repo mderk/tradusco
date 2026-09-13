@@ -37,11 +37,11 @@ function writeJson(file, data) {
 }
 
 function load(options) {
-  const configFile = path.resolve(String(options.config || "tradusco.config.json"));
+  const configFile = path.resolve(String(options.config || ".tradusco/config.json"));
   const root = path.dirname(configFile);
   const config = readJson(configFile, null);
   if (!config) throw new Error(`config not found: ${configFile}`);
-  const projectDir = path.resolve(root, config.projectDir || ".tradusco/project");
+  const projectDir = path.resolve(root, config.projectDir || "project");
   const projectConfig = readJson(path.join(projectDir, "config.json"), {});
   const glossaryFile = path.resolve(root, config.glossaryFile || path.join(projectDir, "glossary.json"));
   const sourceFile = path.join(projectDir, projectConfig.sourceFile || "translations.csv");
@@ -51,9 +51,9 @@ function load(options) {
   return {
     config, root, projectDir, glossaryFile, sourceFile, base, locales,
     reviewed: locales.filter((lang) => !regenerate.has(lang)),
-    rejectedFile: path.resolve(root, config.glossaryRejectedFile || "translation_not_terms.json"),
-    queueFile: path.resolve(root, config.glossaryQueueFile || "translation_terms_queue.json"),
-    contextsFile: path.resolve(root, config.contextsFile || "translation_contexts.json"),
+    rejectedFile: path.resolve(root, config.glossaryRejectedFile || path.join(projectDir, "not_terms.json")),
+    queueFile: path.resolve(root, config.glossaryQueueFile || path.join(projectDir, "terms_queue.json")),
+    contextsFile: path.resolve(root, config.contextsFile || path.join(projectDir, "contexts.json")),
   };
 }
 

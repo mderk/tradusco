@@ -42,7 +42,7 @@ def test_glossary_prepare_decisions_and_lint(tmp_path):
                 {"en": "leave Oblivion", "fr": "quitter l'oubli"},
             ]
         )
-    glossary_file = tmp_path / "translation_glossary.json"
+    glossary_file = engine / "glossary.json"
     glossary_file.write_text(
         json.dumps({"terms": {}, "manual": {"Hero": {"mode": "keep"}}}),
         encoding="utf-8",
@@ -60,7 +60,6 @@ fs.writeFileSync(output, JSON.stringify({Chest: {group: "shop", mode: "stem", t:
         json.dumps(
             {
                 "projectDir": ".tradusco/shop",
-                "glossaryFile": "translation_glossary.json",
                 "glossarySourceCommand": ["node", "provider.js"],
                 "locales": ["fr"],
             }
@@ -78,7 +77,7 @@ fs.writeFileSync(output, JSON.stringify({Chest: {group: "shop", mode: "stem", t:
     report = run_tool(tmp_path, "report")
     assert "coverage: unmatched 2; whole-phrase only 0" in report.stdout
 
-    (tmp_path / "translation_terms_queue.json").write_text(
+    (engine / "terms_queue.json").write_text(
         json.dumps({"Weapon": "A category label."}), encoding="utf-8"
     )
     queued = json.loads(run_tool(tmp_path, "next").stdout)
@@ -89,10 +88,10 @@ fs.writeFileSync(output, JSON.stringify({Chest: {group: "shop", mode: "stem", t:
         encoding="utf-8",
     )
     run_tool(tmp_path, "submit", "--json", str(reject))
-    assert json.loads((tmp_path / "translation_not_terms.json").read_text()) == {
+    assert json.loads((engine / "not_terms.json").read_text()) == {
         "Weapon": "Generic word here."
     }
-    assert json.loads((tmp_path / "translation_contexts.json").read_text()) == {
+    assert json.loads((engine / "contexts.json").read_text()) == {
         "Weapon": "A category label."
     }
 
@@ -126,4 +125,4 @@ fs.writeFileSync(output, JSON.stringify({Chest: {group: "shop", mode: "stem", t:
     )
     assert lint.returncode == 0
     assert "glossary findings: 0" in lint.stdout
-    assert not (engine / "glossary.json").exists()
+    assert not (tmp_path / "translation_glossary.json").exists()

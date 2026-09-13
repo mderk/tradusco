@@ -51,10 +51,10 @@ def test_context_resolution_preview_apply_and_decisions(tmp_path):
         writer = csv.DictWriter(file, fieldnames=["en", "context", "fr"])
         writer.writeheader()
         writer.writerows(rows)
-    (tmp_path / "translation_contexts.json").write_text(
+    (engine / "contexts.json").write_text(
         json.dumps({"Override": "Manual context."}), encoding="utf-8"
     )
-    (tmp_path / "translation_glossary.json").write_text(
+    (engine / "glossary.json").write_text(
         json.dumps({"terms": {"Chest": {"mode": "exact", "t": {"fr": "Coffre"}}}}),
         encoding="utf-8",
     )
@@ -85,9 +85,7 @@ module.exports = {
         json.dumps(
             {
                 "projectDir": ".tradusco/shop",
-                "glossaryFile": "translation_glossary.json",
                 "contextProviderFile": "context-provider.js",
-                "contextsFile": "translation_contexts.json",
             }
         ),
         encoding="utf-8",
@@ -145,10 +143,10 @@ module.exports = {
     )
     run_tool(tmp_path, "submit", "--json", str(answer))
     run_tool(tmp_path, "submit", "--json", str(answer))
-    assert json.loads((tmp_path / "translation_contexts.json").read_text())[
+    assert json.loads((engine / "contexts.json").read_text())[
         "Mystery"
     ] == ("Label for an unknown reward.")
-    assert json.loads((tmp_path / "translation_terms_queue.json").read_text()) == {
+    assert json.loads((engine / "terms_queue.json").read_text()) == {
         "Weapon": "Name of an equipment category."
     }
     assert json.loads(run_tool(tmp_path, "next").stdout) == {"done": True}

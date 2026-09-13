@@ -45,16 +45,19 @@ Tradusco state directory:
 
 ```text
 your-project/
-  tradusco.config.json
-  translation_glossary.json
-  translation_contexts.json
-  translation_not_terms.json
-  translation_terms_queue.json
+  locale_src/
+    translations.csv
+  scripts/
+    context-provider.js
   .tradusco/
+    config.json
     app/
-      config.json
+      config.json              # internal engine configuration
       translations.csv
       glossary.json
+      contexts.json
+      not_terms.json
+      terms_queue.json
       editorial.json
       fr/
         progress.json
@@ -63,14 +66,16 @@ your-project/
 
 | File | Writer | Meaning |
 | --- | --- | --- |
-| `tradusco.config.json` | Host project | Commands, paths, locales and model policy |
+| `.tradusco/config.json` | Host project | Commands, paths, locales and model policy |
 | Host `sourceCsv` | Host extractor and Tradusco export | Interchange table between the host and Tradusco |
 | `<projectDir>/translations.csv` | Tradusco | Working snapshot reconstructed from live source keys and progress |
 | `<locale>/progress.json` | Tradusco | Persisted translations keyed by exact source text |
 | `<locale>/failures.jsonl` | Tradusco | Append-only technical failure records |
 | `<projectDir>/editorial.json` | Guarded edit and back-sync | Explicit editorial values that model regeneration must preserve |
-| Host glossary and context files | Providers and decision commands | Generated facts and accepted decisions |
-| `<projectDir>/glossary.json` | Runner | Glossary snapshot consumed by translation |
+| `<projectDir>/glossary.json` | Provider and decision commands | Generated terms and accepted terminology decisions consumed by translation |
+| `<projectDir>/contexts.json` | Context decisions | Accepted manual context |
+| `<projectDir>/not_terms.json` | Glossary decisions | Rejected terminology candidates |
+| `<projectDir>/terms_queue.json` | Glossary and context decisions | Deferred terminology candidates |
 
 `progress.json` is saved before the working CSV. If the CSV write fails, the
 next translation run reconstructs it from progress without another model call.
@@ -79,22 +84,20 @@ progress and CSV if an earlier guarded write was interrupted.
 
 ## Integration configuration
 
-The runner reads `tradusco.config.json`. Relative paths and commands are resolved
+The runner reads `.tradusco/config.json`. Relative paths and commands are resolved
 from the directory containing that file.
 
 ```json
 {
   "traduscoRoot": "/path/to/tradusco",
-  "projectDir": ".tradusco/app",
-  "sourceCsv": "locale_src/translations.csv",
+  "projectDir": "app",
+  "sourceCsv": "../locale_src/translations.csv",
   "baseCol": "en",
   "locales": ["fr", "de", "ja"],
   "envFile": ".env.tradusco",
-  "extractCommands": [["node", "scripts/extract-translations.js"]],
-  "glossaryFile": "translation_glossary.json",
-  "glossarySourceCommand": ["node", "scripts/build-glossary.js"],
-  "contextProviderFile": "scripts/context-provider.js",
-  "contextsFile": "translation_contexts.json",
+  "extractCommands": [["node", "../scripts/extract-translations.js"]],
+  "glossarySourceCommand": ["node", "../scripts/build-glossary.js"],
+  "contextProviderFile": "../scripts/context-provider.js",
   "translate": {
     "model": "gemini",
     "method": "auto",
@@ -106,12 +109,17 @@ from the directory containing that file.
     "referenceLangs": ["fr"],
     "regenerateLangs": ["ja"]
   },
-  "deliveryCommands": [["node", "scripts/apply-and-build-translations.js"]],
-  "artifactKeysCommand": ["node", "scripts/list-built-translation-keys.js"]
+  "deliveryCommands": [["node", "../scripts/apply-and-build-translations.js"]],
+  "artifactKeysCommand": ["node", "../scripts/list-built-translation-keys.js"]
 }
 ```
 
 All commands are argv arrays; shell syntax is not interpreted.
+
+Tradusco's mutable state defaults to `projectDir`: `glossary.json`,
+`contexts.json`, `not_terms.json`, `terms_queue.json`, `editorial.json`, the
+working CSV and per-locale progress. Project source data and provider code stay
+outside `.tradusco/` because the host project owns them.
 
 - `extractCommands` must produce `sourceCsv`.
 - `glossarySourceCommand` receives an appended `--output PATH` and must write a
@@ -163,10 +171,10 @@ as a blanket import for values that are merely assumed to be machine output.
 
 ```bash
 $PYTHON "$TRADUSCO_ROOT/review_translations.py" back-sync \
-  --config tradusco.config.json
+  --config .tradusco/config.json
 
 $PYTHON "$TRADUSCO_ROOT/review_translations.py" back-sync \
-  --config tradusco.config.json \
+  --config .tradusco/config.json \
   --write \
   --expect REVISION_FROM_PREVIEW
 ```
@@ -183,26 +191,26 @@ Candidate decisions remain an explicit operation before that run.
 Inspect glossary state and one pending candidate:
 
 ```bash
-node "$TRADUSCO_ROOT/tools/glossary.js" report --config tradusco.config.json
-node "$TRADUSCO_ROOT/tools/glossary.js" next --config tradusco.config.json
+node "$TRADUSCO_ROOT/tools/glossary.js" report --config .tradusco/config.json
+node "$TRADUSCO_ROOT/tools/glossary.js" next --config .tradusco/config.json
 ```
 
 Record a prepared accept, defer or reject answer:
 
 ```bash
 node "$TRADUSCO_ROOT/tools/glossary.js" submit \
-  --config tradusco.config.json \
-  --json glossary-answer.json
+  --config .tradusco/config.json \
+  --json .tradusco/glossary-answer.json
 ```
 
 Inspect unresolved context groups and record an answer:
 
 ```bash
-node "$TRADUSCO_ROOT/tools/context.js" report --config tradusco.config.json
-node "$TRADUSCO_ROOT/tools/context.js" next --config tradusco.config.json
+node "$TRADUSCO_ROOT/tools/context.js" report --config .tradusco/config.json
+node "$TRADUSCO_ROOT/tools/context.js" next --config .tradusco/config.json
 node "$TRADUSCO_ROOT/tools/context.js" submit \
-  --config tradusco.config.json \
-  --json context-answer.json
+  --config .tradusco/config.json \
+  --json .tradusco/context-answer.json
 ```
 
 Context answers may contain a context formulation or `needs_glossary`; the latter
@@ -214,7 +222,7 @@ evidence is not presented repeatedly. See [GLOSSARY.md](GLOSSARY.md) and
 ## Running the ordinary cycle
 
 ```bash
-node "$TRADUSCO_ROOT/tools/run.js" --config tradusco.config.json
+node "$TRADUSCO_ROOT/tools/run.js" --config .tradusco/config.json
 ```
 
 The implemented stage order is:
@@ -257,10 +265,10 @@ the affected source keys explicitly:
 
 ```bash
 node "$TRADUSCO_ROOT/tools/run.js" \
-  --config tradusco.config.json \
+  --config .tradusco/config.json \
   --lang ja \
   --regenerate \
-  --only-keys-file affected-keys.json
+  --only-keys-file .tradusco/affected-keys.json
 ```
 
 The runner rejects regeneration for locales absent from `regenerateLangs`.
@@ -274,7 +282,7 @@ Read one source row across all configured locales:
 
 ```bash
 $PYTHON "$TRADUSCO_ROOT/review_translations.py" read \
-  --config tradusco.config.json \
+  --config .tradusco/config.json \
   --source "Pay {amount}"
 ```
 
@@ -295,12 +303,12 @@ Preview and apply it:
 
 ```bash
 $PYTHON "$TRADUSCO_ROOT/review_translations.py" apply \
-  --config tradusco.config.json \
-  --edits edits.json
+  --config .tradusco/config.json \
+  --edits .tradusco/edits.json
 
 $PYTHON "$TRADUSCO_ROOT/review_translations.py" apply \
-  --config tradusco.config.json \
-  --edits edits.json \
+  --config .tradusco/config.json \
+  --edits .tradusco/edits.json \
   --write
 ```
 
@@ -335,7 +343,7 @@ will deliver persisted values without another model call:
 
 ```bash
 node "$TRADUSCO_ROOT/tools/run.js" \
-  --config tradusco.config.json \
+  --config .tradusco/config.json \
   --skip-extract \
   --skip-sync \
   --skip-glossary \

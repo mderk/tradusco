@@ -36,14 +36,14 @@ function environment(file) {
 }
 
 function load(options) {
-  const configFile = path.resolve(String(options.config || "tradusco.config.json"));
+  const configFile = path.resolve(String(options.config || ".tradusco/config.json"));
   const root = path.dirname(configFile), config = readJson(configFile);
   if (!config) throw new Error(`config not found: ${configFile}`);
   const traduscoRoot = path.resolve(root, config.traduscoRoot || path.join(__dirname, ".."));
   const bundledPython = path.join(traduscoRoot, ".venv", "bin", "python");
   return {
     options, configFile, root, config, traduscoRoot,
-    projectDir: path.resolve(root, config.projectDir || ".tradusco/project"),
+    projectDir: path.resolve(root, config.projectDir || "project"),
     sourceCsv: path.resolve(root, config.sourceCsv || "translations.csv"),
     base: config.baseCol || "en",
     python: config.pythonCommand || (fs.existsSync(bundledPython) ? bundledPython : "python3"),

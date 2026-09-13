@@ -7,13 +7,12 @@ manual values may replace an existing generated value.
 
 ## Project provider
 
-`tradusco.config.json` names the provider and manual context file:
+`.tradusco/config.json` names the project directory and provider:
 
 ```json
 {
-  "projectDir": ".tradusco/shop",
-  "contextProviderFile": "scripts/context-provider.js",
-  "contextsFile": "translation_contexts.json"
+  "projectDir": "shop",
+  "contextProviderFile": "../scripts/context-provider.js"
 }
 ```
 
@@ -34,12 +33,14 @@ in this provider.
 ## Commands
 
 ```bash
-node tools/context.js report --config tradusco.config.json
-node tools/context.js apply --config tradusco.config.json
-node tools/context.js apply --write --expect <preview-revision> --config tradusco.config.json
-node tools/context.js next --config tradusco.config.json
-node tools/context.js submit --json .tradusco/context-answer.json --config tradusco.config.json
+node tools/context.js report --config .tradusco/config.json
+node tools/context.js apply --config .tradusco/config.json
+node tools/context.js apply --write --expect <preview-revision> --config .tradusco/config.json
+node tools/context.js next --config .tradusco/config.json
+node tools/context.js submit --json .tradusco/context-answer.json --config .tradusco/config.json
 ```
+
+Accepted manual context defaults to `<projectDir>/contexts.json`.
 
 `apply` is read-only by default and shows old/new values, resolution sources and
 a revision derived from the source CSV, manual contexts, provider code and the

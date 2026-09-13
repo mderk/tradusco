@@ -53,25 +53,26 @@ Typical layout in your app repo:
 
 ```
 your-app/
-  tradusco.config.json
-  translation_glossary.json
-  translation_contexts.json
   .tradusco/
+    config.json
     myproject/
       config.json
       translations.csv
       glossary.json
+      contexts.json
+      not_terms.json
+      terms_queue.json
       editorial.json
       ru/progress.json
       fr/progress.json
 ```
 
-Configure the host commands and providers in `tradusco.config.json`, then run the
+Configure the host commands and providers in `.tradusco/config.json`, then run the
 complete workflow from the app repository:
 
 ```bash
 TRADUSCO_ROOT=/path/to/tradusco
-node "$TRADUSCO_ROOT/tools/run.js" --config tradusco.config.json
+node "$TRADUSCO_ROOT/tools/run.js" --config .tradusco/config.json
 ```
 
 For the current workflow diagram and a step-by-step integration recipe, including

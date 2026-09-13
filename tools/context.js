@@ -39,13 +39,13 @@ function writeCsv(file, head, rows) {
 }
 
 function load(options) {
-  const configFile = path.resolve(String(options.config || "tradusco.config.json"));
+  const configFile = path.resolve(String(options.config || ".tradusco/config.json"));
   const root = path.dirname(configFile);
   const config = readJson(configFile, null);
   if (!config) throw new Error(`config not found: ${configFile}`);
-  const projectDir = path.resolve(root, config.projectDir || ".tradusco/project");
+  const projectDir = path.resolve(root, config.projectDir || "project");
   const projectConfig = readJson(path.join(projectDir, "config.json"), {});
-  const providerFile = path.resolve(root, config.contextProviderFile || "context-provider.js");
+  const providerFile = path.resolve(root, config.contextProviderFile || "../context-provider.js");
   if (!fs.existsSync(providerFile)) throw new Error(`context provider not found: ${providerFile}`);
   delete require.cache[require.resolve(providerFile)];
   const provider = require(providerFile);
@@ -57,9 +57,9 @@ function load(options) {
     root, projectDir, providerFile, provider, api, sourceFile,
     base: projectConfig.baseLanguage || config.baseCol || "en",
     contextColumn: config.contextColumn || "context",
-    manualFile: path.resolve(root, config.contextsFile || "translation_contexts.json"),
-    queueFile: path.resolve(root, config.glossaryQueueFile || "translation_terms_queue.json"),
-    rejectedFile: path.resolve(root, config.glossaryRejectedFile || "translation_not_terms.json"),
+    manualFile: path.resolve(root, config.contextsFile || path.join(projectDir, "contexts.json")),
+    queueFile: path.resolve(root, config.glossaryQueueFile || path.join(projectDir, "terms_queue.json")),
+    rejectedFile: path.resolve(root, config.glossaryRejectedFile || path.join(projectDir, "not_terms.json")),
     glossaryFile: path.resolve(root, config.glossaryFile || path.join(projectDir, "glossary.json")),
   };
 }

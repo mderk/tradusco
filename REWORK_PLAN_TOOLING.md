@@ -94,6 +94,64 @@ between every translation and export. Already persisted work can go from P1
 directly to P5; approved corrections enter P4 without P3. These paths expose the
 same deterministic operations to CLI users and agent skills.
 
+**Identity and ownership contract.** A managed record has an owner namespace, a
+local identity, the current source text and a revision derived from that source.
+The stable Tradusco identity is `(owner, local identity)`; the source revision is
+freshness evidence and never substitutes for identity. Where the host provides a
+stable ID, use it as the local identity. A source-as-key integration uses the
+exact identity emitted by its adapter and therefore creates a new identity when
+that source key changes unless the project supplies an explicit unambiguous
+migration. Domain and other descriptive metadata do not participate in identity.
+A project may declare its domains as owner namespaces, and then the domain
+participates in identity as the owner; a domain label carried on a record whose
+owner is declared elsewhere does not. An integration with no ownership structure,
+such as a plain phrase table, declares one owner for everything.
+
+An owner namespace is also the extraction and completeness boundary. Every
+extraction declares the owners it ran and, independently for each owner, whether
+its result is complete or partial. Absence retires a previously managed record
+only in a complete result for its owner. Absence from a partial result or from an
+owner that did not participate changes nothing. Host records outside declared
+owner namespaces are unmanaged and survive delivery.
+
+P1 applies these rules without inference: an unseen identity is new; the same
+identity and source revision is unchanged; the same identity with a different
+source revision is changed and needs new translations; absence proved by a
+complete owner snapshot retires it. A retired identity that returns is reactivated:
+saved translations may be reused only for the same source revision, while a
+different revision follows the changed-source path. History remains attached to
+old revisions.
+
+Emitting one identity more than once in a reconciliation needs two cases
+separated. Repeated emission carrying the same source is a duplicate: collapse it
+and report the count, since a record cannot be identified twice by its own
+adapter. Repeated emission carrying different sources is a collision, because
+nothing in the input says which source the identity now names. A collision never
+merges records by source, domain or row order. It excludes the colliding
+identities from the selection and denies that owner a complete result, so nothing
+it manages can be retired on this run, while every other record of the same owner
+proceeds. Stop the owner outright only when the collision makes its reconciliation
+impossible, not when it is confined to named identities.
+
+How a project draws its owner boundaries decides how many records it manages, so
+it is a decision for P0 rather than for later migration. Measured on the pinned t3
+snapshot, `locale_src/en/` holds 28 domains with 3864 msgid occurrences and 3521
+distinct texts; 277 texts occur in more than one domain, heroine names such as
+`Paula` and `Zoe` appearing at once in `heroes.po`, `items.po`, `quests.po` and
+`offers.po`. One owner for the whole catalogue keeps today's source-as-key
+behaviour, and those 277 texts stay collapsed into one record each with one
+translation, which is exactly the limitation F5 describes. One owner per domain
+separates them and adds 343 records that are then translated per owner. Neither
+is a collision, and the contract does not choose between them; the project does,
+before the first run.
+
+Persisted translation state must therefore retain the logical identity, source
+revision and value provenance needed by P1, P4 and P6. This is a logical record
+contract, not a prescribed JSON or CSV layout. Existing phrase-keyed state lacks
+those fields; its storage representation and legacy mapping are migration work.
+Unknown or ambiguous legacy relationships are preserved and reported rather than
+guessed. They do not block unrelated owners or new projects.
+
 P2 contains a preparation loop: gather evidence → reuse existing decisions and
 rules → prepare missing values → resolve decisions within granted authority →
 validate and apply authorised changes → return to the remainder. Glossary and
@@ -238,12 +296,12 @@ and recomputing export after progress changes does not prove what was last expor
 | At | Case | Required behaviour / explicit open boundary |
 | --- | --- | --- |
 | P0 | Existing catalogue and progress disagree, with no trustworthy baseline | Preserve both; do not invent authorship from timestamps. **Open:** first-import selection and reconciliation procedure. Subsequent editorial inference requires recorded automatic values. |
-| P0/P1 | Identical source text appears under different identities | Do not collapse distinct meanings. **Open:** representation and legacy migration. Domain labels alone are not identity. Reject an unsupported ambiguous import rather than silently merge. |
+| P0/P1 | Identical source text appears under different identities | Keep separate `(owner, local identity)` records and histories. Domain labels alone are not identity. Legacy migration remains separate; reject an ambiguous mapping rather than silently merge. |
 | P1 | Source changes under a stable ID, or source-as-key changes | Translate the new source automatically after normal checks; preserve old source/key, translation and editorial history. Do not demand reapproval just because the source changed. |
-| P1 | Only identity/format spelling changes, with unchanged source meaning | **Proposed:** reuse only with an unambiguous declared mapping. Whitespace removal is not proof. A changed source follows the preceding row unless a separately agreed migration rule applies. |
-| P1 | Record disappears or later returns | Preserve history. A filtered selection is not evidence of retirement; only a complete source snapshot can establish absence. **Open:** archive/reactivation mechanics and treatment of unknown legacy provenance. |
+| P1 | Only identity/format spelling changes, with unchanged source meaning | Reuse only with an unambiguous declared migration. Whitespace removal is not proof. Without that mapping, a changed source-as-key identity is new. |
+| P1 | Record disappears or later returns | Preserve history. Only a complete snapshot for the record's owner can retire it. On return, reactivate it and reuse saved translations only when the source revision matches; otherwise translate the changed source. Unknown legacy provenance remains a migration case. |
 | P1/P5 | Host key was never managed by the selected extraction | Classify as unmanaged, not retired. Preserve it during export. A complete snapshot establishes retirement only within the identities that extraction previously managed. |
-| P0/P1 | Two extractors emit the same local ID, or only one extractor participates | The integration must supply identities unique in the managed set and declare ownership scopes. A complete result for A says nothing about absent B; do not retire B's records. This does not require a corpus object, but the identity/ownership contract cannot be removed. |
+| P0/P1 | Two extractors emit the same local ID, or only one extractor participates | Equal local IDs in different owner namespaces remain separate. Repeating the same `(owner, local identity)` with the same source is a duplicate: collapse and report it. Repeating it with different sources is a collision: exclude those identities, deny that owner a complete result and continue with its other records. A complete result for A says nothing about absent B; do not retire B's records. |
 | P1/P2 | Canon or context changes with unchanged source | Select affected eligible cells for regeneration under existing locale policy; retain editorial values. Explain selection and return through preparation before model execution. |
 | P2 | A rule changes after preview, or now returns no statement | Recompute/review changed results before apply; replace or remove only attributable generated values and re-resolve fallback rules. Preserve manual context. Effective input changes, not a rule-file edit alone, determine the affected selection. |
 | P2 | Candidate was rejected or deferred previously | Reuse the decision for unchanged evidence. Do not repeatedly request the same naming decision; deferred work can be resumed explicitly. |
@@ -336,10 +394,9 @@ before the rework provides it.
 
 - Identity direction is already recorded in `WORKFLOW_NOTES.md`: stable ID plus
   source-text hash where IDs exist, source-as-key where appropriate. That note
-  groups the choice by corpus. This rework expresses the convention on records
-  without introducing a corpus object; it retains identity uniqueness and each
-  extraction's ownership/completeness boundary. Representation, disambiguation
-  and migration remain to be specified.
+  groups the choice by corpus. This rework expresses the convention as the
+  identity and ownership contract above, without introducing a corpus object.
+  Persisted representation and legacy migration remain to be implemented.
 - `regenerateLangs` already gates regeneration in the t3 runner (historical
   `run.js:343` at the revision above). Preserve that protection. It is not a
   demonstrated prohibition of all automatic gap filling or new-source translation.
@@ -359,7 +416,7 @@ before the rework provides it.
 
 The earlier U1–U6 list is now subordinate to this process:
 
-- **P0/P1:** specify installation/config ownership and record identity
+- **P0/P1:** implement the identity/ownership contract and choose its persisted
   representation (U1/U3). Check existing provenance evidence before adding storage;
   legacy first-import reconciliation (U2) is a migration case, not a universal gate.
 - **P3/P4/P7:** specify retry-limit semantics and recovery across write boundaries,
@@ -1031,11 +1088,13 @@ the glossary or the context is. `WORKFLOW_NOTES.md` works the general problem
 through and lands on stable id plus a hash of the source text stored beside the
 translation — gettext's fuzzy flag, computed explicitly. The notes choose the
 convention by source group because config-derived strings usually have IDs and
-UI strings usually do not. The rework can record that convention per row, but
-must still define unique identities and extraction ownership. That is the
-largest open design item in this repository,
-it is prerequisite to any honest answer on R5 and on rekeying, and it should be
-scoped before anything builds further on the current key.
+UI strings usually do not. The identity and ownership contract above makes that
+choice explicit without requiring a corpus object: owner plus local identity
+identifies the record, while the source-derived revision invalidates translations.
+F5 implements that contract for new state and supplies explicit migration tools
+for legacy phrase-keyed projects. It must not infer mappings from equal source,
+domain labels, whitespace normalisation or row order. This remains prerequisite
+to an honest implementation of R5 and rekeying.
 
 **F4. The placeholder and tag syntax is hardcoded.** `lib/utils.py` defines
 `_CURLY_TOKEN_RE` for `{token}` and `_LINGUI_TAG_RE` for lingui's numbered tags,
@@ -1363,10 +1422,10 @@ precedence; estimated effort and future measurement do not authorise coding.
    read-only inspection that separates measured inputs from cost estimates.
    W5 also has to produce the added-and-removed key list that the
    incremental cycle of W6 runs on.
-3. **F5's contract**, before the formats. Deciding what identifies a phrase
-   changes what F1's column hangs off, what G2 syncs against and what R5 can
-   honestly say about a dead key, so the design lands here even though the
-   migration that follows from it does not. Implementation stays late.
+3. **F5's representation for new state**, before the formats. The identity and
+   ownership contract is settled above; its persisted representation changes what
+   F1's column hangs off, what G2 syncs against and what R5 can honestly say about
+   a dead key. Legacy migration stays late.
 4. **F4** — the format adapter, starting with placeholder patterns out of the
    engine. It is the one coupling to a single project already inside the engine,
    so it should not survive the first item of decoupling work, and T1 needs the
@@ -1385,7 +1444,7 @@ precedence; estimated effort and future measurement do not authorise coding.
    reference phase order is its sequencing, and the write protocol has to be
    settled before the return path ships. Without this pair any second project
    starts by losing its human review.
-9. **F5's migration**, on the contract decided in step 3.
+9. **F5's legacy migration**, using the representation introduced in step 3.
 10. **Skills** for glossary and context, together with the layer-2 halves of both
    subsystems — which begins with separating the project's data access and
    content classification out of what is being moved. Then `tradusco-init`, which

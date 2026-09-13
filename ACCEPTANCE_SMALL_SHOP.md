@@ -11,6 +11,8 @@ This is the expanded specification of the nine-step acceptance round trip in
 The step references below identify which part of that concise contract each event
 exercises; events without a direct counterpart extend its fault and identity
 coverage.
+Round-trip step numbers are defined by that numbered list and must be updated
+together with it.
 
 Use English source and French, German and Japanese targets. Initial data:
 

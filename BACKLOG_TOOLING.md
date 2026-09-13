@@ -22,3 +22,4 @@
 | Inferring editorial origin for edits made outside supported tools | A project cannot route editorial changes through guarded edits or back-sync. |
 | Refreshing already stored context after a rule changes | The transferred context workflow must update generated values rather than only fill gaps. |
 | Run, QA, review and init agent skills | The transferred CLI workflow passes acceptance and repeated agent operation justifies wrappers. |
+| Long-run supervision and heartbeat | The deferred run skill is implemented after the CLI workflow passes acceptance. |

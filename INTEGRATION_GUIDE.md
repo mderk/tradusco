@@ -177,9 +177,20 @@ python sort_po.py locale_src/fr
 
 ### Orchestrating multiple locales (full loop)
 
-Tradusco intentionally does not ship a project-specific “one button” runner. The recommended pattern is:
-keep orchestration in the target repo (so it can run extraction/build commands and manage paths), and call
-Tradusco scripts for the translation parts.
+The generic workflow runner reads project commands and paths from
+`tradusco.config.json`:
+
+```bash
+node tools/run.js --config /path/to/project/tradusco.config.json
+```
+
+It acquires `<projectDir>/.run.lock`, runs configured extraction, synchronizes the
+source CSV, prepares glossary and context, and translates missing cells. Each
+stage has a `--skip-*` flag; `--dry-run` prints the planned commands. Model calls
+have a configurable `translate.requestTimeout` (120 seconds by default).
+
+The equivalent manual pattern remains useful for integrations that need custom
+delivery steps:
 
 Example (gettext/PO):
 
@@ -307,4 +318,3 @@ python translate.py -p .tradusco/myproject -l fr -m google/gemini-2.5-flash
 For non-filesystem workflows, implement a custom `StorageAdapter` (see `lib/storage/base.py`) and use
 `TranslationProject` directly. This allows storing translations/progress in a DB or another system while
 reusing the same translation logic.
-

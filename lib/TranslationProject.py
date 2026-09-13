@@ -1,3 +1,5 @@
+import asyncio
+import time
 from typing import Optional
 
 from lib.failure_reporting import (
@@ -327,6 +329,7 @@ class TranslationProject:
         context: str,
         delay_seconds: float,
         max_retries: int,
+        request_timeout: float,
         batch_input: BatchEnvelope,
         fallback_model: Optional[str] = None,
         raise_on_error: bool = False,
@@ -406,9 +409,25 @@ class TranslationProject:
                 batch_input=batch_input,
             )
 
+        async def _run_timed(
+            *, run_model: str, run_method: str
+        ) -> dict[str, dict[str, str]] | None:
+            try:
+                return await asyncio.wait_for(
+                    _run_once(run_model=run_model, run_method=run_method),
+                    timeout=request_timeout,
+                )
+            except TimeoutError as error:
+                raise BatchTranslationError(
+                    BatchErrorInfo(
+                        kind="timeout",
+                        message=f"Model request exceeded {request_timeout:g} seconds",
+                    )
+                ) from error
+
         primary_info: BatchErrorInfo | None = None
         try:
-            return await _run_once(run_model=model, run_method=method)
+            return await _run_timed(run_model=model, run_method=method)
         except BatchTranslationError as e:
             primary_info = e.info
             print(
@@ -449,7 +468,7 @@ class TranslationProject:
 
         print(f"Retrying batch with fallback model={fallback_model} method={fb_method}")
         try:
-            return await _run_once(run_model=fallback_model, run_method=fb_method)
+            return await _run_timed(run_model=fallback_model, run_method=fb_method)
         except BatchTranslationError as e:
             info = e.info
             print(
@@ -517,6 +536,7 @@ class TranslationProject:
         regenerate: bool,
         fallback_model: Optional[str],
         driver,
+        request_timeout: float = 120.0,
     ) -> None:
         translations = await self.storage.load_translations(self.project_id)
         envelope_builder = EnvelopeBuilder(
@@ -540,6 +560,9 @@ class TranslationProject:
             language: set() for language in self.dst_languages
         }
         sent_batch = False
+        batches_started = 0
+        phrases_attempted = 0
+        pass_started = time.monotonic()
 
         def split_batch(
             phrases: list[tuple[str, str | None]],
@@ -566,7 +589,7 @@ class TranslationProject:
             indices: dict[str, int],
             languages: dict[str, set[str]],
         ) -> None:
-            nonlocal sent_batch
+            nonlocal sent_batch, batches_started, phrases_attempted
             batch_input = envelope_builder.build(phrases, indices)
             batch_prompt = await self.translation_tool.create_batch_prompt(
                 phrases,
@@ -597,6 +620,12 @@ class TranslationProject:
             if sent_batch:
                 await driver.wait(delay_seconds)
             sent_batch = True
+            batches_started += 1
+            phrases_attempted += len(phrases)
+            print(
+                f"Batch {batches_started}: phrases={len(phrases)}, "
+                f"attempted={phrases_attempted}, elapsed={time.monotonic() - pass_started:.1f}s"
+            )
 
             try:
                 translated = await self._process_translation_batch(
@@ -608,6 +637,7 @@ class TranslationProject:
                     context,
                     delay_seconds,
                     max_retries,
+                    request_timeout,
                     batch_input,
                     fallback_model=fallback_model,
                     raise_on_error=True,
@@ -625,6 +655,10 @@ class TranslationProject:
                     method=method,
                     info=error.info,
                 )
+                print(
+                    f"Batch {batches_started} finished: failed, "
+                    f"elapsed={time.monotonic() - pass_started:.1f}s"
+                )
                 return
 
             if translated is not None:
@@ -637,6 +671,11 @@ class TranslationProject:
                     model=model,
                     method=method,
                 )
+            print(
+                f"Batch {batches_started} finished: "
+                f"{'translated' if translated is not None else 'empty'}, "
+                f"elapsed={time.monotonic() - pass_started:.1f}s"
+            )
 
         async def flush_batch() -> None:
             nonlocal phrases_to_translate, phrase_indices, phrase_languages
@@ -724,6 +763,7 @@ class TranslationProject:
         self,
         delay_seconds: float = 1.0,
         max_retries: int = 3,
+        request_timeout: float = 120.0,
         batch_size: int = 50,
         model: str = "gemini",
         batch_max_input_tokens: int = 65536,
@@ -763,6 +803,7 @@ class TranslationProject:
             method=method,
             delay_seconds=delay_seconds,
             max_retries=max_retries,
+            request_timeout=request_timeout,
             batch_size=batch_size,
             batch_max_input_tokens=batch_max_input_tokens,
             regenerate=regenerate,
@@ -791,6 +832,7 @@ class TranslationProject:
             method=fb_method,
             delay_seconds=delay_seconds,
             max_retries=max_retries,
+            request_timeout=request_timeout,
             batch_size=batch_size,
             batch_max_input_tokens=batch_max_input_tokens,
             regenerate=regenerate,

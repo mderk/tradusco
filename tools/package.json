@@ -3,6 +3,7 @@
   "private": true,
   "bin": {
     "tradusco-glossary": "glossary.js",
-    "tradusco-context": "context.js"
+    "tradusco-context": "context.js",
+    "tradusco-run": "run.js"
   }
 }

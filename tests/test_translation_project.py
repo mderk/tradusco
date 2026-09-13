@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import csv
@@ -507,6 +508,7 @@ class TestTranslationProject:
         mock_storage,
     ):
         """When primary and fallback batches fail, record one failure per phrase."""
+
         async def mock_translate_standard(
             phrases: list[tuple[str, str | None]],
             model: str,
@@ -549,7 +551,44 @@ class TestTranslationProject:
             "Thank you",
         }
 
-    @patch("lib.TranslationProject.TranslationProject._translate_pass", new_callable=AsyncMock)
+    @patch("lib.TranslationTool.TranslationTool.translate_standard")
+    @patch("lib.llm.get_driver")
+    @patch("lib.TranslationProject.get_driver")
+    async def test_model_request_timeout_is_bounded_and_recorded(
+        self,
+        project_get_driver_mock,
+        llm_get_driver_mock,
+        mock_translate_standard_patch,
+        mock_llm_driver,
+        mock_storage,
+    ):
+        async def never_returns(*args, **kwargs):
+            await asyncio.sleep(1)
+
+        mock_translate_standard_patch.side_effect = never_returns
+        llm_get_driver_mock.return_value = mock_llm_driver
+        project_get_driver_mock.return_value = mock_llm_driver
+        config = await mock_storage.load_config("test_project")
+        project = TranslationProject(
+            project_id="test_project",
+            config=config,
+            dst_languages=["es"],
+            storage=mock_storage,
+            prompt="Translate from {base_language} to {dst_languages}",
+        )
+
+        await project.translate(model="primary-model", request_timeout=0.001)
+
+        assert len(mock_storage.failures) == 3
+        assert all(
+            record["category"] == "network_error" for record in mock_storage.failures
+        )
+        assert all("exceeded" in record["message"] for record in mock_storage.failures)
+
+    @patch(
+        "lib.TranslationProject.TranslationProject._translate_pass",
+        new_callable=AsyncMock,
+    )
     @patch("lib.llm.get_driver")
     @patch("lib.TranslationProject.get_driver")
     async def test_gap_filling_pass_runs_when_cells_still_missing(
@@ -770,9 +809,13 @@ class TestTranslationProject:
         with (project_path / "translations.csv").open(
             "w", encoding="utf-8", newline=""
         ) as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=["key", "en", "es", "fr", "ko"])
+            writer = csv.DictWriter(
+                csv_file, fieldnames=["key", "en", "es", "fr", "ko"]
+            )
             writer.writeheader()
-            writer.writerow({"key": "hello", "en": "Hello", "es": "", "fr": "", "ko": ""})
+            writer.writerow(
+                {"key": "hello", "en": "Hello", "es": "", "fr": "", "ko": ""}
+            )
 
         storage = FileSystemStorageAdapter(project_path)
         storage.set_active_languages(["es", "fr", "ko"])
@@ -830,8 +873,14 @@ class TestTranslationProject:
             is False
         )
 
-    @patch("lib.TranslationProject.TranslationProject._has_missing_phrases", return_value=False)
-    @patch("lib.TranslationProject.TranslationProject._translate_pass", new_callable=AsyncMock)
+    @patch(
+        "lib.TranslationProject.TranslationProject._has_missing_phrases",
+        return_value=False,
+    )
+    @patch(
+        "lib.TranslationProject.TranslationProject._translate_pass",
+        new_callable=AsyncMock,
+    )
     @patch("lib.llm.get_driver")
     @patch("lib.TranslationProject.get_driver")
     async def test_gap_pass_skipped_when_nothing_missing(

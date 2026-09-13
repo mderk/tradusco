@@ -37,7 +37,9 @@ def _looks_invalid(v: object) -> bool:
     return not is_valid_translation(v)
 
 
-def _langs_with_missing_cells(project_dir: Path, *, langs: list[str], base_col: str) -> list[str]:
+def _langs_with_missing_cells(
+    project_dir: Path, *, langs: list[str], base_col: str
+) -> list[str]:
     cfg = _load_config(project_dir)
     csv_name = str(cfg.get("sourceFile") or "translations.csv")
     csv_path = project_dir / csv_name
@@ -101,6 +103,7 @@ def main() -> int:
     parser.add_argument("--parallel", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=50)
     parser.add_argument("--batch-max-input-tokens", type=int, default=65536)
+    parser.add_argument("--request-timeout", type=float, default=120.0)
     parser.add_argument("--method", default="auto")
     parser.add_argument("--langs", help="Comma-separated subset of locales to run")
     parser.add_argument(
@@ -148,6 +151,8 @@ def main() -> int:
                 str(args.batch_size),
                 "--batch-max-input-tokens",
                 str(args.batch_max_input_tokens),
+                "--request-timeout",
+                str(args.request_timeout),
             ]
             jobs.append(Job(lang=lang, cmd=cmd))
         return jobs
@@ -155,7 +160,9 @@ def main() -> int:
     async def run_pass(model: str, label: str) -> dict[str, int]:
         run_langs = langs
         if args.only_missing:
-            run_langs = _langs_with_missing_cells(project_dir, langs=langs, base_col=base_col)
+            run_langs = _langs_with_missing_cells(
+                project_dir, langs=langs, base_col=base_col
+            )
             print(f"{label}: locales_to_run={run_langs}", flush=True)
         jobs = build_jobs(model, run_langs)
         if not jobs:

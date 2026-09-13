@@ -1,8 +1,8 @@
 # Rework plan: the tooling around the engine
 
-> **Status: implementation in progress; glossary and context paths complete (2026-09-13).**
+> **Status: implementation in progress; preparation and ordinary-run paths complete (2026-09-13).**
 > It continues `REWORK_PLAN.md` and `REWORK_PLAN_MULTILANG.md`, both closed.
-> The glossary and context paths are implemented; later order-of-work stages remain pending.
+> Glossary, context and ordinary-run paths are implemented; review/delivery and final acceptance remain pending.
 > The earlier documentation fixes listed under "Stale documentation and loose
 > ends" are also done. An outside review on
 > 7 September checked the items against the code: its findings are folded into
@@ -1082,7 +1082,7 @@ an agent reads the status before the content.
    is read-only, apply preserves manual and filled values, coverage names each
    resolution source and omission, and resolved context appears in the captured
    model prompt.
-3. **Ordinary run:** move G1 and G3's status half with W2/W5 inspection, the
+3. **Ordinary run (implemented):** move G1 and G3's status half with W2/W5 inspection, the
    incremental W6/W7 sequence, existing progress-first outcome/resume behaviour
    and the minimum O3/O4 logging and timeout needed to operate a run. Keep current
    batching and model policy; model bakeoff remains backlog. **Done when:** one

@@ -16,7 +16,7 @@ FailureCategory = Literal[
 def batch_error_kind_to_category(kind: str) -> FailureCategory:
     if kind == "blocked":
         return "refusal"
-    if kind in {"rate_limit", "auth_error"}:
+    if kind in {"rate_limit", "auth_error", "timeout"}:
         return "network_error"
     if kind == "model_error":
         return "parse_error"

@@ -23,7 +23,9 @@ DEBUG = os.environ.get("TRADUSCO_DEBUG")
 
 def _parse_languages(raw: str) -> list[str]:
     return list(
-        dict.fromkeys(language.strip() for language in raw.split(",") if language.strip())
+        dict.fromkeys(
+            language.strip() for language in raw.split(",") if language.strip()
+        )
     )
 
 
@@ -66,6 +68,12 @@ async def async_main():
         type=int,
         default=3,
         help="Maximum number of retries for failed API calls (default: 3)",
+    )
+    parser.add_argument(
+        "--request-timeout",
+        type=float,
+        default=120.0,
+        help="Maximum seconds for one model request including SDK retries (default: 120).",
     )
     parser.add_argument(
         "-b",
@@ -182,7 +190,9 @@ async def async_main():
                 parser.error("--lang must contain at least one language code")
             config = await storage.load_config(project_name)
             invalid_languages = [
-                language for language in dst_languages if language not in config.languages
+                language
+                for language in dst_languages
+                if language not in config.languages
             ]
             if invalid_languages:
                 parser.error(
@@ -222,6 +232,7 @@ async def async_main():
         await translator.translate(
             delay_seconds=args.delay,
             max_retries=args.retries,
+            request_timeout=args.request_timeout,
             batch_size=args.batch_size,
             model=args.model,
             batch_max_input_tokens=args.batch_max_input_tokens,

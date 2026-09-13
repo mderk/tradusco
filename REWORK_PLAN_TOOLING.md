@@ -69,7 +69,7 @@ The objective is a reusable round trip: connect a project, recognise its changes
 prepare translation inputs, translate the selected cells, validate and persist
 them, deliver them to the host, and incorporate subsequent editorial work.
 Tradusco owns common operations and their outcomes. The project supplies source
-meaning, identity conventions and host integration. No step assumes a game,
+meaning, the current source-key mapping and host integration. No step assumes a game,
 gettext, a specific agent host or Node in every project.
 
 ### Reading the t3 evidence
@@ -313,14 +313,13 @@ This is an acceptance scenario, not a claim that it has been executed.
    allowed locales, prepare inputs and regenerate. Preserve editorial cells and
    host keys that were never managed by the selected extraction.
 
-Repeat the same round trip in t3 and a small independent integration with
-different catalogue/identity conventions, changing only configuration/providers.
-Offline model substitutes can verify control flow and persistence; they cannot
-establish translation quality. Paid quality experiments remain separate.
+Run the round trip in the independent CSV/source-as-key fixture. Offline model
+substitutes verify control flow and persistence; they do not establish translation
+quality. Validate the provider boundary in the next real project after this slice.
 
 The repository-level executable specification for this round trip is the
 [small-shop acceptance scenario](ACCEPTANCE_SMALL_SHOP.md). It defines the
-independent fixtures, adapter variants, observable results and fault checkpoints
+independent fixture, observable results and fault checkpoints
 used to verify the selected vertical slice without depending on t3.
 
 ### Reconciliation with the existing records
@@ -328,9 +327,9 @@ used to verify the selected vertical slice without depending on t3.
 | Process responsibility | Existing plan coverage | Required reconciliation |
 | --- | --- | --- |
 | Connection and sources (P0/P1) | G7, G11; F1–F4; R4–R6 | Preserve the current source-as-key workflow and separate catalogue-specific reading behind the project provider. |
-| Selection and input preparation (P1/P2) | G1, G8; R1–R3; W1/W2/W5–W7; L6/L10; glossary/context skills | Selection feeds the same operations in preview and execution. Machine guidance is permitted with provenance; optional input gaps do not become gates. |
-| Model execution and observation (P3/P4) | G3; O2/O4; W3/W4 | Expose failures, bound a run and preserve partial results without changing batching policy. |
-| Validation and editorial preservation (P4/P6) | G4–G6; L1/L2/L5/L6/L9/L10; F2/F4 | Port existing deterministic checks and glossary conformance; technical failures can retry, warnings cannot. |
+| Selection and input preparation (P1/P2) | G1, G8; R1–R3; W1/W2/W5–W7; L6; glossary/context skills | Selection feeds the same operations in preview and execution. Machine guidance is permitted with provenance; optional input gaps do not become gates. |
+| Model execution and observation (P3/P4) | G3; O2/O4; W3 | Expose failures, bound a run and preserve partial results without changing batching policy. |
+| Validation and editorial preservation (P4/P6) | G4–G6; L1/L2/L5/L6/L9; F2/F4 | Port existing deterministic checks and glossary conformance; technical failures can retry, warnings cannot. |
 | Persistence, export and recovery (P4/P5/P7) | G2/G5/G10/G11; O2/O3; R5; T1/T2; W3 | Preserve reviewed edits, partial export and current resume behaviour. |
 | Reading and learning from review (P6) | G8/G9; context/glossary/review skills | Port ordered reading and decision queues; keep project meaning outside Tradusco. |
 
@@ -477,11 +476,11 @@ sharing the operation, without proving a particular language or packaging choice
 | --- | --- | --- |
 | G1 | `tradusco/run.js`, `preflight.js` | step orchestrator with skip flags, and the pre-run gate. Project binding is already in the config |
 | G2 | `tradusco/sync-from-catalogs.js` | the return path Tradusco lacks: hand-reviewed catalog edits pushed back into `progress.json` and the CSV |
-| G3 | `translation-status.js`, `translation-bakeoff.js` | pre-run state, and model comparison on a throwaway project |
+| G3 | `translation-status.js`, `translation-bakeoff.js` | move pre-run status; defer model bakeoff |
 | G4 | `translation-scan.js`, `-markup-check.js`, `-script-check.js` | mechanical detectors, see L1 |
 | G5 | `translation-apply.js`, `-patch.js`, `-unify.js` | guarded edits: expected `from`, idempotent, conflicts instead of silent overwrite |
 | G6 | `translation-lint.js` | glossary conformance, see L2 |
-| G7 | `translation-rekey.js`, `-sort.js` | move translations to keys that changed only in whitespace, order catalogs by appearance |
+| G7 | `translation-rekey.js`, `-sort.js` | move catalogue sorting; defer rekeying with identity migration |
 | G8 | `translation-terms.js` | mining glossary candidates from English strings by frequency and mid-sentence capitalisation |
 | G9 | `translation-catalog.js` | read one catalog across all languages at once, for review |
 | G10 | `tradusco/validate_po.js`, `export_translation_json.js` | catalog validation, and `progress.json` → catalog export. The traversal and the merge rules are generic, the output shape is a project adapter |
@@ -760,24 +759,10 @@ retry instructions. This narrows the earlier blanket gate principle in
 `WORKFLOW_NOTES.md`. Project policy may promote a supported check explicitly;
 editorial protection and informational glossary disagreements still apply.
 
-**L1. Mechanical detectors belong in the engine.** Translation identical to the
-source, Latin text inside a non-Latin locale, the wrong script for the locale
-(Cyrillic outside Russian, kana in European languages), two different sources
-sharing one translated name, extreme length ratios, junk such as NBSP and double
-spaces. Further, from `WORKFLOW_NOTES.md` and not implemented anywhere: the
-argument name is syntactically legal for the runtime format (for ICU, no dot —
-see the transport section), a leading or trailing marker in the source is present
-in the translation, the count of line breaks and paragraph separators matches,
-numbers and percentages survive (`95%` in, `95%` out), terminal punctuation keeps
-its kind, and per-language typography holds (`«»` against `„“` against `「」`,
-dash conventions).
-
-None of these know anything about a game. Two need a project adapter: inline
-markup delimiters, and the runtime format that decides which argument names are
-legal. Expose applicable checks in offline audit and in the run. Under the agreed
-policy, only technical failures or explicitly promoted checks trigger bounded
-repair; ordinary heuristic findings remain warnings. Reusing input context does
-not imply that another model call is free.
+**L1. Port G4's existing mechanical detectors.** Move the source-equal, script,
+duplicate-translation, length, markup and whitespace checks already exercised in
+t3. Keep format-specific delimiters in the project adapter. Unimplemented checks
+listed in `WORKFLOW_NOTES.md` remain in `BACKLOG_TOOLING.md`.
 
 **L2. Nothing verifies what the glossary is for.** Entries go into the prompt,
 but no check confirms the term actually reached the translation. The t3
@@ -817,12 +802,10 @@ corpus: 939 of 1032 entries are `exact`, and once the sections are merged, 974 o
 the 980 effective `exact` rules match at least one corpus row. Calling 91% of the
 glossary inert was a misreading of the same number.
 
-What the report has to separate, because these have different cures: an entry
-that fires nowhere at all; one that fires only as a whole phrase and so cannot
-help inside a sentence; one that fires but has no form for the target language
-(L10); and one that fired but lost the twenty-entry cap in the prompt (C2). Only
-the first is a dead entry. Alongside it, entry generators should still state a
-mode explicitly rather than inherit `exact` by silence.
+The report separates an entry that fires nowhere, one that fires only as a whole
+phrase and one omitted by the twenty-entry prompt cap (C2). Target-language canon
+gaps remain deferred under L10. Entry generators state a mode explicitly rather
+than inherit `exact` by silence.
 
 
 **L9. There are two override layers, and one of them duplicates the glossary.**
@@ -840,7 +823,8 @@ text of specific cells for the source revision they address. Under the agreed
 behaviour, editorial text takes precedence. Export must not silently undo it
 through a glossary-derived or config override. A corrected whole-string label
 may legitimately equal a glossary value; equal values are not competing authority.
-How existing override files migrate into this rule remains to be designed.
+Migration of existing competing override files is deferred. The transferred path
+keeps guarded editorial fixes authoritative and reports adapter-level conflicts.
 
 The check that remains is not "the same term has two different values". A
 glossary entry can legitimately list several allowed forms, and its `scope` and
@@ -850,20 +834,8 @@ actually apply to it — which is L2. For editorial text, a glossary disagreemen
 is informational: it neither blocks delivery nor triggers automatic repair.
 Structural validation remains mandatory.
 
-**L10. An entry that fires can still have nothing to say in the target
-language.** L6 counts whether a term matches phrases; it does not ask whether the
-entry carries a form for the locale being translated. An entry with canon for
-eight locales out of twenty-nine provides explicit target forms for eight, not
-twenty-nine. The entry may still be sent with reference-language forms
-(`lib/envelope.py:86`, `:139`); absence of a target form is not necessarily
-absence of the whole entry. Prompt inclusion also does not prove conformance.
-Two things are generic: a report of missing forms per entry per target language,
-and an import path for confirmed canon so the answer, once found, is written back
-to the glossary rather than to a catalog. t3 needed both and built them
-separately (`translation-canon-gaps.js:47`, `translation-canon-mine.js:46`). What
-does not generalise is how a candidate form is found — reading the reviewed
-Russian column, or preferring non-Latin script, is a guess about this corpus and
-stays in the project.
+**L10 (deferred).** t3 has separate canon-gap and canon-import scripts, but they
+are not in G1–G11. Their generic form remains in `BACKLOG_TOOLING.md`.
 
 ## Format and cohesion (F)
 
@@ -977,13 +949,9 @@ or the isolated language failure from O2a. With O3 in place, re-running exactly
 the phrases a run failed on becomes a selection over the run log rather than a
 search for holes that are not there.
 
-That selection needs one thing the failure log does not currently give: the final
-state of a key-and-language pair, as opposed to the history of attempts on it.
-`failures.jsonl` is append-only, so a phrase that failed in March and was
-translated in April is still a failure record, and the t3 workaround reads every
-record it finds without checking for later success
-(`prune-progress.js:160`). A log of attempts is the right primitive; the report
-built on it has to resolve each pair to its outcome.
+For the first upgrade, current progress wins over older `failures.jsonl` entries:
+a present valid value is successful, while an absent, invalid or quarantined value
+remains unresolved. A separate final-outcome store is not required.
 
 **W4. Long runs have no supported shape.** A full regeneration takes hours. There
 is no heartbeat, no way to ask a running job where it is, and no guidance on
@@ -1046,15 +1014,10 @@ editorial, machine and unknown origin in the guidance supplied to the model and
 operator. The original source remains authoritative. R2's separate quality
 experiment may inform example policy; no blanket reviewed-only rule is imposed.
 
-**W8. Nothing coordinates two writers of the same files.** The engine writes
-`progress.json` under a lock and through an atomic replace
-(`lib/storage/filesystem.py:206`); the back-sync prototype that G2 would port
-writes the same files directly (`sync-from-catalogs.js:85`). Today the collision
-is avoided by the operator not doing both at once. Once the orchestrator can
-start a long run and a person can push catalog edits back, that stops being a
-convention. Either the write protocol becomes shared across both languages, or
-concurrent operations are refused outright — but it has to be decided before G2
-lands, not after the first corrupted progress file.
+**W8. Refuse concurrent writes in the first upgrade.** G1 reuses the existing
+lock-file mechanism for one project-run lock while a mutating workflow is active;
+G2 and guarded edit commands refuse to start while it is held. A shared
+cross-language write protocol remains backlog.
 
 ## Skills for agents
 
@@ -1064,17 +1027,9 @@ lands, not after the first corrupted progress file.
   project-specific.
 - **`tradusco-context`** — the same for context: one screen's worth of strings
   per turn, answer by file, validation and write. Minus the source map.
-- **`tradusco-run`** — pre-run gate, detached long run, coverage check, export,
-  apply, build. Carries the long-run rules from W4.
-- **`tradusco-qa`** — every mechanical check in one pass with one report.
-- **`tradusco-review`** — already specified in full in `REVIEW_SKILL_SPEC.md`,
-  down to the defect categories, the boundaries and the five script roles it
-  needs (reader, writer, glossary check, structural lints, progress). Nothing to
-  design; what is missing is that four of those five roles now exist as the G3 to
-  G6 scripts, so the spec should be re-read against them rather than implemented
-  from scratch.
-- **`tradusco-init`** — deferred; the first new project is configured directly
-  against the extracted provider contract.
+
+Only these two skills are part of the first upgrade. Run, QA, review and init
+skills may be added after the transferred CLI workflow passes acceptance.
 
 
 ## Stale documentation and loose ends
@@ -1147,13 +1102,16 @@ an agent reads the status before the content.
 2. **Context path:** move the manual/generated resolution order, rule preview and
    apply protocol, deferred/rejected queues and coverage report. Keep t3's source
    map and product-data readers in t3. Feed the resolved context into the existing
-   translation envelope.
-3. **Ordinary run:** move G1 with W2/W5 inspection, the incremental W6/W7 sequence,
-   existing resume behaviour and the minimum O3/O4 logging and timeout needed to
-   operate a run. Keep current batching and model policy.
+   translation envelope; preserve its current context-use instruction and prompt
+   snapshots.
+3. **Ordinary run:** move G1 and G3's status half with W2/W5 inspection, the
+   incremental W6/W7 sequence, existing progress-first outcome/resume behaviour
+   and the minimum O3/O4 logging and timeout needed to operate a run. Keep current
+   batching and model policy; model bakeoff remains backlog.
 4. **Review and delivery:** move G2, G5 and G9 for reviewed edits; G4's existing
-   deterministic checks; G7, G10 and G11 for reconciliation, validation and
-   export. Preserve current editorial overrides and partial results.
+   deterministic checks; G7's sorting half, G10 and G11 for reconciliation,
+   validation and export. Preserve current editorial overrides and partial results;
+   rekeying remains backlog.
 5. **Acceptance:** complete the small-shop offline cases, run its live API check,
    then use the same provider contracts in the next real project. Record any
    capability that project actually needs as the next increment.

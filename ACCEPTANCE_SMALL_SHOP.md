@@ -1,6 +1,6 @@
 # Repository acceptance scenario: a small shop
 
-**Specification for implementation with the rework; not an existing test.** Keep
+**Specification partially covered by an existing characterization test.** Keep
 the example data, adapters and acceptance checks in the Tradusco repository.
 Each execution copies fixtures into a fresh temporary project. It must require
 neither a t3 checkout nor its data, credentials, configuration or agent skills.
@@ -9,8 +9,7 @@ The example also demonstrates how another project integrates the common workflow
 This is the expanded specification of the nine-step acceptance round trip in
 [`REWORK_PLAN_TOOLING.md`](REWORK_PLAN_TOOLING.md#worked-round-trip-for-review).
 The step references below identify which part of that concise contract each event
-exercises; events without a direct counterpart extend its fault and identity
-coverage.
+exercises; events without a direct counterpart extend its fault coverage.
 Round-trip step numbers are defined by that numbered list and must be updated
 together with it.
 
@@ -36,8 +35,8 @@ Two execution modes use this example:
 - **Default offline acceptance.** Controlled model responses and injected failures
   exercise the actual engine/workflow. Only the external model boundary and
   intentional host failures are substituted; do not mock away preservation,
-  persistence or reconciliation. Count model invocations and record which cells
-  and source revisions they request.
+  persistence or reconciliation. Count model invocations and record which source
+  keys they request.
 - **Explicit live API integration check.** The same successful round trip uses a
   selected real provider/model, keys from the environment and a small declared
   request/token/time budget. It is opt-in and never falls back to paid execution
@@ -53,8 +52,8 @@ prefilled editorial cell, a placeholder failure isolated to one locale, resuming
 only that cell, a final repeat with no model call and recovery after progress was
 saved but before the CSV was updated. An opt-in test runs the successful
 three-language round trip through Gemini and verifies that repeating it makes no
-model call. The tests do not yet claim rule-refresh, host-delivery or
-all-checkpoint crash coverage required by the complete scenario below.
+model call. The tests do not yet cover glossary/context preparation or
+host delivery.
 
 ## Events and observable acceptance results
 
@@ -71,9 +70,7 @@ avoid exact assertions on an internal storage layout that has not been selected.
 | 2 | Add `checkout.receipt` = Email receipt and change the product description | Select missing Pay cells, the new receipt and changed description for the three locales. Preserve prior source/translation history; do not regenerate Checkout, Back or the product name merely because extraction ran. Missing optional receipt context does not block translation. |
 | 4–5 | Return one technical failure | The Japanese Pay result omits `{amount}`. Retain other valid cells, retry only unresolved eligible cells and export ready values. Exhausting the configured retry budget leaves an explicit partial result. A later resume does not translate successful cells again. |
 | 7 | Apply a supported editorial correction | Change the French product name through the ordinary guarded operation. Record its origin at application time; repeating it has no additional effect. |
-| 6 | Edit outside Tradusco | Change the exported German product name after a known automatic export. The next reconciliation treats its unexplained change as presumed editorial, distinct from confirmed review. It survives same-source regeneration/export. A competing-editorial variant reports a conflict. |
 | 9 | Change Pack's canon | Preview reports affected input and eligible regeneration scope. French/German editorial names remain protected; the Japanese machine name can be regenerated. Unrelated cells are excluded. Record an explicit selection if dependency evidence is unavailable; do not claim inferred selection from missing history. |
-| 7, 9 | Change the rule producing Back's context | Preview includes old/new effective values and affected rows. A manual-context variant is preserved; a no-statement variant removes only attributable obsolete generated context and resolves any fallback. Rule/input changes between preview and apply invalidate that preview. |
 | 8 | Change Checkout's source to Secure checkout | Produce a new translation after ordinary checks without an editorial approval gate. Keep the old source and its editorial translation in history. |
 | 5 | Fail the host build after translation persistence | Report translated but not delivered. Retry delivery from stored values with zero additional model calls. Also test a build that exits zero but omits a key: coverage must catch it. |
 | 5 | Repeat completed work | No new model calls or effective value changes absent a new source/guidance change or an explicit regeneration request. Summaries do not count preserved stale text as a successful replacement. |

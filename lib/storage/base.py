@@ -92,6 +92,10 @@ class StorageAdapter(ABC):
         """
         pass
 
+    def set_force_translation_keys(self, keys: dict[str, set[str]]) -> None:
+        """Set authoritative source keys for the next translation CSV save."""
+        pass
+
     @abstractmethod
     async def append_failure(
         self,

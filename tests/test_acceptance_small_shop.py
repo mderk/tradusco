@@ -210,6 +210,29 @@ async def test_regeneration_preserves_explicit_editorial_value(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_editorial_record_repairs_an_interrupted_guarded_write(tmp_path):
+    project_path = tmp_path / "interrupted-review"
+    (project_path / "fr").mkdir(parents=True)
+    config = Config(name=project_path.name, sourceFile="translations.csv", baseLanguage="en", languages=["en", "fr"], keyColumn="en")
+    (project_path / "config.json").write_text(json.dumps(config.model_dump()), encoding="utf-8")
+    with (project_path / "translations.csv").open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=["en", "fr"])
+        writer.writeheader()
+        writer.writerow({"en": "Pay", "fr": "Machine"})
+    (project_path / "fr/progress.json").write_text(json.dumps({"Pay": "Machine"}), encoding="utf-8")
+    (project_path / "editorial.json").write_text(json.dumps({"fr": {"Pay": "Editorial"}}), encoding="utf-8")
+    storage = FileSystemStorageAdapter(project_path)
+    storage.set_active_language("fr")
+    project = TranslationProject(project_id=project_path.name, config=config, dst_languages=["fr"], storage=storage, prompt="Translate {phrases_json} from {base_language} to {dst_languages}")
+    translate = AsyncMock()
+    with patch("lib.TranslationProject.get_driver", return_value=MockLLMDriver()), patch.object(project.translation_tool, "translate_standard", translate):
+        await project.translate(model="test-model", delay_seconds=0)
+    translate.assert_not_awaited()
+    assert (await storage.load_translations(project_path.name))[0]["fr"] == "Editorial"
+    assert json.loads((project_path / "fr/progress.json").read_text())["Pay"] == "Editorial"
+
+
+@pytest.mark.asyncio
 async def test_changed_source_translates_and_keeps_old_history(tmp_path):
     project_path = tmp_path / ".tradusco/shop"
     (project_path / "fr").mkdir(parents=True)

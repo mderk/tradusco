@@ -242,7 +242,7 @@ class TranslationProject:
                     continue
                 if only_keys is not None and source_phrase not in only_keys:
                     continue
-                if regenerate and (editorial or {}).get(language, {}).get(source_phrase):
+                if (editorial or {}).get(language, {}).get(source_phrase):
                     continue
                 existing_translation = row.get(language) or ""
                 if existing_translation and not regenerate:
@@ -522,7 +522,11 @@ class TranslationProject:
                 progress[language],
                 overwrite_keys=(csv_corrections or {}).get(language),
             )
-        await self.storage.save_translations(self.project_id, translations)
+        self.storage.set_force_translation_keys(csv_corrections or {})
+        try:
+            await self.storage.save_translations(self.project_id, translations)
+        finally:
+            self.storage.set_force_translation_keys({})
 
         count = sum(len(language_progress) for language_progress in progress.values())
         if is_final:
@@ -710,7 +714,9 @@ class TranslationProject:
             missing_languages: set[str] = set()
             for language in self.dst_languages:
                 editorial_value = (editorial or {}).get(language, {}).get(source_phrase)
-                if regenerate and editorial_value:
+                if editorial_value:
+                    if row.get(language) != editorial_value:
+                        csv_corrections[language].add(source_phrase)
                     row[language] = editorial_value
                     progress[language][source_phrase] = editorial_value
                     continue

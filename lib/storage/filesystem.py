@@ -41,6 +41,7 @@ class FileSystemStorageAdapter(StorageAdapter):
         self.prompt_file = prompt_file
         self.active_languages: list[str] = []
         self.overwrite_active_language: bool = False
+        self.force_translation_keys: dict[str, set[str]] = {}
 
     def set_context_file(self, context_file: Optional[str]) -> None:
         """Set the context file path"""
@@ -61,6 +62,9 @@ class FileSystemStorageAdapter(StorageAdapter):
     def set_overwrite_active_language(self, enabled: bool) -> None:
         """Allow overwriting non-empty cells for the active language (e.g. --regenerate)."""
         self.overwrite_active_language = enabled
+
+    def set_force_translation_keys(self, keys: dict[str, set[str]]) -> None:
+        self.force_translation_keys = keys
 
     def _get_config_path(self) -> Path:
         """Get the config file path"""
@@ -307,6 +311,11 @@ class FileSystemStorageAdapter(StorageAdapter):
                                 incoming_lang_val = incoming_row.get(language)
                                 if not _is_empty_cell(incoming_lang_val):
                                     merged[language] = str(incoming_lang_val or "")
+
+                        source = str(incoming_row.get(config.baseLanguage) or "")
+                        for language in self.active_languages:
+                            if source in self.force_translation_keys.get(language, set()):
+                                merged[language] = str(incoming_row.get(language) or "")
 
                         merged_rows.append(merged)
 

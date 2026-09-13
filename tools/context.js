@@ -213,8 +213,15 @@ function next(state, options) {
 }
 
 function submit(state, options) {
-  if (!options.json) throw new Error("submit requires --json <answer-file>");
-  const answer = readJson(path.resolve(options.json), null);
+  let answer;
+  if (options.json) answer = readJson(path.resolve(options.json), null);
+  else if (options.group && options.source && Boolean(options.context) !== Boolean(options["needs-glossary"])) {
+    answer = {
+      group: options.group,
+      ...(options.context ? { contexts: { [options.source]: options.context } } : {}),
+      ...(options["needs-glossary"] ? { needs_glossary: { [options.source]: options["needs-glossary"] } } : {}),
+    };
+  } else throw new Error("submit requires --group, --source and exactly one of --context or --needs-glossary; --json remains available for batch input");
   if (!answer || !answer.group || (!answer.contexts && !answer.needs_glossary)) throw new Error("answer requires group and contexts and/or needs_glossary");
   const result = inspect(state), source = new Set(result.rows.map((row) => row[state.base]));
   const pending = new Set(result.pending);

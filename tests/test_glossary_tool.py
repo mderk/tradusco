@@ -83,12 +83,7 @@ fs.writeFileSync(output, JSON.stringify({Chest: {group: "shop", mode: "stem", t:
     )
     queued = json.loads(run_tool(tmp_path, "next").stdout)
     assert queued["term"] == "Weapon"
-    reject = tmp_path / "reject.json"
-    reject.write_text(
-        json.dumps({"term": "Weapon", "not_a_term": "Generic word here."}),
-        encoding="utf-8",
-    )
-    run_tool(tmp_path, "submit", "--json", str(reject))
+    run_tool(tmp_path, "submit", "--term", "Weapon", "--reject", "Generic word here.")
     assert json.loads((engine / "not_terms.json").read_text()) == {
         "Weapon": "Generic word here."
     }
@@ -98,22 +93,19 @@ fs.writeFileSync(output, JSON.stringify({Chest: {group: "shop", mode: "stem", t:
 
     candidate = json.loads(run_tool(tmp_path, "next", "--min", "3").stdout)
     assert candidate["term"] == "Oblivion"
-    accept = tmp_path / "accept.json"
-    accept.write_text(
-        json.dumps(
-            {
-                "term": "Oblivion",
-                "entry": {
-                    "mode": "stem",
-                    "note": "Name of a place.",
-                    "t": {"fr": "Oubli"},
-                },
-            }
-        ),
-        encoding="utf-8",
+    accept = (
+        "submit",
+        "--term",
+        "Oblivion",
+        "--mode",
+        "stem",
+        "--note",
+        "Name of a place.",
+        "--translation",
+        "fr=Oubli",
     )
-    run_tool(tmp_path, "submit", "--json", str(accept))
-    run_tool(tmp_path, "submit", "--json", str(accept))
+    run_tool(tmp_path, *accept)
+    run_tool(tmp_path, *accept)
     assert json.loads(glossary_file.read_text())["manual"]["Oblivion"]["t"] == {
         "fr": "Oubli"
     }

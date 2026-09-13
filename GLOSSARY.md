@@ -24,9 +24,13 @@ node tools/glossary.js prepare --config .tradusco/config.json
 node tools/glossary.js prepare --write --config .tradusco/config.json
 node tools/glossary.js report --config .tradusco/config.json
 node tools/glossary.js next --config .tradusco/config.json
-node tools/glossary.js submit --json .tradusco/glossary-answer.json --config .tradusco/config.json
+node tools/glossary.js submit --term Weapon --reject "Generic word." --config .tradusco/config.json
+node tools/glossary.js submit --term Oblivion --mode stem --note "Name of a place." --translation "fr=Oubli" --config .tradusco/config.json
 node tools/glossary.js lint --config .tradusco/config.json
 ```
+
+Repeat `--translation LANG=VALUE` for each protected, reviewed locale. For batch
+input, `submit --json <answer-file>` accepts the answer shape printed by `next`.
 
 By default the glossary and candidate decisions persist in
 `<projectDir>/glossary.json`, `<projectDir>/not_terms.json` and

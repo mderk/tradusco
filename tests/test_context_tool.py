@@ -130,19 +130,27 @@ module.exports = {
     pending = json.loads(run_tool(tmp_path, "next").stdout)
     assert pending["group"] == "src/ui.js"
     assert [item["text"] for item in pending["strings"]] == ["Mystery", "Weapon"]
-    answer = tmp_path / "context-answer.json"
-    answer.write_text(
-        json.dumps(
-            {
-                "group": "src/ui.js",
-                "contexts": {"Mystery": "Label for an unknown reward."},
-                "needs_glossary": {"Weapon": "Name of an equipment category."},
-            }
-        ),
-        encoding="utf-8",
+    context_answer = (
+        "submit",
+        "--group",
+        "src/ui.js",
+        "--source",
+        "Mystery",
+        "--context",
+        "Label for an unknown reward.",
     )
-    run_tool(tmp_path, "submit", "--json", str(answer))
-    run_tool(tmp_path, "submit", "--json", str(answer))
+    run_tool(tmp_path, *context_answer)
+    run_tool(tmp_path, *context_answer)
+    run_tool(
+        tmp_path,
+        "submit",
+        "--group",
+        "src/ui.js",
+        "--source",
+        "Weapon",
+        "--needs-glossary",
+        "Name of an equipment category.",
+    )
     assert json.loads((engine / "contexts.json").read_text())[
         "Mystery"
     ] == ("Label for an unknown reward.")

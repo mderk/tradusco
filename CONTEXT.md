@@ -37,10 +37,13 @@ node tools/context.js report --config .tradusco/config.json
 node tools/context.js apply --config .tradusco/config.json
 node tools/context.js apply --write --expect <preview-revision> --config .tradusco/config.json
 node tools/context.js next --config .tradusco/config.json
-node tools/context.js submit --json .tradusco/context-answer.json --config .tradusco/config.json
+node tools/context.js submit --group src/ui.js --source Mystery --context "Label for an unknown reward." --config .tradusco/config.json
+node tools/context.js submit --group src/ui.js --source Weapon --needs-glossary "Equipment category." --config .tradusco/config.json
 ```
 
 Accepted manual context defaults to `<projectDir>/contexts.json`.
+For batch input, `submit --json <answer-file>` accepts the answer shape printed
+by `next`.
 
 `apply` is read-only by default and shows old/new values, resolution sources and
 a revision derived from the source CSV, manual contexts, provider code and the

@@ -18,8 +18,10 @@ function args(argv) {
     else {
       const key = value.slice(2);
       const next = argv[i + 1];
-      out[key] = !next || next.startsWith("--") ? true : next;
-      if (out[key] !== true) i++;
+      const parsed = !next || next.startsWith("--") ? true : next;
+      if (key === "translation") (out[key] ||= []).push(parsed);
+      else out[key] = parsed;
+      if (parsed !== true) i++;
     }
   }
   return out;
@@ -181,8 +183,18 @@ function lint(state, json = false) {
 }
 
 function submit(state, options) {
-  if (!options.json) throw new Error("submit requires --json <answer-file>");
-  const answer = readJson(path.resolve(options.json), null);
+  let answer;
+  if (options.json) answer = readJson(path.resolve(options.json), null);
+  else if (options.term && options.reject) answer = { term: options.term, not_a_term: options.reject };
+  else if (options.term && options.mode && options.note && options.translation) {
+    const translations = {};
+    for (const item of options.translation) {
+      const at = String(item).indexOf("=");
+      if (at < 1 || at === String(item).length - 1) throw new Error("--translation must be LANG=VALUE");
+      translations[String(item).slice(0, at)] = String(item).slice(at + 1);
+    }
+    answer = { term: options.term, entry: { mode: options.mode, note: options.note, t: translations } };
+  } else throw new Error("submit requires --term with --reject, or --mode, --note and --translation LANG=VALUE; --json remains available for batch input");
   if (!answer || !answer.term || Boolean(answer.entry) === Boolean(answer.not_a_term)) throw new Error("answer requires term and exactly one of entry or not_a_term");
   const item = candidates(state, 1).find(({ term }) => term === answer.term);
   if (!item) {

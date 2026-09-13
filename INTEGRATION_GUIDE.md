@@ -184,8 +184,33 @@ causes the write to fail instead of overwriting it.
 ## Preparing glossary and context decisions
 
 The host project supplies facts; Tradusco supplies the common queues and command
-protocol. Deterministic provider refresh is automatic during a normal run.
-Candidate decisions remain an explicit operation before that run.
+protocol. A normal run automatically refreshes the deterministic glossary and
+context, then uses their saved decisions in translation. It cannot decide product
+meaning, so resolving new candidates remains an optional explicit loop.
+
+For a new project or a large source update, use this sequence:
+
+```mermaid
+flowchart TD
+    Prep[Run with skip translate and skip delivery] --> Automatic[Extract and sync sources; refresh glossary and context]
+    Automatic --> Pending{Resolve pending decisions now?}
+    Pending -->|Yes| Next[Read the next glossary or context candidate]
+    Next --> Submit[Submit one decision with command parameters]
+    Submit --> Pending
+    Pending -->|No or done| Run[Run the ordinary cycle]
+    Run --> Refresh[Repeat deterministic preparation]
+    Refresh --> Translate[Translate with saved glossary and context]
+    Translate --> Deliver[Audit and deliver]
+```
+
+The preparation pass makes no model call and does not update host catalogs:
+
+```bash
+node "$TRADUSCO_ROOT/tools/run.js" \
+  --config .tradusco/config.json \
+  --skip-translate \
+  --skip-delivery
+```
 
 Inspect glossary state and one pending candidate:
 
@@ -194,12 +219,25 @@ node "$TRADUSCO_ROOT/tools/glossary.js" report --config .tradusco/config.json
 node "$TRADUSCO_ROOT/tools/glossary.js" next --config .tradusco/config.json
 ```
 
-Record a prepared accept, defer or reject answer:
+Accept a term and provide its reviewed translations:
 
 ```bash
 node "$TRADUSCO_ROOT/tools/glossary.js" submit \
   --config .tradusco/config.json \
-  --json .tradusco/glossary-answer.json
+  --term Oblivion \
+  --mode stem \
+  --note "Name of a place." \
+  --translation "fr=Oubli" \
+  --translation "de=Vergessenheit"
+```
+
+Reject a candidate that is not a product term:
+
+```bash
+node "$TRADUSCO_ROOT/tools/glossary.js" submit \
+  --config .tradusco/config.json \
+  --term Weapon \
+  --reject "Generic word in this project."
 ```
 
 Inspect unresolved context groups and record an answer:
@@ -209,14 +247,17 @@ node "$TRADUSCO_ROOT/tools/context.js" report --config .tradusco/config.json
 node "$TRADUSCO_ROOT/tools/context.js" next --config .tradusco/config.json
 node "$TRADUSCO_ROOT/tools/context.js" submit \
   --config .tradusco/config.json \
-  --json .tradusco/context-answer.json
+  --group src/ui.js \
+  --source Mystery \
+  --context "Label for an unknown reward."
 ```
 
-Context answers may contain a context formulation or `needs_glossary`; the latter
-enters the shared terminology queue. Accepted decisions are used on the next
+Use `--needs-glossary` instead of `--context` when the source needs a terminology
+decision. It enters the shared terminology queue. `--json` remains available on
+both submit commands for batch input. Accepted decisions are used on the next
 provider refresh. Rejected and deferred candidates remain recorded so unchanged
 evidence is not presented repeatedly. See [GLOSSARY.md](GLOSSARY.md) and
-[CONTEXT.md](CONTEXT.md) for answer shapes and precedence.
+[CONTEXT.md](CONTEXT.md) for the batch shapes and precedence.
 
 ## Running the ordinary cycle
 
@@ -239,6 +280,10 @@ The implemented stage order is:
 9. run project delivery commands;
 10. verify built artifact keys when an artifact command is configured;
 11. release the project lock.
+
+Steps 4 and 5 are therefore part of every ordinary run. The optional `next` and
+`submit` decision loop above is separate and must happen before translation when
+the project requires those decisions for the selected strings.
 
 Every stage has a matching `--skip-*` flag: `--skip-extract`, `--skip-sync`,
 `--skip-glossary`, `--skip-context`, `--skip-translate`, `--skip-audit` and

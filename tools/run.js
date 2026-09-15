@@ -158,8 +158,12 @@ function main() {
     stage(state, "audit", options["skip-audit"], () => run(state, [state.python, path.join(state.traduscoRoot, "audit_translations.py"), "--project-dir", state.projectDir]));
     stage(state, "delivery", options["skip-delivery"], () => {
       const review = path.join(state.traduscoRoot, "review_translations.py");
-      const preview = run(state, [state.python, review, "export", "--config", state.configFile], { capture: true, echo: false });
-      if (!options["dry-run"]) run(state, [state.python, review, "export", "--write", "--expect", JSON.parse(preview).revision, "--config", state.configFile]);
+      const locales = String(options.langs || options.lang || (config.locales || []).join(","));
+      if (!locales) throw new Error("no delivery locales selected");
+      const exportArgs = ["--config", state.configFile, "--langs", locales];
+      const preview = run(state, [state.python, review, "export", ...exportArgs], { capture: true, echo: false });
+      if (!options["dry-run"]) run(state, [state.python, review, "export", "--write", "--expect", JSON.parse(preview).revision, ...exportArgs]);
+      state.env.TRADUSCO_LANGS = locales;
       for (const command of config.deliveryCommands || []) run(state, command);
       verifyArtifacts(state);
     });

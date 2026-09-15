@@ -66,3 +66,23 @@ def test_guarded_review_back_sync_and_partial_export(tmp_path):
     preview = json.loads(run_tool(tmp_path, "back-sync").stdout)
     run_tool(tmp_path, "back-sync", "--write", "--expect", preview["revision"])
     assert json.loads((project / "editorial.json").read_text())["fr"]["Pay {n}"] == "Payer maintenant {n}"
+
+
+def test_export_selected_locale_leaves_other_locale_alone(tmp_path):
+    project = tmp_path / ".tradusco/shop"
+    project.mkdir(parents=True)
+    (project / "config.json").write_text(json.dumps({"sourceFile": "translations.csv", "baseLanguage": "en", "languages": ["en", "fr", "de"]}))
+    fields = ["en", "fr", "de"]
+    for file, values in [(project / "translations.csv", ["Pay", "Payer", "Zahlen"]), (tmp_path / "catalog.csv", ["Pay", "Old fr", "Old de"])]:
+        with file.open("w", encoding="utf-8", newline="") as output:
+            writer = csv.DictWriter(output, fieldnames=fields)
+            writer.writeheader()
+            writer.writerow(dict(zip(fields, values)))
+    (tmp_path / "tradusco.config.json").write_text(json.dumps({"projectDir": ".tradusco/shop", "sourceCsv": "catalog.csv"}))
+
+    preview = json.loads(run_tool(tmp_path, "export", "--langs", "fr").stdout)
+    assert preview["changes"] == 1
+    run_tool(tmp_path, "export", "--langs", "fr", "--write", "--expect", preview["revision"])
+    with (tmp_path / "catalog.csv").open(encoding="utf-8", newline="") as source:
+        row = next(csv.DictReader(source))
+    assert row == {"en": "Pay", "fr": "Payer", "de": "Old de"}

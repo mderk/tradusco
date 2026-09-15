@@ -198,8 +198,17 @@ def main() -> int:
     parser.add_argument("--edits")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--expect")
+    parser.add_argument("--langs", help="Comma-separated locales for export")
     args = parser.parse_args()
     state = State(Path(args.config).resolve())
+    if args.langs:
+        if args.command != "export":
+            raise SystemExit("--langs is supported only for export")
+        selected = [lang.strip() for lang in args.langs.split(",") if lang.strip()]
+        unknown = [lang for lang in selected if lang not in state.languages]
+        if not selected or unknown:
+            raise SystemExit(f"unknown or empty export locales: {', '.join(unknown) or args.langs}")
+        state.languages = selected
     if args.command == "read":
         if not args.source:
             raise SystemExit("read requires --source")

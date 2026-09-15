@@ -12,7 +12,6 @@
 | Cache instrumentation and glossary-based batch ordering | Provider usage data shows a material avoidable cache cost. |
 | Output-volume batch sizing | A bounded, reproducible run shows that current split-on-failure is inadequate. |
 | Additional structural, semantic and language-specific checks, style baselines and quoted-UI references | Existing project checks have measured precision and a second project needs them. |
-| Automated `tradusco-init` interview and scaffolding | Repeated manual setup of another project proves the setup contract stable. |
 | Multiple-adapter parity suite | A second real catalogue adapter is added. |
 | Reference/example translation-quality experiments | A separate experiment has a fixed dataset, model and spending budget. |
 | Model bakeoff utility | A model comparison is requested independently of the ordinary run. |
@@ -21,5 +20,5 @@
 | Migration of legacy override layers | A target project must consolidate existing competing override files. |
 | Inferring editorial origin for edits made outside supported tools | A project cannot route editorial changes through guarded edits or back-sync. |
 | Refreshing already stored context after a rule changes | The transferred context workflow must update generated values rather than only fill gaps. |
-| QA, review and init agent skills | Repeated agent operation shows that the run skill and direct review CLI are insufficient. |
+| QA and review agent skills | Repeated agent operation shows that the run skill and direct review CLI are insufficient. |
 | Long-run heartbeat and detached supervision | A real run must survive loss of its invoking agent session. |

@@ -88,6 +88,9 @@ progress and CSV if an earlier guarded write was interrupted.
 
 The runner reads `.tradusco/config.json`. Relative paths and commands are resolved
 from the directory containing that file.
+For a new host repository, [`tradusco-init`](skills/tradusco-init/SKILL.md)
+creates the initial config after the host interchange CSV exists and prepares
+project-specific adapters.
 
 ```json
 {

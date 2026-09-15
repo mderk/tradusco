@@ -85,6 +85,8 @@ do not run the glossary, context, review and delivery workflow. See
 [GLOSSARY.md](GLOSSARY.md) and
 [CONTEXT.md](CONTEXT.md) for the two preparation providers. Agents can drive the
 complete cycle with [tradusco-run](skills/tradusco-run/SKILL.md).
+For a new host repository, [tradusco-init](skills/tradusco-init/SKILL.md)
+scaffolds the config and guides the agent through its project adapters.
 
 ## Creating a New Project
 

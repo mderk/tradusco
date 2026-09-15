@@ -30,7 +30,7 @@ function environment(file) {
     if (!match) continue;
     let value = match[2];
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
-    if (!(match[1] in env)) env[match[1]] = value;
+    env[match[1]] = value;
   }
   return env;
 }

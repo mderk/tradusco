@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -132,3 +133,22 @@ module.exports = {
     legacy = run_tool(tmp_path, "--dry-run", check=False)
     assert legacy.returncode == 1
     assert "regenerateLangs was replaced by translate.protectLangs" in legacy.stderr
+
+
+def test_explicit_env_file_overrides_inherited_credentials(tmp_path):
+    (tmp_path / "auth.env").write_text("OPENROUTER_API_KEY=file-key\n")
+    (tmp_path / "check-env.js").write_text('if (process.env.OPENROUTER_API_KEY !== "file-key") process.exit(1);\n')
+    (tmp_path / "tradusco.config.json").write_text(json.dumps({
+        "projectDir": "shop",
+        "envFile": "auth.env",
+        "extractCommands": [["node", "check-env.js"]],
+    }))
+    inherited = {**os.environ, "OPENROUTER_API_KEY": "ambient-key"}
+    result = subprocess.run(
+        ["node", str(TOOL), "--config", str(tmp_path / "tradusco.config.json"),
+         "--skip-sync", "--skip-glossary", "--skip-context", "--skip-translate",
+         "--skip-audit", "--skip-delivery"],
+        env=inherited, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "extract: done" in result.stdout

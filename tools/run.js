@@ -55,7 +55,7 @@ function commandLine(command) {
   return command.map((part) => (/\s/.test(part) ? JSON.stringify(part) : part)).join(" ");
 }
 
-function run(state, command, { capture = false } = {}) {
+function run(state, command, { capture = false, echo = true } = {}) {
   console.log(`$ ${commandLine(command)}`);
   if (state.options["dry-run"]) return "";
   const result = spawnSync(command[0], command.slice(1), {
@@ -67,7 +67,7 @@ function run(state, command, { capture = false } = {}) {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error((result.stderr || result.stdout || `command exited ${result.status}`).trim());
-  if (capture && result.stdout) process.stdout.write(result.stdout);
+  if (capture && echo && result.stdout) process.stdout.write(result.stdout);
   return result.stdout || "";
 }
 
@@ -136,9 +136,10 @@ function main() {
     });
     if (!options["skip-glossary"] && !config.glossarySourceCommand) syncGlossary(state);
     stage(state, "context", options["skip-context"] || !config.contextProviderFile, () => {
-      const preview = run(state, [process.execPath, path.join(state.traduscoRoot, "tools", "context.js"), "apply", "--config", state.configFile], { capture: true });
+      const preview = run(state, [process.execPath, path.join(state.traduscoRoot, "tools", "context.js"), "apply", "--config", state.configFile], { capture: true, echo: false });
       if (!options["dry-run"]) {
-        const revision = JSON.parse(preview).revision;
+        const { revision, changes } = JSON.parse(preview);
+        console.log(`context: ${changes} changes`);
         run(state, [process.execPath, path.join(state.traduscoRoot, "tools", "context.js"), "apply", "--write", "--expect", revision, "--config", state.configFile]);
       }
     });
@@ -157,7 +158,7 @@ function main() {
     stage(state, "audit", options["skip-audit"], () => run(state, [state.python, path.join(state.traduscoRoot, "audit_translations.py"), "--project-dir", state.projectDir]));
     stage(state, "delivery", options["skip-delivery"], () => {
       const review = path.join(state.traduscoRoot, "review_translations.py");
-      const preview = run(state, [state.python, review, "export", "--config", state.configFile], { capture: true });
+      const preview = run(state, [state.python, review, "export", "--config", state.configFile], { capture: true, echo: false });
       if (!options["dry-run"]) run(state, [state.python, review, "export", "--write", "--expect", JSON.parse(preview).revision, "--config", state.configFile]);
       for (const command of config.deliveryCommands || []) run(state, command);
       verifyArtifacts(state);

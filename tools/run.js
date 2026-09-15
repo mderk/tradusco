@@ -148,12 +148,14 @@ function main() {
       if (Object.hasOwn(translate, "regenerateLangs")) throw new Error("translate.regenerateLangs was replaced by translate.protectLangs; list protected locales instead");
       const locales = String(options.langs || options.lang || (config.locales || []).join(","));
       if (!locales) throw new Error("no translation locales selected");
+      const targets = new Set(locales.split(",").map((lang) => lang.trim()));
+      const references = (translate.referenceLangs || []).filter((lang) => !targets.has(lang));
       if (options.regenerate) {
         const protectedLocales = new Set((translate.protectLangs || []).map(String));
         const forbidden = locales.split(",").filter((lang) => protectedLocales.has(lang));
         if (forbidden.length) throw new Error(`refusing to regenerate protected locales: ${forbidden.join(", ")}`);
       }
-      run(state, [state.python, "-u", path.join(state.traduscoRoot, "translate.py"), "-p", state.projectDir, "-l", locales, "-m", String(options.model || translate.model || "gemini"), "--method", String(translate.method || "auto"), "-b", String(translate.batchSize || 50), "--batch-max-input-tokens", String(translate.batchMaxInputTokens || 65536), "--request-timeout", String(translate.requestTimeout || 120), "-r", String(translate.retries ?? 3), "-d", String(translate.delaySeconds ?? 1), ...(translate.referenceLangs && translate.referenceLangs.length ? ["--reference-langs", translate.referenceLangs.join(",")] : []), ...(options.regenerate ? ["--regenerate"] : []), ...(options["only-keys-file"] ? ["--only-keys-file", path.resolve(state.root, String(options["only-keys-file"]))] : [])]);
+      run(state, [state.python, "-u", path.join(state.traduscoRoot, "translate.py"), "-p", state.projectDir, "-l", locales, "-m", String(options.model || translate.model || "gemini"), "--method", String(translate.method || "auto"), "-b", String(translate.batchSize || 50), "--batch-max-input-tokens", String(translate.batchMaxInputTokens || 65536), "--request-timeout", String(translate.requestTimeout || 120), "-r", String(translate.retries ?? 3), "-d", String(translate.delaySeconds ?? 1), ...(references.length ? ["--reference-langs", references.join(",")] : []), ...(options.regenerate ? ["--regenerate"] : []), ...(options["only-keys-file"] ? ["--only-keys-file", path.resolve(state.root, String(options["only-keys-file"]))] : [])]);
     });
     stage(state, "audit", options["skip-audit"], () => run(state, [state.python, path.join(state.traduscoRoot, "audit_translations.py"), "--project-dir", state.projectDir]));
     stage(state, "delivery", options["skip-delivery"], () => {

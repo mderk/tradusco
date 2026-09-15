@@ -152,3 +152,20 @@ def test_explicit_env_file_overrides_inherited_credentials(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert "extract: done" in result.stdout
+
+
+def test_target_reference_language_is_excluded_for_that_run(tmp_path):
+    (tmp_path / "tradusco.config.json").write_text(json.dumps({
+        "traduscoRoot": str(ROOT),
+        "projectDir": "shop",
+        "locales": ["ru", "ja"],
+        "translate": {"referenceLangs": ["ru", "ja"]},
+    }), encoding="utf-8")
+
+    ru = run_tool(tmp_path, "--dry-run", "--langs", "ru")
+    assert "-l ru" in ru.stdout
+    assert "--reference-langs ja" in ru.stdout
+
+    both = run_tool(tmp_path, "--dry-run", "--langs", "ru,ja")
+    assert "-l ru,ja" in both.stdout
+    assert "--reference-langs" not in both.stdout

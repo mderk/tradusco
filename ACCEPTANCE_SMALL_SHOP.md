@@ -1,17 +1,10 @@
 # Repository acceptance scenario: a small shop
 
-**Executable specification covered by the repository acceptance suite.** Keep
+**Acceptance specification partially covered by the repository test suite.** Keep
 the example data, adapters and acceptance checks in the Tradusco repository.
 Each execution copies fixtures into a fresh temporary project. It must require
-neither a t3 checkout nor its data, credentials, configuration or agent skills.
-The example also demonstrates how another project integrates the common workflow.
-
-This is the expanded specification of the nine-step acceptance round trip in
-[`REWORK_PLAN_TOOLING.md`](REWORK_PLAN_TOOLING.md#worked-round-trip-for-review).
-The step references below identify which part of that concise contract each event
-exercises; events without a direct counterpart extend its fault coverage.
-Round-trip step numbers are defined by that numbered list and must be updated
-together with it.
+no external checkout, data, credentials, configuration or agent skills. The
+example also demonstrates how another project integrates the common workflow.
 
 Use English source and French, German and Japanese targets. Initial data:
 
@@ -24,7 +17,7 @@ Use English source and French, German and Japanese targets. Initial data:
 | `42.description` | Everything for a short trip | Existing machine values; source will change during the scenario. |
 | `legacy.notice` | Legacy notice | Present in host targets but never managed by the extraction. |
 
-The first upgrade runs these events through one CSV phrase-table integration
+The completed acceptance suite must run these events through one CSV phrase-table integration
 using the current source-as-key convention. The test must use the normal workflow
 entry points for selection, preparation, application, export and recovery rather
 than implement a second orchestrator. Add another adapter only when a real second
@@ -45,15 +38,15 @@ Two execution modes use this example:
   limits and any spending ceiling must be selected before a live run. Do not
   depend on a real model spontaneously producing the failure fixtures.
 
-The acceptance suite uses the current CSV workflow and filesystem storage.
+The current tests cover the parts separately. `tests/test_reference_host.py`
+runs the reference host through preparation, explicit back-sync and delivery.
 `tests/test_acceptance_small_shop.py` covers translation, isolated technical
 failure, resume, source change, explicit regeneration scope, editorial
 preservation and the opt-in Gemini path. `tests/test_glossary_tool.py` and
-`tests/test_context_tool.py` cover preparation. `tests/test_review_tool.py`,
+`tests/test_context_tool.py` cover decision preparation. `tests/test_review_tool.py`,
 `tests/test_delivery_tools.py` and `tests/test_run_tool.py` cover guarded review,
-back-sync, partial export, the project lock, failed-build resume and missing
-artefact keys. Controlled model responses substitute only the external model
-boundary in offline tests.
+partial export, the project lock, failed-build resume and missing artefact keys.
+The successive events below are not yet one end-to-end executable scenario.
 
 ## Events and observable acceptance results
 
@@ -62,18 +55,18 @@ from its named checkpoints so one failed case does not contaminate another.
 Observe persisted state, exported artefacts, summaries and the next invocation;
 avoid exact assertions on an internal storage layout that has not been selected.
 
-| Round-trip step | Event | Expected result |
-| --- | --- | --- |
-| 1 | Connect the fixture twice | Import preserves existing values. Reconnection is idempotent and `legacy.notice` stays unmanaged. |
-| 3 | Prepare terminology/context | Candidate evidence for Pack is presented. A recorded decision supplies its canon; an existing rule supplies Back's context. An unrelated rejected candidate is not proposed again on unchanged evidence; a deferred candidate remains resumable. Offline answers are fixtures, not a mandatory interactive approval screen. |
-| 3 | Inspect without executing | Selection, pending decisions and missing guidance are visible. Project files remain unchanged and model-call count is zero. |
-| 2 | Add `checkout.receipt` = Email receipt and change the product description | Select missing Pay cells, the new receipt and changed description for the three locales. Preserve prior source/translation history; do not regenerate Checkout, Back or the product name merely because extraction ran. Missing optional receipt context does not block translation. |
-| 4–5 | Return one technical failure | The Japanese Pay result omits `{amount}`. Retain other valid cells, retry only unresolved eligible cells and export ready values. Exhausting the configured retry budget leaves an explicit partial result. A later resume does not translate successful cells again. |
-| 7 | Apply a supported editorial correction | Change the French product name through the ordinary guarded operation. Record its origin at application time; repeating it has no additional effect. |
-| 9 | Change Pack's canon | Preview reports affected input and eligible regeneration scope. French/German editorial names remain protected; the Japanese machine name can be regenerated. Unrelated cells are excluded. Record an explicit selection if dependency evidence is unavailable; do not claim inferred selection from missing history. |
-| 8 | Change Checkout's source to Secure checkout | Produce a new translation after ordinary checks without an editorial approval gate. Keep the old source and its editorial translation in history. |
-| 5 | Fail the host build after translation persistence | Report translated but not delivered. Retry delivery from stored values with zero additional model calls. Also test a build that exits zero but omits a key: coverage must catch it. |
-| 5 | Repeat completed work | No new model calls or effective value changes absent a new source/guidance change or an explicit regeneration request. Summaries do not count preserved stale text as a successful replacement. |
+| Event | Expected result |
+| --- | --- |
+| Connect the fixture twice | Import preserves existing values. Reconnection is idempotent and `legacy.notice` stays unmanaged. |
+| Prepare terminology/context | Candidate evidence for Pack is presented. A recorded decision supplies its canon; an existing rule supplies Back's context. An unrelated rejected candidate is not proposed again on unchanged evidence; a deferred candidate remains resumable. Offline answers are fixtures, not a mandatory interactive approval screen. |
+| Inspect without executing | Selection, pending decisions and missing guidance are visible. Project files remain unchanged and model-call count is zero. |
+| Add `checkout.receipt` = Email receipt and change the product description | Select missing Pay cells, the new receipt and changed description for the three locales. Preserve prior source/translation history; do not regenerate Checkout, Back or the product name merely because extraction ran. Missing optional receipt context does not block translation. |
+| Return one technical failure | The Japanese Pay result omits `{amount}`. Retain other valid cells, retry only unresolved eligible cells and export ready values. Exhausting the configured retry budget leaves an explicit partial result. A later resume does not translate successful cells again. |
+| Apply a supported editorial correction | Change the French product name through the ordinary guarded operation. Record its origin at application time; repeating it has no additional effect. |
+| Change Pack's canon | Preview reports affected input and eligible regeneration scope. French/German editorial names remain protected; the Japanese machine name can be regenerated. Unrelated cells are excluded. Record an explicit selection if dependency evidence is unavailable; do not claim inferred selection from missing history. |
+| Change Checkout's source to Secure checkout | Produce a new translation after ordinary checks without an editorial approval gate. Keep the old source and its editorial translation in history. |
+| Fail the host build after translation persistence | Report translated but not delivered. Retry delivery from stored values with zero additional model calls. Also test a build that exits zero but omits a key: coverage must catch it. |
+| Repeat completed work | No new model calls or effective value changes absent a new source/guidance change or an explicit regeneration request. Summaries do not count preserved stale text as a successful replacement. |
 
 The live variant checks structure, declared placeholders, saved/exported coverage
 and broad unambiguous glossary constraints rather than a single exact translation.

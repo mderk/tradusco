@@ -40,7 +40,8 @@ translations for duplicate source text.
    host values absent from Tradusco progress need an explicit import decision:
    bootstrap known machine progress or preview guarded back-sync for known
    editorial values. Do not run paid translation or delivery over unresolved
-   existing values.
+   existing values. Before storing credentials, configure `envFile` and add that
+   exact file to the host repository's `.gitignore`.
 5. Verify each configured adapter alone, then run `node <traduscoRoot>/tools/run.js
    --config .tradusco/config.json --skip-translate --skip-delivery`. Confirm
    extraction/sync, glossary and context coverage, and that no real catalogs

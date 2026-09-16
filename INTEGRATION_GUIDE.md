@@ -13,23 +13,27 @@ column may be preserved in CSV, but it is not the translation-memory key.
 
 ```mermaid
 flowchart TD
-    Candidates[Glossary and context candidates] --> Decisions[Optional agent or human decisions]
-    Decisions --> Accepted[Accepted glossary and context files]
-    Project[Host project sources] --> Extract[Run extraction commands]
+    Connect[Connect once: config and host adapters] --> Extract[Run extraction commands]
+    Project[Host project sources] --> Extract
     Extract --> Sync[Sync source keys into Tradusco]
-    Accepted --> Prepare[Refresh deterministic glossary and context]
-    Sync --> Prepare
-    Prepare --> Select[Select missing or explicitly requested keys]
-    Select --> Model[Call the configured model]
+    Sync --> Prepare[Refresh deterministic glossary and context]
+    Prepare --> Pending{Resolve pending decisions now?}
+    Pending -->|Yes| Decisions[Agent or human records glossary and context decisions]
+    Decisions --> Prepare
+    Pending -->|No or done| Select{Missing or explicitly regenerated cells?}
+    Select -->|Yes| Model[Call the configured model]
+    Select -->|No| Audit[Audit Tradusco state]
     Model --> Validate[Validate structure and placeholders]
-    Validate --> Persist[Save progress and failures]
+    Validate -->|Retryable failure within budget| Model
+    Validate -->|Valid or exhausted| Persist[Save progress and failures]
     Persist --> Audit[Audit Tradusco state]
     Audit --> Export[Merge ready values into the host CSV]
     Export --> Deliver[Run host delivery commands]
     Deliver --> Verify[Verify keys in built artifacts]
+    Verify --> Done[Completed run]
+    Done -->|New source or guidance change| Extract
     Review[Guarded edit or explicit back sync] --> Editorial[Record editorial values]
     Editorial --> Persist
-    Editorial --> Select
 ```
 
 The decision commands and the ordinary runner are separate today. The runner
@@ -99,12 +103,12 @@ project-specific adapters.
   "sourceCsv": "../locale_src/translations.csv",
   "baseCol": "en",
   "locales": ["fr", "de", "ja"],
-  "envFile": ".env.tradusco",
+  "envFile": "../.env.tradusco",
   "extractCommands": [["node", "../scripts/extract-translations.js"]],
   "glossarySourceCommand": ["node", "../scripts/build-glossary.js"],
   "contextProviderFile": "../scripts/context-provider.js",
   "translate": {
-    "model": "gemini",
+    "model": "google/gemini-2.5-flash",
     "method": "auto",
     "batchSize": 50,
     "batchMaxInputTokens": 65536,
@@ -120,6 +124,8 @@ project-specific adapters.
 ```
 
 All commands are argv arrays; shell syntax is not interpreted.
+The complete field and flag reference is in
+[CONFIGURATION.md](CONFIGURATION.md).
 
 Tradusco's mutable state defaults to `projectDir`: `glossary.json`,
 `contexts.json`, `not_terms.json`, `deferred_terms.json`, `terms_queue.json`,
@@ -301,6 +307,8 @@ the project requires those decisions for the selected strings.
 
 An agent can drive the complete sequence with
 [`skills/tradusco-run/SKILL.md`](skills/tradusco-run/SKILL.md).
+For a runnable independent host, see
+[`examples/reference-host`](examples/reference-host/README.md).
 
 Every stage has a matching `--skip-*` flag: `--skip-extract`, `--skip-sync`,
 `--skip-glossary`, `--skip-context`, `--skip-translate`, `--skip-audit` and
@@ -389,6 +397,11 @@ not blank an unresolved host cell and does not remove host rows that are absent
 from the working snapshot. This permits partial delivery after isolated model
 failures.
 
+When `artifactKeysCommand` is configured, its built artifacts must still expose
+every source key in `sourceCsv`. A host may preserve the prior artifact value for
+an unresolved cell; otherwise postpone artifact verification until that scope is
+complete.
+
 `sourceCsv` is an interchange table, not necessarily the final catalog. For a PO
 project, the host delivery script must call the existing helpers for each locale
 and then build the application catalogs, for example:
@@ -417,6 +430,26 @@ node "$TRADUSCO_ROOT/tools/run.js" \
   --skip-audit
 ```
 
+## Verify and commit a translation result
+
+The runner prints a structural audit, but does not fail the run on reported
+issues. It also cannot prove that wording is natural or correct for the product.
+Before committing a translated scope:
+
+1. Confirm the runner selected only the intended source keys and locales.
+2. Run `audit_translations.py --project-dir <projectDir> --fail`.
+3. Read each new source across its target and reference locales with
+   `review_translations.py read --config .tradusco/config.json --source TEXT`.
+4. Confirm the same values reached `progress.json`, the working CSV, `sourceCsv`
+   and the final host artifacts. Use the host build and artifact check for the
+   last step.
+5. Review terminology and context decisions separately from translated output.
+6. Commit only the intended Tradusco state, interchange table and generated host
+   artifacts. Keep unrelated host changes out of the translation commit.
+
+Cross-locale agreement is a useful anomaly signal, not semantic proof. Apply a
+correction through the guarded review command so its editorial origin is saved.
+
 ## Low-level commands
 
 The following scripts remain available for debugging or custom orchestration:
@@ -437,8 +470,7 @@ concurrently with `tools/run.js` or review writes.
 - Source text is the translation-memory identity; duplicate source text cannot
   carry different translations in one Tradusco project.
 - The decision queues are not orchestrated by `tools/run.js`.
-- `--dry-run` is a command plan, not the full input inspection described in the
-  rework plan.
+- `--dry-run` is a command plan, not a post-extraction or model-envelope preview.
 - Changed glossary and context rules require an explicit affected-key file for
   regeneration.
 - Generated context fills gaps. Refreshing values previously produced by a

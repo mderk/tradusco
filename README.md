@@ -25,9 +25,9 @@ Notes:
 
 - **OpenRouter**: set `OPENROUTER_API_KEY` and pass any OpenRouter model id containing `/`
   (example: `google/gemini-2.5-flash`). Tradusco will route it through OpenRouter automatically.
-- **OpenRouter methods**: for compatibility across providers, the OpenRouter driver defaults to the
-  standard prompt-based method. If you need structured output or function calling, prefer a direct
-  provider driver that supports it.
+- **OpenRouter methods**: Tradusco reads the model capabilities reported by
+  OpenRouter. `--method auto` prefers structured output, then tool calling, then
+  the standard prompt protocol. Use a raw OpenRouter model id containing `/`.
 - **Debugging**: set `TRADUSCO_DEBUG=true` (or pass `--debug` to `translate.py`) to enable verbose logs.
 
 ## Development commands
@@ -87,6 +87,18 @@ do not run the glossary, context, review and delivery workflow. See
 complete cycle with [tradusco-run](skills/tradusco-run/SKILL.md).
 For a new host repository, [tradusco-init](skills/tradusco-init/SKILL.md)
 scaffolds the config and guides the agent through its project adapters.
+
+Current documentation:
+
+- [Integration guide](INTEGRATION_GUIDE.md) — the complete workflow and ownership boundary;
+- [Configuration reference](CONFIGURATION.md) — every integration field and runner flag;
+- [Glossary](GLOSSARY.md) and [context](CONTEXT.md) — preparation protocols;
+- [Reference host](examples/reference-host/README.md) — a small copyable integration;
+- [Acceptance scenario](ACCEPTANCE_SMALL_SHOP.md) — executable workflow contract;
+- [Deferred ideas](BACKLOG_TOOLING.md) — explicitly out-of-scope work.
+
+Closed implementation plans are intentionally not user documentation. The
+current behavior is defined by the files above and the test suite.
 
 ## Creating a New Project
 
@@ -510,24 +522,6 @@ Tradusco validates that translations preserve common runtime placeholders:
 
 If a mismatch is detected, the translation is skipped (and `sync_project_from_csv.py` can quarantine
 already-saved bad entries).
-
-## Core Classes
-
-### TranslationProject
-
-The main class that handles the translation process. Key methods:
-
--   `async create(project_name, dst_language, prompt_file=None)`: Factory method to create a new instance
--   `async translate(delay_seconds=1.0, max_retries=3, batch_size=50, model="gemini")`: Translate missing phrases
--   `get_available_models()`: Static method to get a list of available models
-
-### LLM Drivers
-
-The project uses a driver architecture for interacting with different LLM providers:
-
--   `BaseDriver`: Abstract base class that defines the interface for all LLM drivers
--   `GeminiDriver`, `GrokDriver`, `OpenAIDriver`: Concrete implementations for specific providers
--   `get_driver(model)`: Factory function to create the appropriate driver
 
 ### Batch Processing
 

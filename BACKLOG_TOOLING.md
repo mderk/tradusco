@@ -1,8 +1,7 @@
-# Tooling ideas deferred after the first upgrade
+# Deferred tooling ideas
 
-> **Status: backlog.** These items do not block the G1–G11 transfer in
-> `REWORK_PLAN_TOOLING.md`. Promote an item only when a real integration or a
-> reproducible failure requires it.
+> **Status: backlog.** These items do not block the current standalone workflow.
+> Promote an item only when a real integration or a reproducible failure requires it.
 
 | Idea | Revisit when |
 | --- | --- |
@@ -16,7 +15,7 @@
 | Reference/example translation-quality experiments | A separate experiment has a fixed dataset, model and spending budget. |
 | Model bakeoff utility | A model comparison is requested independently of the ordinary run. |
 | Whitespace rekey migration | A real project needs an explicit old-key to new-key mapping. |
-| Canon-gap reporting and canon import | A second project needs the t3 canon-gap workflow. |
+| Canon-gap reporting and canon import | A project needs a repeatable canon-gap workflow. |
 | Migration of legacy override layers | A target project must consolidate existing competing override files. |
 | Inferring editorial origin for edits made outside supported tools | A project cannot route editorial changes through guarded edits or back-sync. |
 | Refreshing already stored context after a rule changes | The transferred context workflow must update generated values rather than only fill gaps. |

@@ -117,9 +117,9 @@ terms matching more batch phrases take priority. A typical request contains:
 
 ## Scope
 
-`scope` describes where a terminology rule applies, for example `ui`, `dialogue`,
-or `all`. It is not equivalent to gettext `msgctxt`: it filters a glossary rule
-but does not make scope part of a source phrase's identity.
+`scope` records where a terminology rule is intended to apply, for example
+`ui`, `dialogue`, or `all`. It is not equivalent to gettext `msgctxt` and does
+not make scope part of a source phrase's identity.
 
 Current translation CSV files do not provide a deterministic scope for each row,
 so Tradusco treats glossary scope as non-restrictive and does not send it to the

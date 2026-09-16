@@ -1,6 +1,6 @@
 # Translation context workflow
 
-Tradusco stores per-row context in the configured `context` CSV column. The
+Tradusco stores per-row context in the literal `context` CSV column. The
 workflow resolves it in this order: reviewed manual value, project column rule,
 project domain rule, then general project rule. Generated values fill gaps;
 manual values may replace an existing generated value.

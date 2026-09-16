@@ -1,0 +1,17 @@
+[
+  {
+    "id": "checkout.title",
+    "text": "Checkout",
+    "context": "Title of the checkout screen."
+  },
+  {
+    "id": "checkout.pay",
+    "text": "Pay {amount}",
+    "context": "Button that confirms a payment for the displayed amount."
+  },
+  {
+    "id": "trip.pack",
+    "text": "Travel Pack",
+    "context": "Name of a shop bundle for a short trip."
+  }
+]

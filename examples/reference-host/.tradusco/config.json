@@ -1,0 +1,21 @@
+{
+  "traduscoRoot": "../../..",
+  "projectDir": "app",
+  "sourceCsv": "../catalog.csv",
+  "baseCol": "en",
+  "locales": ["fr", "de"],
+  "envFile": "../.env.tradusco",
+  "extractCommands": [["python3", "../scripts/extract.py"]],
+  "glossarySourceCommand": ["python3", "../scripts/glossary.py"],
+  "contextProviderFile": "../scripts/context-provider.js",
+  "translate": {
+    "model": "google/gemini-2.5-flash",
+    "method": "auto",
+    "batchSize": 50,
+    "batchMaxInputTokens": 65536,
+    "referenceLangs": ["fr"],
+    "protectLangs": ["fr"]
+  },
+  "deliveryCommands": [["python3", "../scripts/deliver.py"]],
+  "artifactKeysCommand": ["python3", "../scripts/artifact_keys.py"]
+}

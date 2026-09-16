@@ -1,0 +1,9 @@
+{
+  "Travel Pack": {
+    "mode": "exact",
+    "note": "Name of a shop bundle for a short trip.",
+    "t": {
+      "fr": "Pack Voyage"
+    }
+  }
+}

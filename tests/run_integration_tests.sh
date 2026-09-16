@@ -42,7 +42,7 @@ except Exception:
 
 import pytest
 
-sys.exit(pytest.main(["tests/test_integration_translation_methods.py", "-vv", "-m", "integration"]))
+sys.exit(pytest.main(["tests", "-vv", "-m", "integration"]))
 PY
 
 # Check if tests passed

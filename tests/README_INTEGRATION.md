@@ -10,7 +10,7 @@ For integration into other repositories, see `INTEGRATION_GUIDE.md` in the repo 
 Integration tests are **excluded from normal test runs** (when using `pytest` command) to avoid unnecessary API usage and costs. There are several ways to run the integration tests:
 
 ```bash
-# Use the provided script (recommended)
+# Run every opt-in live test
 ./tests/run_integration_tests.sh
 
 # Alternative methods with pytest directly:
@@ -32,7 +32,8 @@ The integration tests verify that all three translation methods work end-to-end 
 2. **Structured Method**: Uses the structured output API for more reliable JSON responses
 3. **Function Method**: Uses function calling to guide the response format
 
-The tests also include a comparison test that runs all three methods on the same inputs and displays a side-by-side comparison of the results.
+The suite also includes a comparison test, independent OpenRouter and direct-provider
+E2E checks, and the live Small Shop round trip.
 
 Default models (can be changed in `tests/test_integration_translation_methods.py`, fixture `translation_params`):
 
@@ -47,7 +48,7 @@ Additional E2E integration tests:
 
 ## Requirements
 
-To run these tests, you need:
+Tests skip when their provider credential is absent. To run the entire suite, you need:
 
 1. An active Gemini API key (`GEMINI_API_KEY`)
 2. An active OpenRouter API key (`OPENROUTER_API_KEY`)

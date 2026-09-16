@@ -4,10 +4,12 @@ This directory contains tests for the Tradusco application.
 
 ## Test Structure
 
--   **conftest.py**: Contains pytest fixtures used across multiple test files
--   **test_translation_project.py**: Tests for the `TranslationProject` class
--   **test_translation_tool.py**: Tests for the `TranslationTool` class
--   **test_utils.py**: Tests for utility functions
+- `test_translation_*`, `test_envelope.py` and `test_prompt_*` cover the engine;
+- `test_glossary_tool.py` and `test_context_tool.py` cover preparation;
+- `test_review_tool.py`, `test_delivery_tools.py` and `test_run_tool.py` cover the workflow tools;
+- `test_acceptance_small_shop.py` covers the independent round trip;
+- `test_init_scaffold.py` and `test_reference_host.py` cover new integrations;
+- `test_e2e_*` and `test_integration_translation_methods.py` make real API calls.
 
 ## Running Tests
 
@@ -17,12 +19,12 @@ To run the tests, execute the following command from the project root:
 uv run pytest
 ```
 
-To run specific test files:
+To run a specific area:
 
 ```bash
-uv run pytest tests/test_translation_project.py
-uv run pytest tests/test_translation_tool.py
-uv run pytest tests/test_utils.py
+uv run pytest tests/test_run_tool.py tests/test_delivery_tools.py
+uv run pytest tests/test_glossary_tool.py tests/test_context_tool.py
+uv run pytest tests/test_acceptance_small_shop.py -m "not integration"
 ```
 
 To run with verbose output:
@@ -55,5 +57,5 @@ When writing new tests:
 
 ## Mock Data
 
-The tests use mock data to simulate the translation process without making actual API calls.
-This approach ensures tests are deterministic and do not depend on external services.
+Normal tests use controlled model responses and temporary host projects. Tests
+marked `integration` are the only tests allowed to call external providers.

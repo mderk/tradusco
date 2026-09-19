@@ -26,9 +26,176 @@ class Config(BaseModel):
 # script so both enforce the exact same rules.
 # ---------------------------------------------------------------------------
 
-_CURLY_TOKEN_RE = re.compile(r"\{[^}]+\}")
 # Lingui uses numeric tags like <0>...</0>. Keep them intact.
 _LINGUI_TAG_RE = re.compile(r"</?\d+/?\s*>")
+# ICU MessageFormat arguments whose body is a set of `key {message}` branches.
+# Their branches are language-specific (Russian needs `few`/`many`, English
+# does not), so they are compared structurally rather than as literal text.
+_ICU_BRANCHED_TYPES = frozenset({"plural", "selectordinal", "select"})
+_PLURAL_CATEGORIES = frozenset({"zero", "one", "two", "few", "many", "other"})
+_ICU_ARG_HEAD_RE = re.compile(
+    r"^\s*([^,\s]+)\s*(?:,\s*([A-Za-z]+)\s*(?:,(.*))?)?$", re.DOTALL
+)
+_ICU_BRANCH_KEY_RE = re.compile(
+    r"\s*(?:offset\s*:\s*\d+\s*)?(=\d+|[A-Za-z_][\w-]*)\s*\{"
+)
+
+
+class IcuArg:
+    """One `{...}` argument of a message, parsed just far enough to compare."""
+
+    __slots__ = ("raw", "name", "kind", "branches")
+
+    def __init__(
+        self, raw: str, name: str = "", kind: str = "", branches: dict | None = None
+    ):
+        # The argument text including braces.
+        self.raw = raw
+        self.name = name
+        # "plural" / "select" / "selectordinal"; "" for anything else.
+        self.kind = kind
+        # Branch key -> branch message (branched kinds only).
+        self.branches = branches or {}
+
+    @property
+    def token(self) -> str:
+        """What the argument must look like in a translation."""
+        return f"{{{self.name}, {self.kind}}}" if self.kind else self.raw
+
+
+def _matching_brace(text: str, start: int) -> int:
+    """Index of the `}` closing the `{` at ``start``, or -1 when unbalanced."""
+    depth = 0
+    for i in range(start, len(text)):
+        ch = text[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _parse_branches(body: str) -> dict[str, str] | None:
+    """`one {# file} other {# files}` -> {"one": "# file", "other": "# files"}."""
+    branches: dict[str, str] = {}
+    pos = 0
+    while pos < len(body):
+        if body[pos:].strip() == "":
+            break
+        m = _ICU_BRANCH_KEY_RE.match(body, pos)
+        if not m:
+            return None
+        end = _matching_brace(body, m.end() - 1)
+        if end < 0:
+            return None
+        branches[m.group(1)] = body[m.end() : end]
+        pos = end + 1
+    return branches
+
+
+def _parse_arg(raw: str) -> IcuArg:
+    m = _ICU_ARG_HEAD_RE.match(raw[1:-1])
+    if not m:
+        return IcuArg(raw)
+    name, kind, body = m.group(1), (m.group(2) or "").lower(), m.group(3)
+    if kind not in _ICU_BRANCHED_TYPES or body is None:
+        return IcuArg(raw)
+    branches = _parse_branches(body)
+    if branches is None:
+        return IcuArg(raw)
+    return IcuArg(raw, name, kind, branches)
+
+
+def parse_icu_args(text: str) -> list[IcuArg]:
+    """
+    Top-level `{...}` arguments of a message, in order. Plain `{name}` and
+    `{n, number}` are kept verbatim; plural/select arguments get their branches.
+    An unbalanced `{` is treated as literal text, like the old regex did.
+    """
+    args: list[IcuArg] = []
+    text = text or ""
+    pos = 0
+    while True:
+        start = text.find("{", pos)
+        if start < 0:
+            break
+        end = _matching_brace(text, start)
+        if end < 0:
+            break
+        if end > start + 1:
+            args.append(_parse_arg(text[start : end + 1]))
+        pos = end + 1
+    return args
+
+
+def _flatten_icu(text: str) -> str:
+    """Message with every branched argument replaced by its `other` branch."""
+    out: list[str] = []
+    text = text or ""
+    pos = 0
+    while True:
+        start = text.find("{", pos)
+        if start < 0:
+            break
+        end = _matching_brace(text, start)
+        if end < 0:
+            break
+        out.append(text[pos:start])
+        arg = (
+            _parse_arg(text[start : end + 1])
+            if end > start + 1
+            else IcuArg(text[start : end + 1])
+        )
+        if arg.kind:
+            other = arg.branches.get("other") or next(iter(arg.branches.values()), "")
+            out.append(_flatten_icu(other).replace("#", "0"))
+        else:
+            out.append(arg.raw)
+        pos = end + 1
+    out.append(text[pos:])
+    return "".join(out)
+
+
+def _nested_tokens(arg: IcuArg) -> set[str]:
+    """Placeholders used anywhere inside a branched argument, `#` included."""
+    tokens: set[str] = set()
+    for body in arg.branches.values():
+        if arg.kind != "select" and "#" in body:
+            tokens.add("#")
+        for inner in parse_icu_args(body):
+            tokens.add(inner.token)
+            tokens |= _nested_tokens(inner)
+    return tokens
+
+
+def _branched_arg_matches(src: IcuArg, dst: IcuArg) -> str:
+    """Empty string when ``dst`` is a valid translation of ``src``, else why not."""
+    where = f"{src.token}"
+    if src.kind == "select":
+        if set(src.branches) != set(dst.branches):
+            return f"{where}: select keys differ: src={sorted(src.branches)} dst={sorted(dst.branches)}"
+    else:
+        if "other" not in dst.branches:
+            return f"{where}: missing `other` branch"
+        bad = [
+            k
+            for k in dst.branches
+            if not (k.startswith("=") or k in _PLURAL_CATEGORIES)
+        ]
+        if bad:
+            return f"{where}: unknown plural categories {sorted(bad)}"
+        src_exact = {k for k in src.branches if k.startswith("=")}
+        dst_exact = {k for k in dst.branches if k.startswith("=")}
+        if src_exact != dst_exact:
+            return f"{where}: exact-value branches differ: src={sorted(src_exact)} dst={sorted(dst_exact)}"
+    src_inner, dst_inner = _nested_tokens(src), _nested_tokens(dst)
+    if src_inner != dst_inner:
+        return f"{where}: nested placeholders mismatch: src={sorted(src_inner)} dst={sorted(dst_inner)}"
+    return ""
+
+
 # Detects a string that *is* (the start of) our expected JSON output shape,
 # e.g. `{"translations": [...]`. Used to reject model scaffolding that leaks
 # through parsing. Deliberately anchored so legitimate text merely *containing*
@@ -37,7 +204,12 @@ _TRANSLATIONS_KEY_RE = re.compile(r"""^\{?\s*["']translations["']\s*:""")
 
 
 def extract_curly_tokens(text: str) -> set[str]:
-    return set(_CURLY_TOKEN_RE.findall(text or ""))
+    """
+    Placeholders a translation has to keep. Plain `{name}` tokens are returned
+    verbatim; an ICU plural/select collapses to `{name, plural}` because its
+    branches are allowed to differ between languages.
+    """
+    return {arg.token for arg in parse_icu_args(text)}
 
 
 def extract_lingui_tags(text: str) -> set[str]:
@@ -46,16 +218,28 @@ def extract_lingui_tags(text: str) -> set[str]:
 
 def placeholders_match(source: str, translation: str) -> tuple[bool, str]:
     """
-    Ensure a translation preserves placeholders (`{num}`) and Lingui tags
-    (`<0>...</0>`) so runtime interpolation is not broken.
+    Ensure a translation preserves placeholders (`{num}`), ICU plural/select
+    arguments and Lingui tags (`<0>...</0>`) so runtime interpolation is not
+    broken.
     """
-    src_tokens = extract_curly_tokens(source)
-    dst_tokens = extract_curly_tokens(translation)
+    src_args = parse_icu_args(source)
+    dst_args = parse_icu_args(translation)
+    src_tokens = {a.token for a in src_args}
+    dst_tokens = {a.token for a in dst_args}
     if src_tokens != dst_tokens:
         return (
             False,
             f"curly placeholders mismatch: src={sorted(src_tokens)} dst={sorted(dst_tokens)}",
         )
+    for src in src_args:
+        if not src.kind:
+            continue
+        for dst in dst_args:
+            if dst.token != src.token:
+                continue
+            reason = _branched_arg_matches(src, dst)
+            if reason:
+                return False, f"ICU argument mismatch: {reason}"
 
     src_tags = extract_lingui_tags(source)
     dst_tags = extract_lingui_tags(translation)
@@ -151,7 +335,8 @@ def display_width(text: str) -> int:
 
 def measurable_text(text: str) -> str:
     """Source text with placeholders and markup removed, whitespace collapsed."""
-    stripped = _MEASURE_STRIP_RE.sub("", str(text or ""))
+    # A plural/select renders as one of its branches, so measure the `other` one.
+    stripped = _MEASURE_STRIP_RE.sub("", _flatten_icu(str(text or "")))
     return re.sub(r"\s+", " ", stripped).strip()
 
 

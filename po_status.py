@@ -6,24 +6,8 @@ import json
 import re
 from pathlib import Path
 
+from lib.utils import placeholders_match
 from po_utils import is_fuzzy, unescape_po_string
-
-_CURLY_TOKEN_RE = re.compile(r"\{[^}]+\}")
-_LINGUI_TAG_RE = re.compile(r"</?\d+/?\s*>")
-
-
-def _extract_curly_tokens(text: str) -> set[str]:
-    return set(_CURLY_TOKEN_RE.findall(text))
-
-
-def _extract_lingui_tags(text: str) -> set[str]:
-    return set(_LINGUI_TAG_RE.findall(text))
-
-
-def _placeholders_match(msgid: str, msgstr: str) -> bool:
-    return _extract_curly_tokens(msgid) == _extract_curly_tokens(msgstr) and _extract_lingui_tags(
-        msgid
-    ) == _extract_lingui_tags(msgstr)
 
 
 def _parse_po_blocks(content: str) -> list[str]:
@@ -74,7 +58,7 @@ def status_file(po_path: Path) -> dict:
             continue
 
         msgstr = unescape_po_string(msgstr_raw)
-        if not _placeholders_match(msgid, msgstr):
+        if not placeholders_match(msgid, msgstr)[0]:
             invalid_placeholders += 1
 
     return {

@@ -6,6 +6,7 @@ import json
 import re
 from pathlib import Path
 
+from lib.utils import placeholders_match as _placeholders_match
 from po_utils import (
     format_po_msgstr,
     is_fuzzy,
@@ -13,37 +14,7 @@ from po_utils import (
     unescape_po_string,
 )
 
-_CURLY_TOKEN_RE = re.compile(r"\{[^}]+\}")
-_LINGUI_TAG_RE = re.compile(r"</?\d+/?\s*>")
 _SPACE_BEFORE_NL_RE = re.compile(r"[ \t]+\n")
-
-
-def _extract_curly_tokens(text: str) -> set[str]:
-    return set(_CURLY_TOKEN_RE.findall(text))
-
-
-def _extract_lingui_tags(text: str) -> set[str]:
-    return set(_LINGUI_TAG_RE.findall(text))
-
-
-def _placeholders_match(source: str, translation: str) -> tuple[bool, str]:
-    src_tokens = _extract_curly_tokens(source)
-    dst_tokens = _extract_curly_tokens(translation)
-    if src_tokens != dst_tokens:
-        return (
-            False,
-            f"curly placeholders mismatch: src={sorted(src_tokens)} dst={sorted(dst_tokens)}",
-        )
-
-    src_tags = _extract_lingui_tags(source)
-    dst_tags = _extract_lingui_tags(translation)
-    if src_tags != dst_tags:
-        return (
-            False,
-            f"lingui tags mismatch: src={sorted(src_tags)} dst={sorted(dst_tags)}",
-        )
-
-    return True, ""
 
 
 def _recover_utf8_from_latin1(s: str) -> str | None:

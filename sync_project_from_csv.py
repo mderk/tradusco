@@ -4,11 +4,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import re
 from pathlib import Path
 
-_CURLY_TOKEN_RE = re.compile(r"\{[^}]+\}")
-_LINGUI_TAG_RE = re.compile(r"</?\d+/?\s*>")
+from lib.utils import placeholders_match as _placeholders_match
 
 
 def _read_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
@@ -69,34 +67,6 @@ def _recover_utf8_from_latin1(s: str) -> str | None:
     except (UnicodeEncodeError, UnicodeDecodeError):
         return None
     return recovered
-
-
-def _extract_curly_tokens(text: str) -> set[str]:
-    return set(_CURLY_TOKEN_RE.findall(text))
-
-
-def _extract_lingui_tags(text: str) -> set[str]:
-    return set(_LINGUI_TAG_RE.findall(text))
-
-
-def _placeholders_match(source: str, translation: str) -> tuple[bool, str]:
-    src_tokens = _extract_curly_tokens(source)
-    dst_tokens = _extract_curly_tokens(translation)
-    if src_tokens != dst_tokens:
-        return (
-            False,
-            f"curly placeholders mismatch: src={sorted(src_tokens)} dst={sorted(dst_tokens)}",
-        )
-
-    src_tags = _extract_lingui_tags(source)
-    dst_tags = _extract_lingui_tags(translation)
-    if src_tags != dst_tags:
-        return (
-            False,
-            f"lingui tags mismatch: src={sorted(src_tags)} dst={sorted(dst_tags)}",
-        )
-
-    return True, ""
 
 
 def _bootstrap_progress_if_needed(

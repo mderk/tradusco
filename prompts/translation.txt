@@ -5,6 +5,7 @@ You are a professional translator. Translate the following phrases from {base_la
 - Do not leave source-language words untranslated unless they are names, placeholders, or explicitly marked `keep` in the glossary.
 - Respect the formatting of the text - preserve newlines, extra spaces and other formatting features whenever possible. *Don't* break multiline strings to pieces!
 - Don't lose placeholders (e.g. `{{name}}`) or Lingui tags (e.g. `<0>...</0>`).
+- ICU plural/select arguments (`{{count, plural, one {{# file}} other {{# files}}}}`) keep the argument name and type; use the plural categories the target language needs (e.g. `one`/`few`/`many`/`other`), always keep `other`, keep every `=N` branch, and keep `#` and nested placeholders inside the branches.
 
 {context}
 

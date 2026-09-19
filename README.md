@@ -518,6 +518,11 @@ The LLM receives both types of context in a structured format, ensuring accurate
 Tradusco validates that translations preserve common runtime placeholders:
 
 - `{name}` / `{count}` style curly placeholders
+- ICU MessageFormat `plural` / `selectordinal` / `select` arguments, compared structurally:
+  the argument name and type must match, `other` and every `=N` branch must be present,
+  `select` keys must match the source, and placeholders (including `#`) used inside
+  the branches must be preserved — branch texts and plural categories may differ, so a
+  Russian translation can add `few`/`many` where English has only `one`/`other`
 - Lingui-style numeric rich-text tags like `<0>...</0>`
 
 If a mismatch is detected, the translation is skipped (and `sync_project_from_csv.py` can quarantine

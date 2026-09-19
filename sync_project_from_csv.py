@@ -224,6 +224,11 @@ def main() -> int:
         dest="sanitize_progress",
         help="Disable progress sanitization.",
     )
+    parser.add_argument(
+        "--languages",
+        help="Comma-separated locales the project translates. Any other CSV column that is not "
+        "the base, context or context_<lang> is then an error instead of a new language.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -266,6 +271,16 @@ def main() -> int:
         and c not in ignore_set
         and not str(c).startswith("context_")
     ]
+    if args.languages:
+        expected = [c.strip() for c in str(args.languages).split(",") if c.strip()]
+        unknown = [c for c in lang_cols if c not in expected]
+        if unknown:
+            raise SystemExit(
+                f"Unexpected columns in {source_csv}: {', '.join(unknown)}. "
+                "Every column except the base and context columns is a target locale; "
+                "a key or id column must not be there (and `id` is Indonesian)."
+            )
+        lang_cols = [c for c in lang_cols if c in expected]
 
     # Metadata columns to keep in output translations.csv
     meta_cols: list[str] = []

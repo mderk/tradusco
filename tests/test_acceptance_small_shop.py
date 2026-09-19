@@ -335,3 +335,19 @@ async def test_live_multilanguage_round_trip(tmp_path):
             delay_seconds=0,
         )
     model_call.assert_not_awaited()
+
+
+def test_sync_rejects_columns_that_are_not_configured_locales(tmp_path):
+    # Every non-metadata column is a locale, so a stray key column would become
+    # a language (`id` even names a real one). With the configured locales known,
+    # sync refuses instead of translating into a column nobody asked for.
+    source = tmp_path / "translations.csv"
+    with source.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=["id", "en", "context", "fr"])
+        writer.writeheader()
+        writer.writerow({"id": "ui.title", "en": "Title", "context": "", "fr": ""})
+    command = [str(ROOT / ".venv/bin/python"), str(ROOT / "sync_project_from_csv.py"), "--project-dir", str(tmp_path / "shop"), "--source-csv", str(source), "--base-col", "en"]
+    result = subprocess.run([*command, "--languages", "fr"], capture_output=True, text=True)
+    assert result.returncode == 1 and "Unexpected columns" in result.stderr and "id" in result.stderr
+    subprocess.run([*command, "--languages", "fr,id"], check=True, capture_output=True, text=True)
+    assert json.loads((tmp_path / "shop/config.json").read_text())["languages"] == ["en", "id", "fr"]

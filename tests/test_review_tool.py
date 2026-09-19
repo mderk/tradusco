@@ -86,3 +86,26 @@ def test_export_selected_locale_leaves_other_locale_alone(tmp_path):
     with (tmp_path / "catalog.csv").open(encoding="utf-8", newline="") as source:
         row = next(csv.DictReader(source))
     assert row == {"en": "Pay", "fr": "Payer", "de": "Old de"}
+
+
+def test_back_sync_flags_whole_rows_tradusco_never_translated(tmp_path):
+    # A reviewer changes single cells. A source that Tradusco has no translation
+    # for while the host offers it in several languages is almost always an old
+    # translation re-keyed onto new source text, not editorial work.
+    project = tmp_path / ".tradusco/shop"
+    project.mkdir(parents=True)
+    (project / "config.json").write_text(json.dumps({"sourceFile": "translations.csv", "baseLanguage": "en", "languages": ["en", "fr", "de"]}))
+    fields = ["en", "fr", "de"]
+    with (project / "translations.csv").open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows([{"en": "Pay {n}", "fr": "Payer {n}", "de": "Zahlen {n}"}, {"en": "Pay now {n}", "fr": "", "de": ""}])
+    with (tmp_path / "catalog.csv").open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows([{"en": "Pay {n}", "fr": "Régler {n}", "de": "Zahlen {n}"}, {"en": "Pay now {n}", "fr": "Payer {n}", "de": "Zahlen {n}"}])
+    (tmp_path / "tradusco.config.json").write_text(json.dumps({"projectDir": ".tradusco/shop", "sourceCsv": "catalog.csv"}))
+
+    preview = json.loads(run_tool(tmp_path, "back-sync").stdout)
+    assert preview["changes"] == 3
+    assert preview["untranslated_sources"] == ["Pay now {n}"]

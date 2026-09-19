@@ -31,6 +31,35 @@ All mutable Tradusco state should resolve below `.tradusco/`. Host source data,
 extractors, providers and build commands remain in the host's normal directories.
 The working CSV uses the literal `context` column for row context.
 
+### CSV columns
+
+The interchange CSV has exactly three kinds of columns: `baseCol`, `context`
+(plus optional `context_<locale>`), and one column per target locale. There is
+no key column: the base-language text is the key. When `locales` is set the
+runner passes it to sync, and any other column is an error rather than a new
+language — a stray `id` column would otherwise be translated as Indonesian.
+
+### Project context files
+
+Besides the context provider, plain files give the model standing guidance:
+`<projectDir>/context.md` (or `.txt`) is prepended to every prompt as global
+context, and `<projectDir>/<locale>/context.md` only to that locale's prompts.
+Tone, formality and audience belong there; per-string meaning belongs in the
+`context` column.
+
+### Length check
+
+Audit flags UI labels whose translation is much wider than the source. Tune or
+disable it per project in `<projectDir>/config.json`:
+
+```json
+"lengthCheck": {"enabled": false}
+```
+
+or `{"maxRatio": 2.2, "perLang": {"de": {"maxRatio": 2.5}}}`. Sync keeps a
+hand-written `lengthCheck` section. Disable it for forms and documents whose
+layout wraps; keep it for fixed-width game UI.
+
 ## Translation fields
 
 The optional `translate` object accepts:
@@ -66,7 +95,14 @@ Keep credentials out of command output, version control and example files. An
 authorization failure must stop the run; do not silently switch providers or
 models.
 Add the configured `envFile` to the host repository's `.gitignore` before
-storing a key there.
+storing a key there, together with Tradusco's transient files:
+
+```gitignore
+.env.tradusco
+.tradusco/**/*.lock
+.tradusco/**/.*.lock
+.tradusco/*/failures.jsonl
+```
 
 ## Runner flags
 

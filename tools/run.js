@@ -129,7 +129,7 @@ function main() {
     stage(state, "extract", options["skip-extract"], () => {
       for (const command of config.extractCommands || []) run(state, command);
     });
-    stage(state, "sync", options["skip-sync"], () => run(state, [state.python, path.join(state.traduscoRoot, "sync_project_from_csv.py"), "--project-dir", state.projectDir, "--source-csv", state.sourceCsv, "--base-col", state.base]));
+    stage(state, "sync", options["skip-sync"], () => run(state, [state.python, path.join(state.traduscoRoot, "sync_project_from_csv.py"), "--project-dir", state.projectDir, "--source-csv", state.sourceCsv, "--base-col", state.base, ...(state.config.locales?.length ? ["--languages", state.config.locales.join(",")] : [])]));
     stage(state, "glossary", options["skip-glossary"] || !config.glossarySourceCommand, () => {
       run(state, [process.execPath, path.join(state.traduscoRoot, "tools", "glossary.js"), "prepare", "--write", "--config", state.configFile]);
       syncGlossary(state);

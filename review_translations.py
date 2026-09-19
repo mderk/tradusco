@@ -171,11 +171,31 @@ def differences(state: State, direction: str):
     return changes, len(catalog.keys() - project.keys())
 
 
+def untranslated_sources(state: State, changes: list[dict]) -> list[str]:
+    """
+    Sources that Tradusco has never translated but the host offers in several
+    languages at once. A reviewer edits one cell at a time; a whole row of
+    unknown values usually means the host re-keyed an old translation onto new
+    source text, and back-sync would freeze that stale text as editorial.
+    """
+    _, _, project = indexed(state.project_csv, state.base)
+    offered: dict[str, set[str]] = {}
+    for edit in changes:
+        offered.setdefault(edit["source"], set()).add(edit["language"])
+    return sorted(
+        source
+        for source, langs in offered.items()
+        if len(langs) > 1 and not any(project[source].get(lang, "") for lang in state.languages)
+    )
+
+
 def sync(state: State, command: str, write: bool, expected: str | None) -> dict:
     with writer_lock(state.project) if write else nullcontext():
         current_revision = revision(state.project_csv, state.catalog)
         changes, unmanaged = differences(state, command)
         result = {"revision": current_revision, "changes": len(changes), "unmanaged": unmanaged, "edits": changes[:20]}
+        if command == "back-sync":
+            result["untranslated_sources"] = untranslated_sources(state, changes)
         if not write:
             return result
         if expected != current_revision:

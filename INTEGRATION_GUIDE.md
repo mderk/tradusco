@@ -132,7 +132,15 @@ Tradusco's mutable state defaults to `projectDir`: `glossary.json`,
 `editorial.json`, the working CSV and per-locale progress. Project source data
 and provider code stay outside `.tradusco/` because the host project owns them.
 
-- `extractCommands` must produce `sourceCsv`.
+- `extractCommands` must produce `sourceCsv`. Its columns are the base text,
+  `context` and the configured locales only; a key column is rejected by sync.
+  When the extractor carries existing translations over, it must match them by
+  base-language text, never by the host's own key: the host key survives a
+  source-text change, so a key-matched translation of the old text would be
+  attached to the new text and later offered to back-sync as an editorial value.
+  Export writes every delivered value into `sourceCsv` after each run, so the
+  extractor can simply keep the current CSV's cells for rows whose base text is
+  unchanged.
 - `glossarySourceCommand` receives an appended `--output PATH` and must write a
   JSON object containing generated term entries.
 - `contextProviderFile` is a CommonJS provider described in
@@ -191,6 +199,12 @@ $PYTHON "$TRADUSCO_ROOT/review_translations.py" back-sync \
 
 The revision covers both the host CSV and the working CSV. A concurrent change
 causes the write to fail instead of overwriting it.
+
+The preview also lists `untranslated_sources`: sources Tradusco has never
+translated for which the host offers values in several languages at once. A
+reviewer changes single cells; a whole row usually means an old translation was
+re-keyed onto new source text. Fix the extractor or the host data before writing
+such a preview, or the stale text becomes editorial.
 
 ## Preparing glossary and context decisions
 

@@ -406,10 +406,11 @@ saved correction; no model call is needed.
 
 ## Delivery and partial results
 
-Tradusco exports every non-empty managed working value into `sourceCsv`. It does
-not blank an unresolved host cell and does not remove host rows that are absent
-from the working snapshot. This permits partial delivery after isolated model
-failures.
+Tradusco exports every non-empty managed working value into `sourceCsv`,
+including the resolved `context` column when the host table has one, so the
+reviewers' table shows what the model was told. It does not blank an unresolved
+host cell and does not remove host rows that are absent from the working
+snapshot. This permits partial delivery after isolated model failures.
 
 When `artifactKeysCommand` is configured, its built artifacts must still expose
 every source key in `sourceCsv`. A host may preserve the prior artifact value for

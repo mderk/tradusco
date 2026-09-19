@@ -161,8 +161,11 @@ def differences(state: State, direction: str):
         raise SystemExit(f"missing language columns: {', '.join(missing)}")
     changes = []
     shared = project.keys() & catalog.keys()
+    # Row context is resolved inside Tradusco (provider, manual decisions); the
+    # host table is what reviewers read, so export hands it back as well.
+    exported = [*state.languages, *(["context"] if direction == "export" and "context" in project_fields and "context" in catalog_fields else [])]
     for source in shared:
-        for lang in state.languages:
+        for lang in exported:
             project_value, catalog_value = project[source].get(lang, ""), catalog[source].get(lang, "")
             if direction == "back-sync" and catalog_value and catalog_value != project_value:
                 changes.append({"source": source, "language": lang, "from": project_value, "to": catalog_value})

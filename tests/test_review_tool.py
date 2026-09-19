@@ -109,3 +109,26 @@ def test_back_sync_flags_whole_rows_tradusco_never_translated(tmp_path):
     preview = json.loads(run_tool(tmp_path, "back-sync").stdout)
     assert preview["changes"] == 3
     assert preview["untranslated_sources"] == ["Pay now {n}"]
+
+
+def test_export_hands_resolved_context_back_to_the_host_table(tmp_path):
+    project = tmp_path / ".tradusco/shop"
+    project.mkdir(parents=True)
+    (project / "config.json").write_text(json.dumps({"sourceFile": "translations.csv", "baseLanguage": "en", "languages": ["en", "fr"]}))
+    fields = ["en", "context", "fr"]
+    with (project / "translations.csv").open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fields)
+        writer.writeheader()
+        writer.writerow({"en": "Pay {n}", "context": "Button in the shop.", "fr": "Payer {n}"})
+    with (tmp_path / "catalog.csv").open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fields)
+        writer.writeheader()
+        writer.writerow({"en": "Pay {n}", "context": "", "fr": ""})
+    (tmp_path / "tradusco.config.json").write_text(json.dumps({"projectDir": ".tradusco/shop", "sourceCsv": "catalog.csv"}))
+
+    preview = json.loads(run_tool(tmp_path, "export").stdout)
+    assert {(e["language"], e["to"]) for e in preview["edits"]} == {("fr", "Payer {n}"), ("context", "Button in the shop.")}
+    run_tool(tmp_path, "export", "--write", "--expect", preview["revision"])
+    with (tmp_path / "catalog.csv").open(encoding="utf-8", newline="") as file:
+        row = next(csv.DictReader(file))
+    assert row["context"] == "Button in the shop." and row["fr"] == "Payer {n}"

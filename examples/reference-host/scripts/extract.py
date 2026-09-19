@@ -24,7 +24,8 @@ def main() -> None:
             previous = existing.get(message["text"], {})
             writer.writerow({
                 "en": message["text"],
-                "context": "",
+                # Context is edited in the table and handed back by export: keep it.
+                "context": previous.get("context", ""),
                 "fr": previous.get("fr", ""),
                 "de": previous.get("de", ""),
             })
